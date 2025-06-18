@@ -1,0 +1,10 @@
+let a = 10 in while (a >= 0) {
+    print(a);
+    a := a - 1;
+}; 
+print(6);
+let a = 8 in print(a+9);
+let a = 10 in while (a>=7) {
+    print(a);
+    a := a-1;
+};

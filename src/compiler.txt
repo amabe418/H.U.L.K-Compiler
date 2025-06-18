@@ -1,0 +1,1574 @@
+== == == ast == == == =
+// ast.hpp
+#pragma once
+
+#ifndef AST_HPP
+#define AST_HPP
+
+#include <cmath>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "../Types/type_info.hpp"
+#include "visitor.hpp"
+
+                          struct Program;
+struct NumberExpr;
+struct StringExpr;
+struct BooleanExpr;
+struct UnaryExpr;
+struct BinaryExpr;
+struct CallExpr;
+struct VariableExpr;
+struct LetExpr;
+struct Stmt;
+struct ExprStmt;
+struct AssignExpr;
+struct FunctionDecl;
+struct IfExpr;
+struct ExprBlock;
+struct WhileExpr;
+struct BaseCallExpr;
+
+struct TypeDecl;
+struct AttributeDecl;
+struct MethodDecl;
+struct NewExpr;
+struct GetAttrExpr;
+struct SetAttrExpr;
+struct MethodCallExpr;
+struct SelfExpr;
+
+struct Instance;
+
+// Base class for all expression nodes
+struct Expr
+{
+    std::shared_ptr<TypeInfo> inferredType;
+    virtual void accept(ExprVisitor* v) = 0;
+    virtual ~Expr() = default;
+};
+
+using ExprPtr = std::unique_ptr<Expr>;
+
+// base class for all statement nodes.
+struct Stmt
+{
+    std::shared_ptr<TypeInfo> inferredType;
+    virtual void accept(StmtVisitor*) = 0;
+    virtual ~Stmt() = default;
+};
+
+using StmtPtr = std::unique_ptr<Stmt>;
+
+// program: father of all the statements
+struct Program : Stmt
+{
+    std::vector<StmtPtr> stmts;
+    void
+    accept(StmtVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// evaluates an expression
+struct ExprStmt : Stmt
+{
+    ExprPtr expr;
+    ExprStmt(ExprPtr e) : expr(std::move(e)) {}
+    void
+    accept(StmtVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Literal: numeric
+struct NumberExpr : Expr
+{
+    double value;
+    NumberExpr(double v) : value(v) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Literal: string
+struct StringExpr : Expr
+{
+    std::string value;
+    StringExpr(const std::string& s) : value(s) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Literal: bool
+struct BooleanExpr : Expr
+{
+    bool value;
+    BooleanExpr(bool v) : value(v) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Unary operation: e.g., negation
+struct UnaryExpr : Expr
+{
+    enum Op
+    {
+        OP_NEG
+    } op;
+    ExprPtr operand;
+    UnaryExpr(Op o, ExprPtr expr) : op(o), operand(std::move(expr)) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Binary operation: +, -, *, /, ^, comparisons, mod
+struct BinaryExpr : Expr
+{
+    enum Op
+    {
+        OP_ADD,
+        OP_SUB,
+        OP_MUL,
+        OP_DIV,
+        OP_POW,
+        OP_MOD,
+        OP_LT,
+        OP_GT,
+        OP_LE,
+        OP_GE,
+        OP_EQ,
+        OP_NEQ,
+        OP_OR,
+        OP_AND,
+        OP_CONCAT,
+        OP_CONCAT_WS
+    } op;
+    ExprPtr left;
+    ExprPtr right;
+    BinaryExpr(Op o, ExprPtr l, ExprPtr r) : op(o), left(std::move(l)), right(std::move(r)) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// Function call: sqrt, sin, cos, exp, log, rand
+struct CallExpr : Expr
+{
+    std::string callee;
+    std::vector<ExprPtr> args;
+    CallExpr(const std::string& name, std::vector<ExprPtr>&& arguments)
+        : callee(name), args(std::move(arguments))
+    {
+    }
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// **VariableExpr**: para referirse a un identificador
+struct VariableExpr : Expr
+{
+    std::string name;
+    VariableExpr(const std::string& n) : name(n) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// **LetExpr**: let <name> = <init> in <body>
+struct LetExpr : Expr
+{
+    std::string name;     // nombre de la variable
+    ExprPtr initializer;  // expresión inicializadora
+    StmtPtr body;         // cuerpo donde la variable está en alcance
+    LetExpr(const std::string& n, ExprPtr init, StmtPtr b)
+        : name(n), initializer(std::move(init)), body(std::move(b))
+    {
+    }
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// a := b  destructive assignment
+struct AssignExpr : Expr
+{
+    std::string name;
+    ExprPtr value;
+
+    AssignExpr(const std::string& n, ExprPtr v) : name(n), value(std::move(v)) {}
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// for function's declaration
+struct FunctionDecl : Stmt
+{
+    std::string name;
+
+    // Lista de nombres de parámetros
+    std::vector<std::string> params;
+
+    // Tipos anotados por el usuario (puede haber inferencia si std::nullopt)
+    std::vector<std::optional<std::shared_ptr<TypeInfo>>> paramTypes;
+
+    // Tipo de retorno anotado (opcional)
+    std::optional<std::shared_ptr<TypeInfo>> returnType;
+
+    // Cuerpo de la función (Expr simple o ExprBlock)
+    StmtPtr body;
+
+    FunctionDecl(const std::string& n, std::vector<std::string>&& p, StmtPtr b,
+                 std::vector<std::optional<std::shared_ptr<TypeInfo>>>&& pt = {},
+                 std::optional<std::shared_ptr<TypeInfo>> rt = std::nullopt)
+        : name(n),
+          params(std::move(p)),
+          paramTypes(std::move(pt)),
+          returnType(std::move(rt)),
+          body(std::move(b))
+    {
+    }
+
+    void
+    accept(StmtVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// if-else expressions:
+struct IfExpr : Expr
+{
+    ExprPtr condition;
+    ExprPtr thenBranch;
+    ExprPtr elseBranch;
+
+    IfExpr(ExprPtr cond, ExprPtr thenB, ExprPtr elseB)
+        : condition(std::move(cond)), thenBranch(std::move(thenB)), elseBranch(std::move(elseB))
+    {
+    }
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// bloques de expresiones
+struct ExprBlock : Expr
+{
+    std::vector<StmtPtr> stmts;
+    ExprBlock(std::vector<StmtPtr>&& s) : stmts(std::move(s)) {}
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// patra ciclos while
+struct WhileExpr : Expr
+{
+    ExprPtr condition;
+    ExprPtr body;
+
+    WhileExpr(ExprPtr cond, ExprPtr b) : condition(std::move(cond)), body(std::move(b)) {}
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+// type A
+struct TypeDecl : Stmt
+{
+    std::string name;
+    std::vector<std::string> params;
+    std::vector<std::unique_ptr<AttributeDecl>> attributes;
+    std::vector<std::unique_ptr<MethodDecl>> methods;
+
+    // HERENCIA
+    std::string baseType = "Object";
+    std::vector<ExprPtr> baseArgs;
+
+    TypeDecl(std::string n, std::vector<std::string>&& params_,
+             std::vector<std::unique_ptr<AttributeDecl>> attrs,
+             std::vector<std::unique_ptr<MethodDecl>> meths, std::string base = "Object",
+             std::vector<ExprPtr>&& args = {})
+        : name(std::move(n)),
+          params(std::move(params_)),
+          attributes(std::move(attrs)),
+          methods(std::move(meths)),
+          baseType(std::move(base)),
+          baseArgs(std::move(args))
+    {
+    }
+
+    void
+    accept(StmtVisitor* v) override
+    {
+        v->visit(this);
+    }
+    const std::vector<std::string>&
+    getParams() const
+    {
+        return params;
+    }
+};
+// atributos de tipos
+struct AttributeDecl
+{
+    std::string name;
+    ExprPtr initializer;
+    AttributeDecl(std::string n, ExprPtr expr) : name(std::move(n)), initializer(std::move(expr)) {}
+};
+
+// metodos de tipos
+struct MethodDecl : Stmt
+{
+    std::string name;
+    std::vector<std::string> params;
+    StmtPtr body;
+
+    MethodDecl(const std::string& n, std::vector<std::string>&& p, StmtPtr b)
+        : name(n), params(std::move(p)), body(std::move(b))
+    {
+    }
+
+    void
+    accept(StmtVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct NewExpr : Expr
+{
+    std::string typeName;
+    std::vector<ExprPtr> args;  // nuevos
+
+    // Constructor con lista de argumentos
+    NewExpr(std::string name, std::vector<ExprPtr>&& args_)
+        : typeName(std::move(name)), args(std::move(args_))
+    {
+    }
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct GetAttrExpr : Expr
+{
+    ExprPtr object;
+    std::string attrName;
+
+    GetAttrExpr(ExprPtr obj, std::string attr) : object(std::move(obj)), attrName(std::move(attr))
+    {
+    }
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct SetAttrExpr : Expr
+{
+    ExprPtr object;
+    std::string attrName;
+    ExprPtr value;
+
+    SetAttrExpr(ExprPtr obj, std::string attr, ExprPtr val)
+        : object(std::move(obj)), attrName(std::move(attr)), value(std::move(val))
+    {
+    }
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct MethodCallExpr : Expr
+{
+    ExprPtr object;
+    std::string methodName;
+    std::vector<ExprPtr> args;
+
+    MethodCallExpr(ExprPtr obj, std::string method, std::vector<ExprPtr>&& arguments)
+        : object(std::move(obj)), methodName(std::move(method)), args(std::move(arguments))
+    {
+    }
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct SelfExpr : Expr
+{
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct BaseCallExpr : Expr
+{
+    std::vector<ExprPtr> args;
+    BaseCallExpr(std::vector<ExprPtr>&& a) : args(std::move(a)) {}
+
+    void
+    accept(ExprVisitor* v) override
+    {
+        v->visit(this);
+    }
+};
+
+#endif  // AST_HPP
+
+== = value == == == =
+// value.hpp
+#pragma once
+
+#ifndef VALUE_HPP
+#define VALUE_HPP
+
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <variant>
+
+                        class RangeValue;
+class RangeIterator;
+struct Instance;
+
+class Value
+{
+   public:
+    using Storage = std::variant<double, std::string, bool, std::shared_ptr<RangeValue>,
+                                 std::shared_ptr<RangeIterator>, std::shared_ptr<Instance>>;
+
+    Value() : val(0.0) {}
+    Value(double d) : val(d) {}
+    Value(const std::string& s) : val(s) {}
+    Value(bool b) : val(b) {}
+    Value(std::shared_ptr<RangeValue> rv) : val(rv) {}
+    Value(std::shared_ptr<RangeIterator> it) : val(it) {}
+    Value(std::shared_ptr<Instance> i) : val(i) {}
+
+    ~Value() = default;
+
+    bool
+    isNumber() const
+    {
+        return std::holds_alternative<double>(val);
+    }
+    bool
+    isString() const
+    {
+        return std::holds_alternative<std::string>(val);
+    }
+    bool
+    isBool() const
+    {
+        return std::holds_alternative<bool>(val);
+    }
+    bool
+    isRange() const
+    {
+        return std::holds_alternative<std::shared_ptr<RangeValue>>(val);
+    }
+    bool
+    isIterable() const
+    {
+        return std::holds_alternative<std::shared_ptr<RangeIterator>>(val);
+    }
+    bool
+    isInstance() const
+    {
+        return std::holds_alternative<std::shared_ptr<Instance>>(val);
+    }
+
+    double
+    asNumber() const
+    {
+        return std::get<double>(val);
+    }
+    const std::string&
+    asString() const
+    {
+        return std::get<std::string>(val);
+    }
+    bool
+    asBool() const
+    {
+        return std::get<bool>(val);
+    }
+    std::shared_ptr<RangeValue>
+    asRange() const
+    {
+        if (!isRange())
+            throw std::runtime_error("Value no es RangeValue");
+        return std::get<std::shared_ptr<RangeValue>>(val);
+    }
+    std::shared_ptr<RangeIterator>
+    asIterable() const
+    {
+        if (!isIterable())
+            throw std::runtime_error("Value no es RangeIterator");
+        return std::get<std::shared_ptr<RangeIterator>>(val);
+    }
+    std::shared_ptr<Instance>
+    asInstance() const
+    {
+        return std::get<std::shared_ptr<Instance>>(val);
+    }
+
+    std::string
+    toString() const
+    {
+        if (isString())
+        {
+            return asString();
+        }
+        if (isNumber())
+        {
+            // Convierte double a string sin ceros inútiles
+            std::ostringstream oss;
+            oss << asNumber();
+            return oss.str();
+        }
+        if (isBool())
+        {
+            return asBool() ? "true" : "false";
+        }
+        if (isRange())
+        {
+            return "<range>";
+        }
+        if (isIterable())
+        {
+            return "<iterator>";
+        }
+        return "<unknown>";
+    }
+
+   private:
+    Storage val;
+    friend std::ostream& operator<<(std::ostream& os, const Value& v);
+};
+
+inline std::ostream&
+operator<<(std::ostream& os, const Value& v)
+{
+    if (v.isNumber())
+    {
+        os << v.asNumber();
+    }
+    else if (v.isBool())
+    {
+        os << (v.asBool() ? "true" : "false");
+    }
+    else if (v.isString())
+    {
+        os << "\"" << v.asString() << "\"";
+    }
+    else if (v.isRange())
+    {
+        os << "<range>";
+    }
+    else if (v.isIterable())
+    {
+        os << "<iterator>";
+    }
+    else
+    {
+        os << "<unknown>";
+    }
+
+    return os;
+}
+
+#endif
+
+== == = env_frame == == =
+#pragma once
+
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+
+#include "../Value/value.hpp"
+
+                            struct EnvFrame
+{
+    // mapa local de nombre→valor
+    std::unordered_map<std::string, Value> locals;
+
+    // puntero shared a un frame padre (nullptr si es el global)
+    std::shared_ptr<EnvFrame> parent;
+
+    // Constructor: recibe el frame padre
+    explicit EnvFrame(std::shared_ptr<EnvFrame> p = nullptr) : parent(std::move(p)) {}
+
+    // Buscar recursivamente un nombre en esta cadena de frames.
+    // Si no se halla en ningún nivel, lanza excepción.
+    Value
+    get(const std::string& name) const
+    {
+        auto it = locals.find(name);
+        if (it != locals.end())
+        {
+            return it->second;
+        }
+        if (parent)
+        {
+            return parent->get(name);
+        }
+        throw std::runtime_error("Variable no definida: " + name);
+    }
+
+    // Asignar un valor a un nombre en el frame adecuado:
+    // - Si el nombre existe en el mapa local, sobrescribir aquí.
+    // - Si no existe localmente, pero existe en algún padre, propagar la asignación al padre donde
+    // esté originalmente.
+    // - Si no existe en ningún lado, crearla en este frame (nivel actual).
+    void
+    set(const std::string& name, const Value& v)
+    {
+        if (locals.count(name))
+        {
+            locals[name] = v;
+            return;
+        }
+
+        if (parent && parent->existsInChain(name))
+        {
+            parent->set(name, v);
+            return;
+        }
+
+        locals[name] = v;
+    }
+
+    // Verificar si un nombre existe en esta cadena de frames (local o ancestros).
+    bool
+    existsInChain(const std::string& name) const
+    {
+        if (locals.count(name))
+            return true;
+        if (parent)
+            return parent->existsInChain(name);
+        return false;
+    }
+};
+
+== == = evaluator == ==
+
+// evaluator.hpp
+#ifndef EVALUATOR_HPP
+#define EVALUATOR_HPP
+
+#include <stdio.h>
+
+#include <cmath>
+#include <iostream>
+#include <stdexcept>
+#include <unordered_map>
+
+#include "../AST/ast.hpp"
+#include "../Value/enumerable.hpp"
+#include "../Value/iterable.hpp"
+#include "../Value/value.hpp"
+#include "env_frame.hpp"
+        struct Instance;
+
+struct Instance
+{
+    std::shared_ptr<EnvFrame> attrs;
+    TypeDecl* typeDef;
+    std::shared_ptr<Instance> self;  // Referencia a sí mismo
+
+    Instance() : attrs(std::make_shared<EnvFrame>(nullptr)), typeDef(nullptr), self(nullptr) {}
+};
+
+struct EvaluatorVisitor : StmtVisitor, ExprVisitor
+{
+    Value lastValue{0.0};
+    std::shared_ptr<Instance> currentSelf;
+
+    std::shared_ptr<EnvFrame> env;
+    std::unordered_map<std::string, FunctionDecl*> functions;
+    std::unordered_map<std::string, TypeDecl*> types;
+    std::shared_ptr<EnvFrame> globalEnv;
+    std::string currentMethodName;
+    TypeDecl* currentType = nullptr;  // Para seguimiento en métodos
+
+    EvaluatorVisitor()
+    {
+        globalEnv = env = std::make_shared<EnvFrame>(nullptr);
+        types["Object"] = new TypeDecl("Object", {}, {}, {});
+    }
+
+    // Programa: recorre stmt a stmt
+    void
+    visit(Program* p) override
+    {
+        // Primero registrar TODAS las funciones
+        for (auto& s : p->stmts)
+        {
+            if (auto* fd = dynamic_cast<FunctionDecl*>(s.get()))
+            {
+                fd->accept(this);  // esto registra la función en el mapa
+            }
+        }
+
+        // Luego ejecutar todo (incluyendo funciones si hay recursión)
+        for (auto& s : p->stmts)
+        {
+            if (!dynamic_cast<FunctionDecl*>(s.get()))
+            {
+                s->accept(this);
+            }
+        }
+    }
+
+    // StmtVisitor:
+
+    void
+    visit(ExprStmt* e) override
+    {
+        e->expr->accept(this);
+    }
+
+    // ExprVisitor:
+    void
+    visit(NumberExpr* e) override
+    {
+        lastValue = Value(e->value);
+    }
+
+    void
+    visit(StringExpr* e) override
+    {
+        lastValue = Value(e->value);
+    }
+
+    void
+    visit(BooleanExpr* expr) override
+    {
+        lastValue = Value(expr->value);
+    }
+
+    void
+    visit(UnaryExpr* e) override
+    {
+        e->operand->accept(this);
+        lastValue = Value(-lastValue.asNumber());
+    }
+
+    void
+    visit(BinaryExpr* e) override
+    {
+        e->left->accept(this);
+        Value l = lastValue;
+        e->right->accept(this);
+        Value r = lastValue;
+
+        // Debug: imprimir los valores de la expresión binaria
+        std::cout << "Debug: BinaryExpr " << l.toString() << " " << e->op << " " << r.toString()
+                  << std::endl;
+
+        if (l.isInstance() || r.isInstance())
+        {
+            throw std::runtime_error("no compararemos instancias aun.");
+        }
+        switch (e->op)
+        {
+            case BinaryExpr::OP_ADD:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una suma deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() + r.asNumber());
+                break;
+            case BinaryExpr::OP_SUB:
+                std::cout << "[DEBUG] BinaryExpr: OP_SUB" << std::endl;
+                std::cout << "[DEBUG] l: " << l.toString() << std::endl;
+                std::cout << "[DEBUG] r: " << r.toString() << std::endl;
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una resta deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() - r.asNumber());
+                break;
+            case BinaryExpr::OP_MUL:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error(
+                        "ambos miembros en una multiplicacion deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() * r.asNumber());
+                break;
+            case BinaryExpr::OP_DIV:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una division deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() / r.asNumber());
+                break;
+            case BinaryExpr::OP_MOD:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error(
+                        "ambos miembros en una operacion de resto deben ser numeros");
+                }
+                lastValue = Value(fmod(l.asNumber(), r.asNumber()));
+                break;
+            case BinaryExpr::OP_POW:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una potencia deben ser numeros");
+                }
+                lastValue = Value(pow(l.asNumber(), r.asNumber()));
+                break;
+            case BinaryExpr::OP_LT:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() < r.asNumber() ? true : false);
+                break;
+            case BinaryExpr::OP_GT:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() > r.asNumber() ? true : false);
+                break;
+            case BinaryExpr::OP_LE:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() <= r.asNumber() ? true : false);
+                break;
+            case BinaryExpr::OP_GE:
+                if (!l.isNumber() || !r.isNumber())
+                {
+                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+                }
+                lastValue = Value(l.asNumber() >= r.asNumber() ? true : false);
+                break;
+            case BinaryExpr::OP_EQ:
+                if (l.isNumber() && r.isNumber())
+                {
+                    lastValue = Value(l.asNumber() == r.asNumber() ? true : false);
+                }
+                else if (l.isString() && r.isString())
+                {
+                    lastValue = Value(l.asString() == r.asString() ? true : false);
+                }
+                else if (l.isBool() && r.isBool())
+                {
+                    lastValue = Value(l.asBool() == r.asBool() ? true : false);
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "ambos miembros en una comparacion deben ser del mismo tipo");
+                }
+                break;
+            case BinaryExpr::OP_NEQ:
+                if (l.isNumber() && r.isNumber())
+                {
+                    lastValue = Value(l.asNumber() != r.asNumber() ? true : false);
+                }
+                else if (l.isString() && r.isString())
+                {
+                    lastValue = Value(l.asString() != r.asString() ? true : false);
+                }
+                else if (l.isBool() && r.isBool())
+                {
+                    lastValue = Value(l.asBool() != r.asBool() ? true : false);
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "ambos miembros en una comparacion deben ser del mismo tipo");
+                }
+                break;
+            case BinaryExpr::OP_OR:
+                if (!l.isBool() || !r.isBool())
+                    throw std::runtime_error("or requiere booleanos");
+                lastValue = Value(l.asBool() || r.asBool() ? true : false);
+                break;
+            case BinaryExpr::OP_AND:
+                if (!l.isBool() || !r.isBool())
+                    throw std::runtime_error("and requiere booleanos");
+                lastValue = Value(l.asBool() && r.asBool() ? true : false);
+                break;
+            case BinaryExpr::OP_CONCAT:
+            {
+                std::string ls = l.toString();
+                std::string rs = r.toString();
+                lastValue = Value(ls + rs);
+            }
+            break;
+            case BinaryExpr::OP_CONCAT_WS:
+            {
+                std::string ls = l.toString();
+                std::string rs = r.toString();
+                lastValue = Value(ls + " " + rs);
+            }
+            break;
+            default:
+                throw std::runtime_error("Operador desconocido");
+        }
+    }
+
+    void
+    visit(CallExpr* e) override
+    {
+        // std::cout << "Entrando a CallExpr: " << e->callee << std::endl;
+        std::vector<Value> args;
+        for (auto& arg : e->args)
+        {
+            arg->accept(this);
+            args.push_back(lastValue);
+        }
+
+        // Funciones definidas por el usuario
+        auto it = functions.find(e->callee);
+        if (it != functions.end())
+        {
+            FunctionDecl* f = it->second;
+
+            if (f->params.size() != args.size())
+            {
+                throw std::runtime_error("Número incorrecto de argumentos para función: " +
+                                         f->name);
+            }
+
+            // Guardar entorno actual
+            auto oldEnv = env;
+            env = std::make_shared<EnvFrame>(oldEnv);
+
+            // Asignar parámetros
+            for (size_t i = 0; i < f->params.size(); ++i)
+            {
+                env->locals[f->params[i]] = args[i];
+            }
+
+            // Evaluar cuerpo
+            f->body->accept(this);
+
+            // Restaurar entorno
+            env = std::move(oldEnv);
+
+            return;
+        }
+
+        // Funciones nativas del lenguaje
+        if (e->callee == "range")
+        {
+            if (args.size() != 2 || !args[0].isNumber() || !args[1].isNumber())
+            {
+                throw std::runtime_error("range() espera 2 argumentos numéricos");
+            }
+            double start = args[0].asNumber();
+            double end = args[1].asNumber();
+            auto rv = std::make_shared<RangeValue>(start, end);
+            lastValue = Value(rv);
+            return;
+        }
+        else if (e->callee == "iter")
+        {
+            if (args.size() != 1)
+            {
+                throw std::runtime_error("iter() espera 1 argumento");
+            }
+            if (args[0].isRange())
+            {
+                auto rv = args[0].asRange();
+                auto itr = rv->iter();
+                lastValue = Value(itr);
+                return;
+            }
+            throw std::runtime_error("iter(): el argumento no es Enumerable");
+        }
+        else if (e->callee == "next")
+        {
+            if (args.size() != 1 || !args[0].isIterable())
+            {
+                throw std::runtime_error("next() espera 1 argumento Iterable");
+            }
+            auto itr = args[0].asIterable();
+            bool hay = itr->next();
+            lastValue = Value(hay);
+            return;
+        }
+        else if (e->callee == "current")
+        {
+            if (args.size() != 1 || !args[0].isIterable())
+            {
+                throw std::runtime_error("current() espera 1 argumento Iterable");
+            }
+            auto itr = args[0].asIterable();
+            lastValue = itr->current();
+            return;
+        }
+        else if (e->callee == "print")
+        {
+            if (args.empty())
+                throw std::runtime_error("print espera al menos 1 argumento");
+            std::cout << args[0] << std::endl;
+            lastValue = args[0];  // Asegurarnos de que print retorne el valor que imprime
+            return;
+        }
+        else if (e->callee == "sqrt")
+        {
+            if (args.size() != 1)
+                throw std::runtime_error("sqrt() espera 1 argumento");
+            lastValue = Value(std::sqrt(args[0].asNumber()));
+            return;
+        }
+        else if (e->callee == "log")
+        {
+            if (args.size() == 1)
+            {
+                lastValue = Value(std::log(args[0].asNumber()));
+                return;
+            }
+            else if (args.size() == 2)
+            {
+                double base = args[0].asNumber();
+                double x = args[1].asNumber();
+                if (base <= 0 || base == 1)
+                    throw std::runtime_error("Base inválida para log()");
+                if (x <= 0)
+                    throw std::runtime_error("Argumento inválido para log()");
+                lastValue = Value(std::log(x) / std::log(base));
+                return;
+            }
+            else
+            {
+                throw std::runtime_error("log() espera 1 o 2 argumentos");
+            }
+        }
+        else if (e->callee == "sin")
+        {
+            if (args.size() != 1)
+                throw std::runtime_error("sin() espera 1 argumento");
+            lastValue = Value(std::sin(args[0].asNumber()));
+            return;
+        }
+        else if (e->callee == "cos")
+        {
+            if (args.size() != 1)
+                throw std::runtime_error("cos() espera 1 argumento");
+            lastValue = Value(std::cos(args[0].asNumber()));
+            return;
+        }
+        else if (e->callee == "rand")
+        {
+            lastValue = Value(static_cast<double>(rand()) / RAND_MAX);
+            return;
+        }
+        else if (e->callee == "PI")
+        {
+            if (!args.empty())
+                throw std::runtime_error("PI no toma argumentos");
+            lastValue = Value(M_PI);
+            return;
+        }
+        else if (e->callee == "E")
+        {
+            if (!args.empty())
+                throw std::runtime_error("E no toma argumentos");
+            lastValue = Value(M_E);
+            return;
+        }
+        else
+        {
+            throw std::runtime_error("Función desconocida: " + e->callee);
+        }
+    }
+
+    // for variable declarations
+    void
+    visit(VariableExpr* expr) override
+    {
+        // get() buscará en este frame y en los padres
+        lastValue = env->get(expr->name);
+    }
+
+    // let in expressions
+    void
+    visit(LetExpr* expr) override
+    {
+        // 1) Evaluar la expresión del inicializador
+        expr->initializer->accept(this);
+        Value initVal = lastValue;
+
+        // 2) Abrir un nuevo frame (scope hijo)
+        auto oldEnv = env;  // guardar el frame padre
+        env = std::make_shared<EnvFrame>(oldEnv);
+
+        // 3) Insertar la variable en el mapa local
+        env->locals[expr->name] = initVal;
+
+        // 4) Evaluar el cuerpo (es un Stmt)
+        expr->body->accept(static_cast<StmtVisitor*>(this));
+        Value result = lastValue;
+
+        // 5) Al salir, restaurar el frame anterior
+        env = std::move(oldEnv);
+
+        // 6) El valor resultante de la expresión let es el valor devuelto
+        lastValue = result;
+    }
+
+    // destructive assignment
+    void
+    visit(AssignExpr* expr) override
+    {
+        // Antes de asignar, evaluamos la expresión de la derecha:
+        expr->value->accept(this);
+        Value newVal = lastValue;
+
+        // Verificar que exista en alguna parte (no crear nuevas automáticamente):
+        if (!env->existsInChain(expr->name))
+        {
+            throw std::runtime_error("No se puede asignar a variable no declarada: " + expr->name);
+        }
+        // Llamamos a set() para que reasigne en el frame correspondiente:
+        env->set(expr->name, newVal);
+        lastValue = newVal;  // Devolvemos el nuevo valor asignado
+    }
+
+    // functions declaration
+    void
+    visit(FunctionDecl* f) override
+    {
+        if (functions.count(f->name))
+            throw std::runtime_error("Funcion ya definida: " + f->name);
+        functions[f->name] = f;
+    }
+
+    // if-else
+    void
+    visit(IfExpr* e) override
+    {
+        e->condition->accept(this);
+        if (!lastValue.isBool())
+        {
+            throw std::runtime_error("La condición de un if debe ser booleana");
+        }
+
+        if (lastValue.asBool())
+        {
+            e->thenBranch->accept(this);
+        }
+        else
+        {
+            e->elseBranch->accept(this);
+        }
+    }
+
+    void
+    visit(ExprBlock* b) override
+    {
+        // std::cout << "Entrando a ExprBlock" << std::endl;
+        // 1) Abrir un nuevo frame (scope hijo) antes de entrar al bloque
+        auto oldEnv = env;
+        env = std::make_shared<EnvFrame>(oldEnv);
+
+        // 2) Evaluar cada sentencia dentro del bloque con este nuevo frame
+        for (auto& stmt : b->stmts)
+        {
+            // std::cout << "Evaluando statement en bloque" << std::endl;
+            stmt->accept(this);
+        }
+
+        // 3) Restaurar el frame anterior al salir del bloque
+        env = std::move(oldEnv);
+        // std::cout << "Saliendo de ExprBlock" << std::endl;
+        // Mantenemos el último valor evaluado
+    }
+
+    void
+    visit(WhileExpr* expr) override
+    {
+        Value result;
+        while (true)
+        {
+            expr->condition->accept(this);
+            if (!lastValue.isBool())
+                throw std::runtime_error("La condición de un while debe ser booleana");
+            if (!lastValue.asBool())
+                break;
+
+            expr->body->accept(this);
+            result = lastValue;  // Guardamos el último valor evaluado
+        }
+        lastValue = result;  // Devolvemos el último valor en lugar de void
+    }
+
+    void
+    visit(TypeDecl* t) override
+    {
+        if (types.count(t->name))
+        {
+            throw std::runtime_error("Tipo redefinido: " + t->name);
+        }
+        types[t->name] = t;
+    }
+
+    void
+    visit(MethodDecl* m) override
+    {
+        // Los métodos se registran en el tipo, no en el entorno
+    }
+
+    void
+    visit(NewExpr* e) override
+    {
+        auto instance = std::make_shared<Instance>();
+        TypeDecl* type = types.at(e->typeName);
+        instance->typeDef = type;
+        instance->attrs = std::make_shared<EnvFrame>(globalEnv);
+        instance->self = instance;  // Establecer la referencia a sí mismo
+
+        // 0. Herencia implícita de argumentos si no se definieron
+        if (type->params.empty() && type->baseArgs.empty() && type->baseType != "Object")
+        {
+            TypeDecl* parent = types.at(type->baseType);
+            if (!parent->getParams().empty())
+            {
+                type->params = parent->getParams();
+                type->baseArgs.clear();
+                for (const auto& param : parent->getParams())
+                {
+                    type->baseArgs.push_back(std::make_unique<VariableExpr>(param));
+                }
+            }
+        }
+
+        // 1. Evaluar argumentos de construcción
+        {
+            const auto& paramNames = type->getParams();
+            if (paramNames.size() != e->args.size())
+                throw std::runtime_error("Número de argumentos inválido para " + e->typeName);
+
+            env = instance->attrs;
+            for (size_t i = 0; i < paramNames.size(); ++i)
+            {
+                e->args[i]->accept(this);
+                env->locals[paramNames[i]] = lastValue;
+            }
+        }
+
+        // 2. Si hereda de otro tipo, instanciar atributos del padre
+        if (type->baseType != "Object")
+        {
+            TypeDecl* base = types.at(type->baseType);
+            auto baseEnv = std::make_shared<EnvFrame>(instance->attrs);
+
+            // Verificar que cantidad de argumentos coincida
+            if (base->getParams().size() != type->baseArgs.size())
+                throw std::runtime_error("Número incorrecto de argumentos en llamada a base: " +
+                                         type->baseType);
+
+            // Evaluar argumentos del base usando el entorno actual
+            env = baseEnv;
+            for (size_t i = 0; i < base->getParams().size(); ++i)
+            {
+                type->baseArgs[i]->accept(this);
+                env->locals[base->getParams()[i]] = lastValue;
+            }
+
+            // Inicializar atributos del padre
+            for (auto& attr : base->attributes)
+            {
+                attr->initializer->accept(this);
+                instance->attrs->locals[attr->name] = lastValue;
+            }
+        }
+
+        // 3. Inicializar atributos del tipo actual
+        env = instance->attrs;
+        for (auto& attr : type->attributes)
+        {
+            attr->initializer->accept(this);
+            env->locals[attr->name] = lastValue;
+        }
+
+        lastValue = Value(instance);
+    }
+
+    void
+    visit(SelfExpr* expr) override
+    {
+        if (!currentSelf)
+        {
+            throw std::runtime_error("Cannot use self outside of class methods");
+        }
+        lastValue = Value(currentSelf);
+    }
+
+    void
+    visit(GetAttrExpr* e) override
+    {
+        e->object->accept(this);
+        auto object = lastValue;
+        if (auto instance = std::dynamic_pointer_cast<Instance>(object.asInstance()))
+        {
+            try
+            {
+                auto val = instance->attrs->get(e->attrName);
+                std::cout << "[DEBUG] GetAttrExpr: instance attr '" << e->attrName
+                          << "' = " << val.toString() << std::endl;
+                lastValue = val;
+            }
+            catch (const std::runtime_error&)
+            {
+                throw std::runtime_error("Undefined attribute: " + e->attrName);
+            }
+        }
+        else if (auto selfExpr = dynamic_cast<SelfExpr*>(e->object.get()))
+        {
+            if (!currentSelf)
+                throw std::runtime_error("Cannot use self outside of class methods");
+            try
+            {
+                auto val = currentSelf->attrs->get(e->attrName);
+                std::cout << "[DEBUG] GetAttrExpr: self attr '" << e->attrName
+                          << "' = " << val.toString() << std::endl;
+                lastValue = val;
+            }
+            catch (const std::runtime_error&)
+            {
+                throw std::runtime_error("Undefined attribute: " + e->attrName);
+            }
+        }
+        else
+        {
+            throw std::runtime_error("Cannot access attributes on non-class instance");
+        }
+    }
+
+    void
+    visit(SetAttrExpr* e) override
+    {
+        e->object->accept(this);
+        auto object = lastValue;
+
+        // Primero evaluamos la expresión completa
+        e->value->accept(this);
+        auto newValue = lastValue;
+
+        if (auto instance = std::dynamic_pointer_cast<Instance>(object.asInstance()))
+        {
+            auto currentValue = instance->attrs->get(e->attrName);
+            std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
+                      << "' before = " << currentValue.toString() << std::endl;
+
+            // Aseguramos que el valor sea un número antes de asignarlo
+            if (newValue.isNumber())
+            {
+                instance->attrs->set(e->attrName, newValue);
+                std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
+                          << "' after = " << newValue.toString() << std::endl;
+                lastValue = newValue;
+            }
+            else
+            {
+                throw std::runtime_error("Cannot assign non-numeric value to attribute");
+            }
+        }
+        else if (auto selfExpr = dynamic_cast<SelfExpr*>(e->object.get()))
+        {
+            if (!currentSelf)
+                throw std::runtime_error("Cannot use self outside of class methods");
+            auto currentValue = currentSelf->attrs->get(e->attrName);
+            std::cout << "[DEBUG] SetAttrExpr: self attr '" << e->attrName
+                      << "' before = " << currentValue.toString() << std::endl;
+
+            // Aseguramos que el valor sea un número antes de asignarlo
+            if (newValue.isNumber())
+            {
+                currentSelf->attrs->set(e->attrName, newValue);
+                std::cout << "[DEBUG] SetAttrExpr: self attr '" << e->attrName
+                          << "' after = " << newValue.toString() << std::endl;
+                lastValue = newValue;
+            }
+            else
+            {
+                throw std::runtime_error("Cannot assign non-numeric value to attribute");
+            }
+        }
+        else
+        {
+            throw std::runtime_error("Cannot access attributes on non-class instance");
+        }
+    }
+
+    void
+    visit(BaseCallExpr* e) override
+    {
+        auto selfVal = env->get("self");
+        if (!selfVal.isInstance())
+            throw std::runtime_error("base() requiere instancia");
+
+        auto instance = selfVal.asInstance();
+        if (currentMethodName.empty())
+            throw std::runtime_error("base() fuera de contexto de método");
+
+        TypeDecl* current = instance->typeDef;
+        MethodDecl* method = nullptr;
+
+        while (current->baseType != "Object")
+        {
+            current = types.at(current->baseType);
+            for (auto& m : current->methods)
+            {
+                if (m->name == currentMethodName)
+                {
+                    method = m.get();
+                    break;
+                }
+            }
+            if (method)
+                break;
+        }
+
+        if (!method)
+            throw std::runtime_error("base(): método base no encontrado");
+
+        auto oldEnv = env;
+        env = std::make_shared<EnvFrame>(instance->attrs);
+        env->locals["self"] = Value(instance);
+
+        auto oldMethod = currentMethodName;
+        currentMethodName = method->name;
+        method->body->accept(this);
+        currentMethodName = oldMethod;
+        env = oldEnv;
+    }
+
+    void
+    visit(MethodCallExpr* e) override
+    {
+        e->object->accept(this);
+        auto object = lastValue;
+
+        if (auto instance = std::dynamic_pointer_cast<Instance>(object.asInstance()))
+        {
+            std::vector<Value> args;
+            for (const auto& arg : e->args)
+            {
+                arg->accept(this);
+                args.push_back(lastValue);
+            }
+
+            auto method = lookupMethod(instance->typeDef, e->methodName);
+            if (method)
+            {
+                auto oldEnv = env;
+                auto oldSelf = currentSelf;
+
+                // Crear nuevo entorno para el método
+                env = std::make_shared<EnvFrame>(instance->attrs);
+                currentSelf = instance;
+
+                // Registrar parámetros del método
+                for (size_t i = 0; i < method->params.size(); ++i)
+                {
+                    if (i < args.size())
+                    {
+                        env->locals[method->params[i]] = args[i];
+                    }
+                }
+
+                // Ejecutar el cuerpo del método
+                method->body->accept(this);
+                Value result = lastValue;  // Guardamos el resultado de la evaluación
+
+                env = oldEnv;
+                currentSelf = oldSelf;
+                lastValue = result;  // Devolvemos el resultado de la evaluación
+            }
+            else
+            {
+                throw std::runtime_error("Undefined method: " + e->methodName);
+            }
+        }
+        else
+        {
+            throw std::runtime_error("Cannot call methods on non-class instance");
+        }
+    }
+
+    MethodDecl*
+    lookupMethod(TypeDecl* type, const std::string& name)
+    {
+        for (auto& m : type->methods)
+        {
+            if (m->name == name)
+                return m.get();
+        }
+        if (type->baseType != "Object")
+        {
+            auto it = types.find(type->baseType);
+            if (it != types.end())
+                return lookupMethod(it->second, name);
+        }
+        return nullptr;
+    }
+};
+
+#endif

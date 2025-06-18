@@ -1,0 +1,87 @@
+aqui estan las cosillas que estaban en el lexer de brunet.
+
+// \%                          { }
+// \{                          { cout << "LCB: " << yytext << " Line: " << yylineno << endl; }
+// \}                          { cout << "RCB: " << yytext << " Line: " << yylineno << endl; }
+// \[                          { cout << "LB: " << yytext << " Line: " << yylineno << endl; }
+// \]                          { cout << "RB: " << yytext << " Line: " << yylineno << endl; }
+// \,                          { cout << "COMMA: " << yytext << " Line: " << yylineno << endl; }
+// \;                          { cout << "SEMICOLON: " << yytext << " Line: " << yylineno << endl; }
+// 
+// let                         { cout << "LET: " << yytext << " Line: " << yylineno << endl; }
+// in                          { cout << "IN: " << yytext << " Line: " << yylineno << endl; }
+// 
+// if                          { cout << "IF: " << yytext << " Line: " << yylineno << endl; }
+// else                        { cout << "ELSE: " << yytext << " Line: " << yylineno << endl; }
+// 
+// for                         { cout << "FOR: " << yytext << " Line: " << yylineno << endl; }
+// while                       { cout << "WHILE: " << yytext << " Line: " << yylineno << endl; }
+// 
+// \=                          { cout << "ASSIGN: " << yytext << " Line: " << yylineno << endl; }
+// \==                         { cout << "EQ: " << yytext << " Line: " << yylineno << endl; }
+// \!=                         { cout << "NEQ: " << yytext << " Line: " << yylineno << endl; }
+// \<                          { cout << "LESS: " << yytext << " Line: " << yylineno << endl; }
+// \<=                         { cout << "LEQ: " << yytext << " Line: " << yylineno << endl; }
+// \>                          { cout << "GTR: " << yytext << " Line: " << yylineno << endl; }
+// \>=                         { cout << "GEQ: " << yytext << " Line: " << yylineno << endl; }
+// \&                          { cout << "AND: " << yytext << " Line: " << yylineno << endl; }
+// \|                          { cout << "OR: " << yytext << " Line: " << yylineno << endl; }
+// \!                          { cout << "NOT: " << yytext << " Line: " << yylineno << endl; }
+// 
+// true                        { cout << "TRUE: " << yytext << " Line: " << yylineno << endl; }
+// false                       { cout << "FALSE: " << yytext << " Line: " << yylineno << endl; }
+// 
+// function                    { cout << "FUNCTION: " << yytext << " Line: " << yylineno << endl; }
+// \=>                         { cout << "ARROW: " << yytext << " Line: " << yylineno << endl; }
+// 
+// type                        { cout << "TYPE: " << yytext << " Line: " << yylineno << endl; }
+// protocol                    { cout << "PROTOCOL: " << yytext << " Line: " << yylineno << endl; }
+// 
+// \"([^\\\n"]|\\.)*\"         { cout << "STRING: " << yytext << " Line: " << yylineno << endl; }
+// [a-zA-Z_][a-zA-Z0-9_]*      { cout << "IDENTIFIER: " << yytext << " Line: " << yylineno << endl; }
+// .                           { cout << "BAD_TOKEN: " << yytext << " Line: " << yylineno << endl; }
+
+
+
+
+este era el script de hulk de brunet, no estamos ahi todavia, pue.
+let a = 5 + 5 in a + 3;
+f(x) => x + 5;
+function operate(x, y) {
+    print(x + y);
+    print(x - y);
+    print(x * y);
+    print(x / y);
+}
+
+"Hello, World!";
+
+
+
+
+lo que quite del parser:
+-- input:
+--       /* vacío */
+--     | input expr SEMICOLON                     { rootAST = $1; }
+--     | input PRINT LPAREN expr RPAREN SEMICOLON { std::cout << "Result: " << $4 << std::endl; }
+
+--     ;
+
+
+
+parte de hulk:
+1 + 1;
+5 * (3 + 2);
+10 / 2;
+2 ^ 3;
+4%2;
+42;
+6 != 9;
+7<8;
+(34.1 * (123.42 - 208)) / (24 + 9);
+print(sqrt(9));
+print(sin(PI));
+print(log(10, 1000));
+print(rand());
+print(E);
+print(3444444);
