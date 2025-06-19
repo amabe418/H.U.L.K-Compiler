@@ -407,7 +407,7 @@ expr:
       delete $3;
   }
   | BASE LPAREN RPAREN {
-      $$ = new BaseCallExpr(std::vector<ExprPtr>());
+      $$ = new BaseCallExpr({});
   }
   | LET binding_list IN expr { 
       // Desugar multiple bindings into nested LetExpr
@@ -484,6 +484,9 @@ expr:
   | SELF {
         $$ = new SelfExpr();
     }  
+  | SELF ASSIGN_DESTRUCT expr {
+        $$ = new AssignExpr("self", ExprPtr($3));
+    }
   | BASE LPAREN RPAREN {
         $$ = new BaseCallExpr({});
     }  
@@ -644,6 +647,14 @@ method:
     | IDENT LPAREN RPAREN ARROW expr {
         std::vector<std::string> args;
         (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($5)))));
+        free($1);
+    }
+    | IDENT LPAREN RPAREN LBRACE stmt_list RBRACE {
+        std::vector<std::string> args;
+        auto block = std::make_unique<Program>();
+        block->stmts = std::move(*$5);
+        delete $5;
+        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
         free($1);
     }
 ;

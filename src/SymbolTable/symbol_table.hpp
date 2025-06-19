@@ -1,5 +1,6 @@
 #pragma once
 #include "../Types/type_info.hpp"
+#include "../AST/ast.hpp"
 #include <string>
 #include <map>
 #include <vector>
@@ -38,6 +39,21 @@ struct FunctionSymbol
 };
 
 /**
+ * @brief Type information including attributes and methods
+ */
+struct TypeSymbol
+{
+    std::string name;
+    std::string base_type;
+    std::map<std::string, Symbol> attributes;
+    std::map<std::string, std::shared_ptr<FunctionSymbol>> methods;
+    int declaration_line;
+
+    TypeSymbol(const std::string &n, const std::string &base = "Object", int line = 0)
+        : name(n), base_type(base), declaration_line(line) {}
+};
+
+/**
  * @brief Symbol table for managing variable and function scopes
  */
 class SymbolTable
@@ -45,7 +61,8 @@ class SymbolTable
 private:
     std::vector<std::map<std::string, Symbol>> variable_scopes_;
     std::map<std::string, std::shared_ptr<FunctionSymbol>> functions_;
-    std::map<std::string, bool> declared_types_; // Track declared types
+    std::map<std::string, std::shared_ptr<TypeSymbol>> types_; // Track declared types with full info
+    std::map<std::string, TypeDecl *> type_declarations_;      // Store type declarations for parameter checking
 
 public:
     SymbolTable()
@@ -243,9 +260,33 @@ public:
     /**
      * @brief Declare a type
      */
-    void declareType(const std::string &name)
+    bool declareType(const std::string &name, const std::string &base_type = "Object", int line = 0)
     {
-        declared_types_[name] = true;
+        // Check if type already exists
+        if (types_.find(name) != types_.end())
+        {
+            return false;
+        }
+
+        types_[name] = std::make_shared<TypeSymbol>(name, base_type, line);
+        return true;
+    }
+
+    /**
+     * @brief Store a type declaration for parameter checking
+     */
+    void storeTypeDeclaration(const std::string &name, TypeDecl *declaration)
+    {
+        type_declarations_[name] = declaration;
+    }
+
+    /**
+     * @brief Get a type declaration for parameter checking
+     */
+    TypeDecl *getTypeDeclaration(const std::string &name) const
+    {
+        auto found = type_declarations_.find(name);
+        return (found != type_declarations_.end()) ? found->second : nullptr;
     }
 
     /**
@@ -253,7 +294,90 @@ public:
      */
     bool isTypeDeclared(const std::string &name) const
     {
-        return declared_types_.find(name) != declared_types_.end();
+        return types_.find(name) != types_.end();
+    }
+
+    /**
+     * @brief Look up a type
+     */
+    std::shared_ptr<TypeSymbol> lookupType(const std::string &name)
+    {
+        auto found = types_.find(name);
+        return (found != types_.end()) ? found->second : nullptr;
+    }
+
+    /**
+     * @brief Add an attribute to a type
+     */
+    bool addTypeAttribute(const std::string &type_name, const std::string &attr_name,
+                          const TypeInfo &type, int line = 0)
+    {
+        auto type_symbol = lookupType(type_name);
+        if (!type_symbol)
+        {
+            return false;
+        }
+
+        // Check if attribute already exists
+        if (type_symbol->attributes.find(attr_name) != type_symbol->attributes.end())
+        {
+            return false;
+        }
+
+        type_symbol->attributes[attr_name] = Symbol(attr_name, type, true, line);
+        return true;
+    }
+
+    /**
+     * @brief Add a method to a type
+     */
+    bool addTypeMethod(const std::string &type_name, const std::string &method_name,
+                       const std::vector<TypeInfo> &params, const TypeInfo &return_type, int line = 0)
+    {
+        auto type_symbol = lookupType(type_name);
+        if (!type_symbol)
+        {
+            return false;
+        }
+
+        // Check if method already exists
+        if (type_symbol->methods.find(method_name) != type_symbol->methods.end())
+        {
+            return false;
+        }
+
+        type_symbol->methods[method_name] = std::make_shared<FunctionSymbol>(method_name, params, return_type, line);
+        return true;
+    }
+
+    /**
+     * @brief Look up an attribute in a type
+     */
+    Symbol *lookupAttribute(const std::string &type_name, const std::string &attr_name)
+    {
+        auto type_symbol = lookupType(type_name);
+        if (!type_symbol)
+        {
+            return nullptr;
+        }
+
+        auto found = type_symbol->attributes.find(attr_name);
+        return (found != type_symbol->attributes.end()) ? &found->second : nullptr;
+    }
+
+    /**
+     * @brief Look up a method in a type
+     */
+    std::shared_ptr<FunctionSymbol> lookupMethod(const std::string &type_name, const std::string &method_name)
+    {
+        auto type_symbol = lookupType(type_name);
+        if (!type_symbol)
+        {
+            return nullptr;
+        }
+
+        auto found = type_symbol->methods.find(method_name);
+        return (found != type_symbol->methods.end()) ? found->second : nullptr;
     }
 
 private:

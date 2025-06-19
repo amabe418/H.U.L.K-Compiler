@@ -18,9 +18,12 @@ enum class ErrorType
     REDEFINED_FUNCTION,
     REDEFINED_TYPE,
     REDEFINED_VARIABLE,
+    REDEFINED_ATTRIBUTE,
+    REDEFINED_METHOD,
     ARGUMENT_COUNT_MISMATCH,
     INVALID_SELF,
-    INVALID_BASE
+    INVALID_BASE,
+    INVALID_SELF_ASSIGNMENT
 };
 
 /**
@@ -74,16 +77,28 @@ struct SemanticError
             return "Función no definida";
         case ErrorType::UNDEFINED_TYPE:
             return "Tipo no definido";
+        case ErrorType::UNDEFINED_ATTRIBUTE:
+            return "Atributo no definido";
+        case ErrorType::UNDEFINED_METHOD:
+            return "Método no definido";
         case ErrorType::REDEFINED_FUNCTION:
             return "Función redefinida";
         case ErrorType::REDEFINED_TYPE:
             return "Tipo redefinido";
+        case ErrorType::REDEFINED_VARIABLE:
+            return "Variable redefinida";
+        case ErrorType::REDEFINED_ATTRIBUTE:
+            return "Atributo redefinido";
+        case ErrorType::REDEFINED_METHOD:
+            return "Método redefinido";
         case ErrorType::ARGUMENT_COUNT_MISMATCH:
             return "Número de argumentos inválido";
         case ErrorType::INVALID_SELF:
             return "Acceso a miembro inválido";
         case ErrorType::INVALID_BASE:
             return "Llamada a método inválida";
+        case ErrorType::INVALID_SELF_ASSIGNMENT:
+            return "Asignación inválida a self";
         default:
             return "Error general";
         }

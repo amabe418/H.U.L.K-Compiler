@@ -1,0 +1,27 @@
+// Test file for type declaration semantic checking
+
+type Point {
+    x = 0;
+    y = 0;
+
+    getX() => self.x;
+    getY() => self.y;
+
+    setX(x) => self.x := x;
+    setY(y) => self.y := y;
+}
+
+// Test invalid self assignment
+type A {
+    f() {
+        self := new A(); // This should cause a semantic error
+    }
+}
+
+// Test attribute access
+let p = new Point() in {
+    print(p.getX());
+    print(p.getY());
+    p.setX(10);
+    p.setY(20);
+} 

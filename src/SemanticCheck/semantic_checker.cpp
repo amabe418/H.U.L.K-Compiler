@@ -57,10 +57,6 @@ void SemanticAnalyzer::collectFunctions(Program *program)
                                            typeDecl->line_number, typeDecl->column_number,
                                            "declaración de tipo", "SemanticAnalyzer");
             }
-            else
-            {
-                symbol_table_.declareType(typeDecl->name);
-            }
         }
     }
 }
@@ -495,17 +491,9 @@ void SemanticAnalyzer::visit(CallExpr *expr)
     auto funcInfo = symbol_table_.lookupFunction(expr->callee);
     if (!funcInfo)
     {
-        // Function not found - this might be because it hasn't been analyzed yet
-        // For now, we'll assume it returns Unknown and continue
-        std::cout << "[DEBUG] Function " << expr->callee << " not found in symbol table, assuming Unknown return type" << std::endl;
-
-        // Process arguments anyway to infer their types
-        for (size_t i = 0; i < expr->args.size(); ++i)
-        {
-            expr->args[i]->accept(this);
-            std::cout << "[DEBUG] Argument " << i << " type: " << current_type_.toString() << std::endl;
-        }
-
+        reportError(ErrorType::UNDEFINED_FUNCTION,
+                    "Function '" + expr->callee + "' is not defined",
+                    expr, "llamada a función");
         current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
         expr->inferredType = std::make_shared<TypeInfo>(current_type_);
         return;
@@ -543,7 +531,9 @@ void SemanticAnalyzer::visit(CallExpr *expr)
             }
             else
             {
-                std::cout << "[DEBUG] Variable " << varExpr->name << " not found in symbol table!" << std::endl;
+                reportError(ErrorType::UNDEFINED_VARIABLE,
+                            "Variable '" + varExpr->name + "' is not defined",
+                            expr, "llamada a función");
             }
         }
 
@@ -654,6 +644,19 @@ void SemanticAnalyzer::visit(LetExpr *expr)
 
 void SemanticAnalyzer::visit(AssignExpr *expr)
 {
+    std::cout << "[DEBUG] Processing AssignExpr: " << expr->name << std::endl;
+
+    // Check for invalid self assignment
+    if (expr->name == "self")
+    {
+        reportError(ErrorType::INVALID_SELF_ASSIGNMENT,
+                    "Cannot assign to 'self' - it is not a valid assignment target",
+                    expr, "asignación destructiva");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
     // Visit value first
     expr->value->accept(this);
     TypeInfo valueType = current_type_;
@@ -664,14 +667,14 @@ void SemanticAnalyzer::visit(AssignExpr *expr)
     {
         reportError(ErrorType::UNDEFINED_VARIABLE,
                     "Cannot assign to undefined variable '" + expr->name + "'",
-                    expr);
+                    expr, "asignación destructiva");
     }
     else if (!valueType.isCompatibleWith(varInfo->type))
     {
         reportError(ErrorType::TYPE_ERROR,
                     "Cannot assign value of type " + valueType.toString() +
                         " to variable of type " + varInfo->type.toString(),
-                    expr);
+                    expr, "asignación destructiva");
     }
 
     // Assignment returns the type of the value
@@ -909,239 +912,419 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
 
 void SemanticAnalyzer::visit(TypeDecl *stmt)
 {
-    // // Enter new scope for type
-    // symbol_table_.enterScope();
+    std::cout << "[DEBUG] Processing TypeDecl: " << stmt->name << std::endl;
 
-    // // Add self reference
-    // symbol_table_.defineVariable("self", TypeInfo(TypeInfo::Kind::Object, stmt->name));
+    // Check if type is already declared
+    if (symbol_table_.isTypeDeclared(stmt->name))
+    {
+        reportError(ErrorType::REDEFINED_TYPE,
+                    "Type '" + stmt->name + "' ya está definido",
+                    stmt, "declaración de tipo");
+        return;
+    }
 
-    // // Visit attributes
-    // for (const auto &attr : stmt->attributes)
-    // {
-    //     attr->initializer->accept(this);
-    //     symbol_table_.defineVariable(attr->name, current_type_);
-    // }
+    // Check if base type exists (if not Object)
+    if (stmt->baseType != "Object" && !symbol_table_.isTypeDeclared(stmt->baseType))
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Base type '" + stmt->baseType + "' is not defined",
+                    stmt, "declaración de tipo");
+        return;
+    }
 
-    // // Visit methods
-    // for (const auto &method : stmt->methods)
-    // {
-    //     method->accept(this);
-    // }
+    // Declare the type first
+    if (!symbol_table_.declareType(stmt->name, stmt->baseType, stmt->line_number))
+    {
+        reportError(ErrorType::REDEFINED_TYPE,
+                    "Type '" + stmt->name + "' ya está definido",
+                    stmt, "declaración de tipo");
+        return;
+    }
 
-    // // Exit type scope
-    // symbol_table_.exitScope();
+    // Store the type declaration for parameter checking
+    symbol_table_.storeTypeDeclaration(stmt->name, stmt);
 
-    // // Add type to symbol table
-    // TypeInfo typeInfo(TypeInfo::Kind::Object, stmt->name);
-    // symbol_table_.defineType(stmt->name, typeInfo);
+    // Enter new scope for type analysis
+    symbol_table_.enterScope();
+
+    // Add self reference to the scope
+    TypeInfo selfType(TypeInfo::Kind::Object, stmt->name);
+    symbol_table_.declareVariable("self", selfType, false); // self is immutable
+
+    // Process type parameters if any
+    for (const auto &param : stmt->params)
+    {
+        // Type parameters are treated as variables in the type scope
+        symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
+    }
+
+    // Process attributes
+    for (const auto &attr : stmt->attributes)
+    {
+        std::cout << "[DEBUG] Processing attribute: " << attr->name << std::endl;
+
+        // Check if attribute name conflicts with method names
+        for (const auto &method : stmt->methods)
+        {
+            if (method->name == attr->name)
+            {
+                reportError(ErrorType::REDEFINED_ATTRIBUTE,
+                            "Attribute '" + attr->name + "' conflicts with method name",
+                            attr.get(), "declaración de atributo");
+                continue;
+            }
+        }
+
+        // Visit the initializer to get its type
+        attr->initializer->accept(this);
+        TypeInfo attrType = current_type_;
+
+        // Add attribute to the type
+        if (!symbol_table_.addTypeAttribute(stmt->name, attr->name, attrType, attr->line_number))
+        {
+            reportError(ErrorType::REDEFINED_ATTRIBUTE,
+                        "Attribute '" + attr->name + "' ya está definido en tipo '" + stmt->name + "'",
+                        attr.get(), "declaración de atributo");
+        }
+        else
+        {
+            // Also declare it in the current scope for method analysis
+            symbol_table_.declareVariable(attr->name, attrType, false); // Attributes are private (immutable from outside)
+        }
+
+        attr->inferredType = std::make_shared<TypeInfo>(attrType);
+    }
+
+    // Process methods
+    for (const auto &method : stmt->methods)
+    {
+        std::cout << "[DEBUG] Processing method: " << method->name << std::endl;
+
+        // Check if method name conflicts with attribute names
+        for (const auto &attr : stmt->attributes)
+        {
+            if (attr->name == method->name)
+            {
+                reportError(ErrorType::REDEFINED_METHOD,
+                            "Method '" + method->name + "' conflicts with attribute name",
+                            method.get(), "declaración de método");
+                continue;
+            }
+        }
+
+        // Enter method scope
+        symbol_table_.enterScope();
+
+        // Add self reference to method scope
+        symbol_table_.declareVariable("self", selfType, false);
+
+        // Declare method parameters with unknown types initially
+        std::vector<TypeInfo> paramTypes;
+        for (const auto &param : method->params)
+        {
+            symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
+            paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
+        }
+
+        // Visit method body to infer parameter types
+        method->body->accept(this);
+        TypeInfo returnType = current_type_;
+
+        // Add method to the type
+        if (!symbol_table_.addTypeMethod(stmt->name, method->name, paramTypes, returnType, method->line_number))
+        {
+            reportError(ErrorType::REDEFINED_METHOD,
+                        "Method '" + method->name + "' ya está definido en tipo '" + stmt->name + "'",
+                        method.get(), "declaración de método");
+        }
+
+        method->inferredType = std::make_shared<TypeInfo>(returnType);
+
+        // Exit method scope
+        symbol_table_.exitScope();
+    }
+
+    // Exit type scope
+    symbol_table_.exitScope();
+
+    std::cout << "[DEBUG] TypeDecl " << stmt->name << " processed successfully" << std::endl;
 }
 
 void SemanticAnalyzer::visit(NewExpr *expr)
 {
-    // // Check if type exists
-    // auto typeInfo = symbol_table_.lookupType(expr->typeName);
-    // if (!typeInfo)
-    // {
-    //     reportError(ErrorType::UNDEFINED_TYPE,
-    //                 "Type '" + expr->typeName + "' is not defined",
-    //                 expr);
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // }
-    // else
-    // {
-    //     current_type_ = *typeInfo;
-    // }
+    std::cout << "[DEBUG] Processing NewExpr: " << expr->typeName << std::endl;
 
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    // Check if type exists
+    auto typeInfo = symbol_table_.lookupType(expr->typeName);
+    if (!typeInfo)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Type '" + expr->typeName + "' is not defined",
+                    expr, "instanciación de objeto");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // Get the type declaration to check constructor parameters
+    auto typeDecl = symbol_table_.getTypeDeclaration(expr->typeName);
+    if (!typeDecl)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Type declaration for '" + expr->typeName + "' not found",
+                    expr, "instanciación de objeto");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // Check constructor parameter count
+    const auto &expectedParams = typeDecl->getParams();
+    std::cout << "[DEBUG] Type " << expr->typeName << " expects " << expectedParams.size() << " constructor parameters" << std::endl;
+    std::cout << "[DEBUG] Got " << expr->args.size() << " arguments" << std::endl;
+
+    if (expr->args.size() != expectedParams.size())
+    {
+        reportError(ErrorType::ARGUMENT_COUNT_MISMATCH,
+                    "Type '" + expr->typeName + "' constructor expects " +
+                        std::to_string(expectedParams.size()) + " parameters but got " +
+                        std::to_string(expr->args.size()),
+                    expr, "instanciación de objeto");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // Check argument types and process them
+    for (size_t i = 0; i < expr->args.size(); ++i)
+    {
+        std::cout << "[DEBUG] Processing constructor argument " << i << std::endl;
+        expr->args[i]->accept(this);
+        std::cout << "[DEBUG] Argument " << i << " type: " << current_type_.toString() << std::endl;
+
+        // For now, we accept any type since parameter types are not stored in TypeDecl
+        // In a more complete implementation, we would check against the parameter types
+        // stored in the symbol table or type declaration
+    }
+
+    current_type_ = TypeInfo(TypeInfo::Kind::Object, expr->typeName);
+    std::cout << "[DEBUG] NewExpr creates object of type: " << current_type_.toString() << std::endl;
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(GetAttrExpr *expr)
 {
-    // // Visit object first
-    // expr->object->accept(this);
-    // if (!current_type_.isObject())
-    // {
-    //     reportError(ErrorType::TYPE_ERROR,
-    //                 "Cannot access attribute '" + expr->attrName + "' on non-object type " +
-    //                     current_type_.toString(),
-    //                 expr);
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // }
-    // else
-    // {
-    //     // Look up attribute in type
-    //     auto attrInfo = symbol_table_.lookupAttribute(current_type_.getTypeName(), expr->attrName);
-    //     if (!attrInfo)
-    //     {
-    //         reportError(ErrorType::UNDEFINED_ATTRIBUTE,
-    //                     "Type '" + current_type_.getTypeName() + "' has no attribute '" +
-    //                         expr->attrName + "'",
-    //                     expr);
-    //         current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    //     }
-    //     else
-    //     {
-    //         current_type_ = attrInfo->type;
-    //     }
-    // }
+    std::cout << "[DEBUG] Processing GetAttrExpr: " << expr->attrName << std::endl;
 
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    // Visit object first
+    expr->object->accept(this);
+    if (!current_type_.isObject())
+    {
+        reportError(ErrorType::TYPE_ERROR,
+                    "Cannot access attribute '" + expr->attrName + "' on non-object type " +
+                        current_type_.toString(),
+                    expr, "acceso a atributo");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        // Look up attribute in type
+        auto attrInfo = symbol_table_.lookupAttribute(current_type_.getTypeName(), expr->attrName);
+        if (!attrInfo)
+        {
+            reportError(ErrorType::UNDEFINED_ATTRIBUTE,
+                        "Type '" + current_type_.getTypeName() + "' has no attribute '" +
+                            expr->attrName + "'",
+                        expr, "acceso a atributo");
+            current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        }
+        else
+        {
+            current_type_ = attrInfo->type;
+            std::cout << "[DEBUG] GetAttrExpr " << expr->attrName << " type: " << current_type_.toString() << std::endl;
+        }
+    }
+
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(SetAttrExpr *expr)
 {
-    // // Visit object first
-    // expr->object->accept(this);
-    // if (!current_type_.isObject())
-    // {
-    //     reportError(ErrorType::TYPE_ERROR,
-    //                 "Cannot set attribute '" + expr->attrName + "' on non-object type " +
-    //                     current_type_.toString(),
-    //                 expr);
-    // }
-    // else
-    // {
-    //     // Look up attribute in type
-    //     auto attrInfo = symbol_table_.lookupAttribute(current_type_.getTypeName(), expr->attrName);
-    //     if (!attrInfo)
-    //     {
-    //         reportError(ErrorType::UNDEFINED_ATTRIBUTE,
-    //                     "Type '" + current_type_.getTypeName() + "' has no attribute '" +
-    //                         expr->attrName + "'",
-    //                     expr);
-    //     }
-    //     else
-    //     {
-    //         // Visit value
-    //         expr->value->accept(this);
-    //         if (!current_type_.isCompatibleWith(attrInfo->type))
-    //         {
-    //             reportError(ErrorType::TYPE_ERROR,
-    //                         "Cannot assign value of type " + current_type_.toString() +
-    //                             " to attribute of type " + attrInfo->type.toString(),
-    //                         expr);
-    //         }
-    //     }
-    // }
+    std::cout << "[DEBUG] Processing SetAttrExpr: " << expr->attrName << std::endl;
 
-    // // Set attribute returns the type of the value
-    // expr->inferredType = expr->value->inferredType;
+    // Visit object first
+    expr->object->accept(this);
+    if (!current_type_.isObject())
+    {
+        reportError(ErrorType::TYPE_ERROR,
+                    "Cannot set attribute '" + expr->attrName + "' on non-object type " +
+                        current_type_.toString(),
+                    expr, "asignación de atributo");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        // Look up attribute in type
+        auto attrInfo = symbol_table_.lookupAttribute(current_type_.getTypeName(), expr->attrName);
+        if (!attrInfo)
+        {
+            reportError(ErrorType::UNDEFINED_ATTRIBUTE,
+                        "Type '" + current_type_.getTypeName() + "' has no attribute '" +
+                            expr->attrName + "'",
+                        expr, "asignación de atributo");
+            current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        }
+        else
+        {
+            // Visit value
+            expr->value->accept(this);
+            if (!current_type_.isCompatibleWith(attrInfo->type))
+            {
+                reportError(ErrorType::TYPE_ERROR,
+                            "Cannot assign value of type " + current_type_.toString() +
+                                " to attribute of type " + attrInfo->type.toString(),
+                            expr, "asignación de atributo");
+            }
+            else
+            {
+                std::cout << "[DEBUG] SetAttrExpr " << expr->attrName << " assigned value of type: " << current_type_.toString() << std::endl;
+            }
+        }
+    }
+
+    // Set attribute returns the type of the value
+    expr->inferredType = expr->value->inferredType;
 }
 
 void SemanticAnalyzer::visit(MethodCallExpr *expr)
 {
-    // // Visit object first
-    // expr->object->accept(this);
-    // if (!current_type_.isObject())
-    // {
-    //     reportError(ErrorType::TYPE_ERROR,
-    //                 "Cannot call method '" + expr->methodName + "' on non-object type " +
-    //                     current_type_.toString(),
-    //                 expr);
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // }
-    // else
-    // {
-    //     // Look up method in type
-    //     auto methodInfo = symbol_table_.lookupMethod(current_type_.getTypeName(), expr->methodName);
-    //     if (!methodInfo)
-    //     {
-    //         reportError(ErrorType::UNDEFINED_METHOD,
-    //                     "Type '" + current_type_.getTypeName() + "' has no method '" +
-    //                         expr->methodName + "'",
-    //                     expr);
-    //         current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    //     }
-    //     else
-    //     {
-    //         // Check argument count
-    //         if (expr->args.size() != methodInfo->parameter_types_.size())
-    //         {
-    //             reportError(ErrorType::ARGUMENT_COUNT_MISMATCH,
-    //                         "Method '" + expr->methodName + "' expects " +
-    //                             std::to_string(methodInfo->parameter_types_.size()) +
-    //                             " arguments but got " + std::to_string(expr->args.size()),
-    //                         expr);
-    //         }
+    std::cout << "[DEBUG] Processing MethodCallExpr: " << expr->methodName << std::endl;
 
-    //         // Check argument types
-    //         for (size_t i = 0; i < expr->args.size() && i < methodInfo->parameter_types_.size(); ++i)
-    //         {
-    //             expr->args[i]->accept(this);
-    //             if (!current_type_.isCompatibleWith(methodInfo->parameter_types_[i]))
-    //             {
-    //                 reportError(ErrorType::TYPE_ERROR,
-    //                             "Argument " + std::to_string(i + 1) + " of method '" + expr->methodName +
-    //                                 "' expects type " + methodInfo->parameter_types_[i].toString() +
-    //                                 " but got " + current_type_.toString(),
-    //                             expr);
-    //             }
-    //         }
+    // Visit object first
+    expr->object->accept(this);
+    if (!current_type_.isObject())
+    {
+        reportError(ErrorType::TYPE_ERROR,
+                    "Cannot call method '" + expr->methodName + "' on non-object type " +
+                        current_type_.toString(),
+                    expr, "llamada a método");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        // Look up method in type
+        auto methodInfo = symbol_table_.lookupMethod(current_type_.getTypeName(), expr->methodName);
+        if (!methodInfo)
+        {
+            reportError(ErrorType::UNDEFINED_METHOD,
+                        "Type '" + current_type_.getTypeName() + "' has no method '" +
+                            expr->methodName + "'",
+                        expr, "llamada a método");
+            current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        }
+        else
+        {
+            // Check argument count
+            if (expr->args.size() != methodInfo->parameter_types.size())
+            {
+                reportError(ErrorType::ARGUMENT_COUNT_MISMATCH,
+                            "Method '" + expr->methodName + "' expects " +
+                                std::to_string(methodInfo->parameter_types.size()) +
+                                " arguments but got " + std::to_string(expr->args.size()),
+                            expr, "llamada a método");
+            }
 
-    //         // Set return type
-    //         current_type_ = methodInfo->return_type_ ? *methodInfo->return_type_ : TypeInfo(TypeInfo::Kind::Unknown);
-    //     }
-    // }
+            // Check argument types
+            for (size_t i = 0; i < expr->args.size() && i < methodInfo->parameter_types.size(); ++i)
+            {
+                expr->args[i]->accept(this);
+                if (!current_type_.isCompatibleWith(methodInfo->parameter_types[i]))
+                {
+                    reportError(ErrorType::TYPE_ERROR,
+                                "Argument " + std::to_string(i + 1) + " of method '" + expr->methodName +
+                                    "' expects type " + methodInfo->parameter_types[i].toString() +
+                                    " but got " + current_type_.toString(),
+                                expr, "llamada a método");
+                }
+            }
 
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+            // Set return type
+            current_type_ = methodInfo->return_type;
+            std::cout << "[DEBUG] MethodCallExpr " << expr->methodName << " return type: " << current_type_.toString() << std::endl;
+        }
+    }
+
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(SelfExpr *expr)
 {
-    // // Look up self in current scope
-    // auto selfInfo = symbol_table_.lookupVariable("self");
-    // if (!selfInfo)
-    // {
-    //     reportError(ErrorType::INVALID_SELF,
-    //                 "Cannot use 'self' outside of a type definition",
-    //                 expr);
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // }
-    // else
-    // {
-    //     current_type_ = selfInfo->type;
-    // }
+    std::cout << "[DEBUG] Processing SelfExpr" << std::endl;
 
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    // Look up self in current scope
+    auto selfInfo = symbol_table_.lookupVariable("self");
+    if (!selfInfo)
+    {
+        reportError(ErrorType::INVALID_SELF,
+                    "Cannot use 'self' outside of a type definition",
+                    expr, "expresión self");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        current_type_ = selfInfo->type;
+        std::cout << "[DEBUG] SelfExpr type: " << current_type_.toString() << std::endl;
+    }
+
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(BaseCallExpr *expr)
 {
-    // // Look up self in current scope
-    // auto selfInfo = symbol_table_.lookupVariable("self");
-    // if (!selfInfo)
-    // {
-    //     reportError(ErrorType::INVALID_BASE,
-    //                 "Cannot use 'base' outside of a type definition",
-    //                 expr);
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // }
-    // else
-    // {
-    //     // Get base type
-    //     auto typeInfo = symbol_table_.lookupType(selfInfo->type.getTypeName());
-    //     if (!typeInfo || typeInfo->getTypeName() == "Object")
-    //     {
-    //         reportError(ErrorType::INVALID_BASE,
-    //                     "Cannot use 'base' in type without a base type",
-    //                     expr);
-    //         current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    //     }
-    //     else
-    //     {
-    //         current_type_ = *typeInfo;
-    //     }
-    // }
+    std::cout << "[DEBUG] Processing BaseCallExpr" << std::endl;
 
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    // Look up self in current scope
+    auto selfInfo = symbol_table_.lookupVariable("self");
+    if (!selfInfo)
+    {
+        reportError(ErrorType::INVALID_BASE,
+                    "Cannot use 'base' outside of a type definition",
+                    expr, "llamada base");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        // Get base type
+        auto typeInfo = symbol_table_.lookupType(selfInfo->type.getTypeName());
+        if (!typeInfo || typeInfo->base_type == "Object")
+        {
+            reportError(ErrorType::INVALID_BASE,
+                        "Cannot use 'base' in type without a base type",
+                        expr, "llamada base");
+            current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        }
+        else
+        {
+            current_type_ = TypeInfo(TypeInfo::Kind::Object, typeInfo->base_type);
+            std::cout << "[DEBUG] BaseCallExpr type: " << current_type_.toString() << std::endl;
+        }
+    }
+
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(AttributeDecl *stmt)
 {
-    // // Analizar el inicializador del atributo
-    // stmt->initializer->accept(this);
-    // // El tipo del atributo será el tipo inferido del inicializador
-    // stmt->inferredType = std::make_shared<TypeInfo>(current_type_);
+    std::cout << "[DEBUG] Processing AttributeDecl: " << stmt->name << std::endl;
+
+    // Visit the initializer to get its type
+    stmt->initializer->accept(this);
+    TypeInfo attrType = current_type_;
+
+    // The type of the attribute is the type inferred from the initializer
+    stmt->inferredType = std::make_shared<TypeInfo>(attrType);
+
+    std::cout << "[DEBUG] AttributeDecl " << stmt->name << " has type: " << attrType.toString() << std::endl;
 }
 
 // Helper methods
@@ -1295,21 +1478,45 @@ void SemanticAnalyzer::visit(ExprStmt *stmt)
 
 void SemanticAnalyzer::visit(MethodDecl *stmt)
 {
-    // // Enter method scope
-    // symbol_table_.enterScope();
+    std::cout << "[DEBUG] Processing MethodDecl: " << stmt->name << std::endl;
 
-    // // Register parameters in the method's scope
-    // for (const auto &param : stmt->params)
-    // {
-    //     symbol_table_.declareVariable(param, TypeInfo::Unknown());
-    // }
+    // Enter method scope
+    symbol_table_.enterScope();
 
-    // // Visit method body
-    // if (stmt->body)
-    // {
-    //     stmt->body->accept(this);
-    // }
+    // Register parameters in the method's scope with unknown types initially
+    std::vector<TypeInfo> paramTypes;
+    for (const auto &param : stmt->params)
+    {
+        symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
+        paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
+    }
 
-    // // Exit method scope
-    // symbol_table_.exitScope();
+    // Visit method body to infer parameter types and return type
+    if (stmt->body)
+    {
+        stmt->body->accept(this);
+        TypeInfo returnType = current_type_;
+
+        // Update parameter types based on their usage in the body
+        for (size_t i = 0; i < stmt->params.size(); ++i)
+        {
+            auto varInfo = symbol_table_.lookupVariable(stmt->params[i]);
+            if (varInfo && varInfo->type.getKind() != TypeInfo::Kind::Unknown)
+            {
+                paramTypes[i] = varInfo->type;
+                std::cout << "[DEBUG] Parameter " << stmt->params[i] << " inferred as: " << varInfo->type.toString() << std::endl;
+            }
+        }
+
+        stmt->inferredType = std::make_shared<TypeInfo>(returnType);
+        std::cout << "[DEBUG] MethodDecl " << stmt->name << " return type: " << returnType.toString() << std::endl;
+    }
+    else
+    {
+        stmt->inferredType = std::make_shared<TypeInfo>(TypeInfo::Kind::Void);
+        std::cout << "[DEBUG] MethodDecl " << stmt->name << " has no body, return type: Void" << std::endl;
+    }
+
+    // Exit method scope
+    symbol_table_.exitScope();
 }
