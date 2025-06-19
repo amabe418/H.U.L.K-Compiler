@@ -272,13 +272,6 @@ private:
         declareFunction("rand", {}, TypeInfo(TypeInfo::Kind::Number));
 
         // String functions
-        declareFunction("print", {TypeInfo(TypeInfo::Kind::String)}, TypeInfo(TypeInfo::Kind::String));
-        declareFunction("str", {TypeInfo(TypeInfo::Kind::Unknown)}, TypeInfo(TypeInfo::Kind::String));
-
-        // Your enhanced built-in functions
-        declareFunction("debug", {TypeInfo(TypeInfo::Kind::Unknown)}, TypeInfo(TypeInfo::Kind::String));
-        declareFunction("type", {TypeInfo(TypeInfo::Kind::Unknown)}, TypeInfo(TypeInfo::Kind::String));
-        declareFunction("assert", {TypeInfo(TypeInfo::Kind::Boolean), TypeInfo(TypeInfo::Kind::String)},
-                        TypeInfo(TypeInfo::Kind::Boolean));
+        declareFunction("print", {TypeInfo(TypeInfo::Kind::Unknown)}, TypeInfo(TypeInfo::Kind::Void));
     }
 };

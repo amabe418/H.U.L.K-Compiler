@@ -26,19 +26,16 @@
 //====================================================
 //========== FUNCIONES =============
 //====================================================
-
+//function fib(n) => if (n == 0 || n == 1) 1 else fib(n-1) + fib(n-2);
 //function tan(x) => sin(x) / cos(x);
-
-// function cot(x) => 1 / tan(x);
-//function tan(x) => sin(x) / cos(x);
-
+//function cot(x) => 1 / tan(x);
 // print(tan(PI) ** 2 + cot(PI) ** 2);
-// function operate(x, y) {
-//     print(x + y);
-//     print(x - y);
-//     print(x * y);
-//     print(x / y);
-// };
+ function operate(x, y) {
+     print(x + y);
+     print(x - y);
+     print(x * y);
+     print(x / y);
+ };
 //print(sin(90*3.14/180));
 
 //====================================================
@@ -63,7 +60,7 @@
 //let a = new Point(3,4), b = new Vector(a) in print(a.getX() @ a.getY());
 //let a = 2 in print(a);
 
-function f(x)=> x + 2;
+//function f(x) => x + 2;
 //print(3+f(5));
 
 //let a = 4+50 in a + 3; 
@@ -74,3 +71,9 @@ function f(x)=> x + 2;
 //====================================================
 
 //if(3<8) 4 else 5;
+
+
+//====================================================
+//========== Let in  =============
+//====================================================
+//let x = 42 in print(x);

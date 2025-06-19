@@ -50,6 +50,11 @@ struct Expr
     int column_number = 0;
     virtual void accept(ExprVisitor *v) = 0;
     virtual ~Expr() = default;
+
+    // Add methods to check parameter usage
+    virtual bool containsArithmeticOperation(const std::string &paramName) const { return false; }
+    virtual bool containsBooleanOperation(const std::string &paramName) const { return false; }
+    virtual bool containsStringOperation(const std::string &paramName) const { return false; }
 };
 
 using ExprPtr = std::unique_ptr<Expr>;
@@ -62,6 +67,11 @@ struct Stmt
     int column_number = 0;
     virtual void accept(StmtVisitor *) = 0;
     virtual ~Stmt() = default;
+
+    // Add methods to check parameter usage
+    virtual bool containsArithmeticOperation(const std::string &paramName) const { return false; }
+    virtual bool containsBooleanOperation(const std::string &paramName) const { return false; }
+    virtual bool containsStringOperation(const std::string &paramName) const { return false; }
 };
 
 using StmtPtr = std::unique_ptr<Stmt>;
@@ -86,6 +96,21 @@ struct ExprStmt : Stmt
     accept(StmtVisitor *v) override
     {
         v->visit(this);
+    }
+
+    bool containsArithmeticOperation(const std::string &paramName) const override
+    {
+        return expr->containsArithmeticOperation(paramName);
+    }
+
+    bool containsBooleanOperation(const std::string &paramName) const override
+    {
+        return expr->containsBooleanOperation(paramName);
+    }
+
+    bool containsStringOperation(const std::string &paramName) const override
+    {
+        return expr->containsStringOperation(paramName);
     }
 };
 
@@ -171,6 +196,34 @@ struct BinaryExpr : Expr
     {
         v->visit(this);
     }
+
+    bool containsArithmeticOperation(const std::string &paramName) const override
+    {
+        if (op == OP_ADD || op == OP_SUB || op == OP_MUL || op == OP_DIV || op == OP_MOD || op == OP_POW)
+        {
+            return left->containsArithmeticOperation(paramName) || right->containsArithmeticOperation(paramName);
+        }
+        return left->containsArithmeticOperation(paramName) || right->containsArithmeticOperation(paramName);
+    }
+
+    bool containsBooleanOperation(const std::string &paramName) const override
+    {
+        if (op == OP_AND || op == OP_OR || op == OP_EQ || op == OP_NEQ ||
+            op == OP_LT || op == OP_GT || op == OP_LE || op == OP_GE)
+        {
+            return left->containsBooleanOperation(paramName) || right->containsBooleanOperation(paramName);
+        }
+        return left->containsBooleanOperation(paramName) || right->containsBooleanOperation(paramName);
+    }
+
+    bool containsStringOperation(const std::string &paramName) const override
+    {
+        if (op == OP_CONCAT || op == OP_CONCAT_WS)
+        {
+            return left->containsStringOperation(paramName) || right->containsStringOperation(paramName);
+        }
+        return left->containsStringOperation(paramName) || right->containsStringOperation(paramName);
+    }
 };
 
 // Function call: sqrt, sin, cos, exp, log, rand
@@ -198,6 +251,21 @@ struct VariableExpr : Expr
     accept(ExprVisitor *v) override
     {
         v->visit(this);
+    }
+
+    bool containsArithmeticOperation(const std::string &paramName) const override
+    {
+        return name == paramName;
+    }
+
+    bool containsBooleanOperation(const std::string &paramName) const override
+    {
+        return name == paramName;
+    }
+
+    bool containsStringOperation(const std::string &paramName) const override
+    {
+        return name == paramName;
     }
 };
 
@@ -296,6 +364,42 @@ struct ExprBlock : Expr
     accept(ExprVisitor *v) override
     {
         v->visit(this);
+    }
+
+    bool containsArithmeticOperation(const std::string &paramName) const override
+    {
+        for (const auto &stmt : stmts)
+        {
+            if (stmt->containsArithmeticOperation(paramName))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool containsBooleanOperation(const std::string &paramName) const override
+    {
+        for (const auto &stmt : stmts)
+        {
+            if (stmt->containsBooleanOperation(paramName))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool containsStringOperation(const std::string &paramName) const override
+    {
+        for (const auto &stmt : stmts)
+        {
+            if (stmt->containsStringOperation(paramName))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 };
 
