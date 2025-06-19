@@ -72,7 +72,7 @@
 
   // Inicialización por defecto para TypeInfo
   std::shared_ptr<TypeInfo> defaultTypeInfo() {
-      return TypeInfo::Void();
+      return std::make_shared<TypeInfo>(TypeInfo::Void());
   }
 %}
 
@@ -96,6 +96,8 @@
     MethodDecl* method_decl;
     std::shared_ptr<TypeInfo>* type_info;
     std::vector<std::shared_ptr<TypeInfo>>* type_info_list;
+    std::pair<std::string, std::shared_ptr<TypeInfo>>* param_with_type;
+    std::vector<std::pair<std::string, std::shared_ptr<TypeInfo>>>* param_list;
     char* str;
 }
 
@@ -117,7 +119,8 @@
 %type <attribute_decl> attribute
 %type <method_decl> method
 %type <type_info> type
-%type <type_info_list> type_list
+%type <param_with_type> param
+%type <param_list> param_list
 
 
 %token LET IN 
@@ -190,40 +193,79 @@ stmt:
     expr  {
         (yyval.stmt) = (new ExprStmt(ExprPtr((yyvsp[(1) - (1)].expr))));
     }
-    | FUNCTION IDENT LPAREN ident_list RPAREN COLON type LBRACE stmt_list RBRACE {
-        std::vector<std::string> args = $4 ? std::move(*$4) : std::vector<std::string>();
-        delete $4;
+    | FUNCTION IDENT LPAREN param_list RPAREN COLON type LBRACE stmt_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$9);
         delete $9;
-        std::vector<std::optional<std::shared_ptr<TypeInfo>>> param_types;
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(std::string($2), std::move(args), std::move(block), std::move(param_types)));
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::move(block), 
+            std::move(param_types)
+        ));
+        delete $4;
         delete $7;
         free($2);
     }
-  | FUNCTION IDENT LPAREN ident_list RPAREN LBRACE stmt_list RBRACE {
-        std::vector<std::string> args = $4 ? std::move(*$4) : std::vector<std::string>();
-        delete $4;
+    | FUNCTION IDENT LPAREN param_list RPAREN LBRACE stmt_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$7);
         delete $7;
-        std::vector<std::optional<std::shared_ptr<TypeInfo>>> param_types;
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(std::string($2), std::move(args), std::move(block), std::move(param_types)));
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::move(block), 
+            std::move(param_types)
+        ));
+        delete $4;
         free($2);
     }
-    | FUNCTION IDENT LPAREN ident_list RPAREN ARROW expr {
-        std::vector<std::string> args = $4 ? std::move(*$4) : std::vector<std::string>();
+    | FUNCTION IDENT LPAREN param_list RPAREN ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($7)), 
+            std::move(param_types)
+        ));
         delete $4;
-        std::vector<std::optional<std::shared_ptr<TypeInfo>>> param_types;
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(std::string($2), std::move(args), 
-            std::make_unique<ExprStmt>(ExprPtr($7)), std::move(param_types)));
         free($2);
     }
     | FUNCTION IDENT LPAREN RPAREN ARROW expr {
-        std::vector<std::string> args;
-        std::vector<std::optional<std::shared_ptr<TypeInfo>>> param_types;
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(std::string($2), std::move(args), 
-            std::make_unique<ExprStmt>(ExprPtr($6)), std::move(param_types)));
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($6)), 
+            std::move(param_types)
+        ));
         free($2);
     }
     | type_decl
@@ -362,7 +404,7 @@ expr:
 
 ;
 
-;
+
 
 if_expr:
     IF LPAREN expr RPAREN expr ELSE expr {
@@ -518,37 +560,52 @@ method:
 ;
 
 type:
-    INT { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Int()); }
-    | FLOAT { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Float()); }
-    | BOOL { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Bool()); }
-    | STRING { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::String()); }
-    | VOID { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Void()); }
-    | IDENT { (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::UserDefined($1)); free($1); }
-    | LPAREN type RPAREN { (yyval.type_info) = $2; }
-    | type ARROW type { 
-        std::vector<std::shared_ptr<TypeInfo>> params;
-        params.push_back(*$1);
-        (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Function(params, *$3));
-        delete $1;
-        delete $3;
-    }
-    | LPAREN type_list RPAREN ARROW type {
-        (yyval.type_info) = new std::shared_ptr<TypeInfo>(TypeInfo::Function(*$2, *$5));
-        delete $2;
-        delete $5;
+    | IDENT { 
+        // Si es un tipo conocido, usarlo, sino usar Object
+        std::string type_name($1);
+        if (type_name == "Number") {
+            (yyval.type_info) = new std::shared_ptr<TypeInfo>(std::make_shared<TypeInfo>(TypeInfo::Number()));
+        } else if (type_name == "Boolean") {
+            (yyval.type_info) = new std::shared_ptr<TypeInfo>(std::make_shared<TypeInfo>(TypeInfo::Boolean()));
+        } else if (type_name == "String") {
+            (yyval.type_info) = new std::shared_ptr<TypeInfo>(std::make_shared<TypeInfo>(TypeInfo::String()));
+        } else {
+            // Para cualquier otro tipo, usar Object y guardar el nombre del tipo
+            (yyval.type_info) = new std::shared_ptr<TypeInfo>(std::make_shared<TypeInfo>(TypeInfo::Object(type_name)));
+        }
+        free($1);
     }
 ;
 
-type_list:
-    type { 
-        (yyval.type_info_list) = new std::vector<std::shared_ptr<TypeInfo>>();
-        (yyval.type_info_list)->push_back(*$1);
+param_list:
+    /* empty */ { $$ = new std::vector<std::pair<std::string, std::shared_ptr<TypeInfo>>>(); }
+    | param { 
+        $$ = new std::vector<std::pair<std::string, std::shared_ptr<TypeInfo>>>();
+        $$->push_back(*$1);
         delete $1;
     }
-    | type_list COMMA type {
+    | param_list COMMA param {
         $1->push_back(*$3);
         delete $3;
-        (yyval.type_info_list) = $1;
+        $$ = $1;
+    }
+;
+
+param:
+    IDENT { 
+        $$ = new std::pair<std::string, std::shared_ptr<TypeInfo>>(
+            std::string($1), 
+            std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown)
+        );
+        free($1);
+    }
+    | IDENT COLON type {
+        $$ = new std::pair<std::string, std::shared_ptr<TypeInfo>>(
+            std::string($1), 
+            *$3
+        );
+        free($1);
+        delete $3;
     }
 ;
 

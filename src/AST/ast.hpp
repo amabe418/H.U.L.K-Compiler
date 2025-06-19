@@ -45,8 +45,10 @@ struct Instance;
 // Base class for all expression nodes
 struct Expr
 {
-    std::shared_ptr<TypeInfo> inferredType;
-    virtual void accept(ExprVisitor* v) = 0;
+    std::shared_ptr<TypeInfo> inferredType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);
+    int line_number = 0;
+    int column_number = 0;
+    virtual void accept(ExprVisitor *v) = 0;
     virtual ~Expr() = default;
 };
 
@@ -55,8 +57,10 @@ using ExprPtr = std::unique_ptr<Expr>;
 // base class for all statement nodes.
 struct Stmt
 {
-    std::shared_ptr<TypeInfo> inferredType;
-    virtual void accept(StmtVisitor*) = 0;
+    std::shared_ptr<TypeInfo> inferredType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);
+    int line_number = 0;
+    int column_number = 0;
+    virtual void accept(StmtVisitor *) = 0;
     virtual ~Stmt() = default;
 };
 
@@ -67,7 +71,7 @@ struct Program : Stmt
 {
     std::vector<StmtPtr> stmts;
     void
-    accept(StmtVisitor* v) override
+    accept(StmtVisitor *v) override
     {
         v->visit(this);
     }
@@ -79,7 +83,7 @@ struct ExprStmt : Stmt
     ExprPtr expr;
     ExprStmt(ExprPtr e) : expr(std::move(e)) {}
     void
-    accept(StmtVisitor* v) override
+    accept(StmtVisitor *v) override
     {
         v->visit(this);
     }
@@ -91,7 +95,7 @@ struct NumberExpr : Expr
     double value;
     NumberExpr(double v) : value(v) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -101,9 +105,9 @@ struct NumberExpr : Expr
 struct StringExpr : Expr
 {
     std::string value;
-    StringExpr(const std::string& s) : value(s) {}
+    StringExpr(const std::string &s) : value(s) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -115,7 +119,7 @@ struct BooleanExpr : Expr
     bool value;
     BooleanExpr(bool v) : value(v) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -131,7 +135,7 @@ struct UnaryExpr : Expr
     ExprPtr operand;
     UnaryExpr(Op o, ExprPtr expr) : op(o), operand(std::move(expr)) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -163,7 +167,7 @@ struct BinaryExpr : Expr
     ExprPtr right;
     BinaryExpr(Op o, ExprPtr l, ExprPtr r) : op(o), left(std::move(l)), right(std::move(r)) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -174,12 +178,12 @@ struct CallExpr : Expr
 {
     std::string callee;
     std::vector<ExprPtr> args;
-    CallExpr(const std::string& name, std::vector<ExprPtr>&& arguments)
+    CallExpr(const std::string &name, std::vector<ExprPtr> &&arguments)
         : callee(name), args(std::move(arguments))
     {
     }
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -189,9 +193,9 @@ struct CallExpr : Expr
 struct VariableExpr : Expr
 {
     std::string name;
-    VariableExpr(const std::string& n) : name(n) {}
+    VariableExpr(const std::string &n) : name(n) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -200,15 +204,15 @@ struct VariableExpr : Expr
 // **LetExpr**: let <name> = <init> in <body>
 struct LetExpr : Expr
 {
-    std::string name;     // nombre de la variable
-    ExprPtr initializer;  // expresión inicializadora
-    StmtPtr body;         // cuerpo donde la variable está en alcance
-    LetExpr(const std::string& n, ExprPtr init, StmtPtr b)
+    std::string name;    // nombre de la variable
+    ExprPtr initializer; // expresión inicializadora
+    StmtPtr body;        // cuerpo donde la variable está en alcance
+    LetExpr(const std::string &n, ExprPtr init, StmtPtr b)
         : name(n), initializer(std::move(init)), body(std::move(b))
     {
     }
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -220,10 +224,10 @@ struct AssignExpr : Expr
     std::string name;
     ExprPtr value;
 
-    AssignExpr(const std::string& n, ExprPtr v) : name(n), value(std::move(v)) {}
+    AssignExpr(const std::string &n, ExprPtr v) : name(n), value(std::move(v)) {}
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -238,17 +242,17 @@ struct FunctionDecl : Stmt
     std::vector<std::string> params;
 
     // Tipos anotados por el usuario (puede haber inferencia si std::nullopt)
-    std::vector<std::optional<std::shared_ptr<TypeInfo>>> paramTypes;
+    std::vector<std::shared_ptr<TypeInfo>> paramTypes;
 
     // Tipo de retorno anotado (opcional)
-    std::optional<std::shared_ptr<TypeInfo>> returnType;
+    std::shared_ptr<TypeInfo> returnType;
 
     // Cuerpo de la función (Expr simple o ExprBlock)
     StmtPtr body;
 
-    FunctionDecl(const std::string& n, std::vector<std::string>&& p, StmtPtr b,
-                 std::vector<std::optional<std::shared_ptr<TypeInfo>>>&& pt = {},
-                 std::optional<std::shared_ptr<TypeInfo>> rt = std::nullopt)
+    FunctionDecl(const std::string &n, std::vector<std::string> &&p, StmtPtr b,
+                 std::vector<std::shared_ptr<TypeInfo>> &&pt = {},
+                 std::shared_ptr<TypeInfo> rt = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown))
         : name(n),
           params(std::move(p)),
           paramTypes(std::move(pt)),
@@ -258,7 +262,7 @@ struct FunctionDecl : Stmt
     }
 
     void
-    accept(StmtVisitor* v) override
+    accept(StmtVisitor *v) override
     {
         v->visit(this);
     }
@@ -277,7 +281,7 @@ struct IfExpr : Expr
     }
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -287,9 +291,9 @@ struct IfExpr : Expr
 struct ExprBlock : Expr
 {
     std::vector<StmtPtr> stmts;
-    ExprBlock(std::vector<StmtPtr>&& s) : stmts(std::move(s)) {}
+    ExprBlock(std::vector<StmtPtr> &&s) : stmts(std::move(s)) {}
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -304,7 +308,7 @@ struct WhileExpr : Expr
     WhileExpr(ExprPtr cond, ExprPtr b) : condition(std::move(cond)), body(std::move(b)) {}
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -322,10 +326,10 @@ struct TypeDecl : Stmt
     std::string baseType = "Object";
     std::vector<ExprPtr> baseArgs;
 
-    TypeDecl(std::string n, std::vector<std::string>&& params_,
+    TypeDecl(std::string n, std::vector<std::string> &&params_,
              std::vector<std::unique_ptr<AttributeDecl>> attrs,
              std::vector<std::unique_ptr<MethodDecl>> meths, std::string base = "Object",
-             std::vector<ExprPtr>&& args = {})
+             std::vector<ExprPtr> &&args = {})
         : name(std::move(n)),
           params(std::move(params_)),
           attributes(std::move(attrs)),
@@ -336,22 +340,27 @@ struct TypeDecl : Stmt
     }
 
     void
-    accept(StmtVisitor* v) override
+    accept(StmtVisitor *v) override
     {
         v->visit(this);
     }
-    const std::vector<std::string>&
+    const std::vector<std::string> &
     getParams() const
     {
         return params;
     }
 };
 // atributos de tipos
-struct AttributeDecl
+struct AttributeDecl : Stmt
 {
     std::string name;
     ExprPtr initializer;
     AttributeDecl(std::string n, ExprPtr expr) : name(std::move(n)), initializer(std::move(expr)) {}
+
+    void accept(StmtVisitor *v) override
+    {
+        v->visit(this);
+    }
 };
 
 // metodos de tipos
@@ -361,13 +370,13 @@ struct MethodDecl : Stmt
     std::vector<std::string> params;
     StmtPtr body;
 
-    MethodDecl(const std::string& n, std::vector<std::string>&& p, StmtPtr b)
+    MethodDecl(const std::string &n, std::vector<std::string> &&p, StmtPtr b)
         : name(n), params(std::move(p)), body(std::move(b))
     {
     }
 
     void
-    accept(StmtVisitor* v) override
+    accept(StmtVisitor *v) override
     {
         v->visit(this);
     }
@@ -376,16 +385,16 @@ struct MethodDecl : Stmt
 struct NewExpr : Expr
 {
     std::string typeName;
-    std::vector<ExprPtr> args;  // nuevos
+    std::vector<ExprPtr> args; // nuevos
 
     // Constructor con lista de argumentos
-    NewExpr(std::string name, std::vector<ExprPtr>&& args_)
+    NewExpr(std::string name, std::vector<ExprPtr> &&args_)
         : typeName(std::move(name)), args(std::move(args_))
     {
     }
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -401,7 +410,7 @@ struct GetAttrExpr : Expr
     }
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -419,7 +428,7 @@ struct SetAttrExpr : Expr
     }
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -431,13 +440,13 @@ struct MethodCallExpr : Expr
     std::string methodName;
     std::vector<ExprPtr> args;
 
-    MethodCallExpr(ExprPtr obj, std::string method, std::vector<ExprPtr>&& arguments)
+    MethodCallExpr(ExprPtr obj, std::string method, std::vector<ExprPtr> &&arguments)
         : object(std::move(obj)), methodName(std::move(method)), args(std::move(arguments))
     {
     }
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -446,7 +455,7 @@ struct MethodCallExpr : Expr
 struct SelfExpr : Expr
 {
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
@@ -455,13 +464,13 @@ struct SelfExpr : Expr
 struct BaseCallExpr : Expr
 {
     std::vector<ExprPtr> args;
-    BaseCallExpr(std::vector<ExprPtr>&& a) : args(std::move(a)) {}
+    BaseCallExpr(std::vector<ExprPtr> &&a) : args(std::move(a)) {}
 
     void
-    accept(ExprVisitor* v) override
+    accept(ExprVisitor *v) override
     {
         v->visit(this);
     }
 };
 
-#endif  // AST_HPP
+#endif // AST_HPP

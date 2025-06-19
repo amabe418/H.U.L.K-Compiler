@@ -19,8 +19,8 @@ struct Instance;
 struct Instance
 {
     std::shared_ptr<EnvFrame> attrs;
-    TypeDecl* typeDef;
-    std::shared_ptr<Instance> self;  // Referencia a sí mismo
+    TypeDecl *typeDef;
+    std::shared_ptr<Instance> self; // Referencia a sí mismo
 
     Instance() : attrs(std::make_shared<EnvFrame>(nullptr)), typeDef(nullptr), self(nullptr) {}
 };
@@ -31,11 +31,11 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     std::shared_ptr<Instance> currentSelf;
 
     std::shared_ptr<EnvFrame> env;
-    std::unordered_map<std::string, FunctionDecl*> functions;
-    std::unordered_map<std::string, TypeDecl*> types;
+    std::unordered_map<std::string, FunctionDecl *> functions;
+    std::unordered_map<std::string, TypeDecl *> types;
     std::shared_ptr<EnvFrame> globalEnv;
     std::string currentMethodName;
-    TypeDecl* currentType = nullptr;  // Para seguimiento en métodos
+    TypeDecl *currentType = nullptr; // Para seguimiento en métodos
 
     EvaluatorVisitor()
     {
@@ -49,21 +49,21 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
     // Programa: recorre stmt a stmt
     void
-    visit(Program* p) override
+    visit(Program *p) override
     {
         // Primero registrar TODAS las funciones
-        for (auto& s : p->stmts)
+        for (auto &s : p->stmts)
         {
-            if (auto* fd = dynamic_cast<FunctionDecl*>(s.get()))
+            if (auto *fd = dynamic_cast<FunctionDecl *>(s.get()))
             {
-                fd->accept(this);  // esto registra la función en el mapa
+                fd->accept(this); // esto registra la función en el mapa
             }
         }
 
         // Luego ejecutar todo (incluyendo funciones si hay recursión)
-        for (auto& s : p->stmts)
+        for (auto &s : p->stmts)
         {
-            if (!dynamic_cast<FunctionDecl*>(s.get()))
+            if (!dynamic_cast<FunctionDecl *>(s.get()))
             {
                 s->accept(this);
             }
@@ -73,39 +73,39 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     // StmtVisitor:
 
     void
-    visit(ExprStmt* e) override
+    visit(ExprStmt *e) override
     {
         e->expr->accept(this);
     }
 
     // ExprVisitor:
     void
-    visit(NumberExpr* e) override
+    visit(NumberExpr *e) override
     {
         lastValue = Value(e->value);
     }
 
     void
-    visit(StringExpr* e) override
+    visit(StringExpr *e) override
     {
         lastValue = Value(e->value);
     }
 
     void
-    visit(BooleanExpr* expr) override
+    visit(BooleanExpr *expr) override
     {
         lastValue = Value(expr->value);
     }
 
     void
-    visit(UnaryExpr* e) override
+    visit(UnaryExpr *e) override
     {
         e->operand->accept(this);
         lastValue = Value(-lastValue.asNumber());
     }
 
     void
-    visit(BinaryExpr* e) override
+    visit(BinaryExpr *e) override
     {
         e->left->accept(this);
         Value l = lastValue;
@@ -122,154 +122,154 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         }
         switch (e->op)
         {
-            case BinaryExpr::OP_ADD:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una suma deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() + r.asNumber());
-                break;
-            case BinaryExpr::OP_SUB:
-                std::cout << "[DEBUG] BinaryExpr: OP_SUB" << std::endl;
-                std::cout << "[DEBUG] l: " << l.toString() << std::endl;
-                std::cout << "[DEBUG] r: " << r.toString() << std::endl;
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una resta deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() - r.asNumber());
-                break;
-            case BinaryExpr::OP_MUL:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error(
-                        "ambos miembros en una multiplicacion deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() * r.asNumber());
-                break;
-            case BinaryExpr::OP_DIV:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una division deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() / r.asNumber());
-                break;
-            case BinaryExpr::OP_MOD:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error(
-                        "ambos miembros en una operacion de resto deben ser numeros");
-                }
-                lastValue = Value(fmod(l.asNumber(), r.asNumber()));
-                break;
-            case BinaryExpr::OP_POW:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una potencia deben ser numeros");
-                }
-                lastValue = Value(pow(l.asNumber(), r.asNumber()));
-                break;
-            case BinaryExpr::OP_LT:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() < r.asNumber() ? true : false);
-                break;
-            case BinaryExpr::OP_GT:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() > r.asNumber() ? true : false);
-                break;
-            case BinaryExpr::OP_LE:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() <= r.asNumber() ? true : false);
-                break;
-            case BinaryExpr::OP_GE:
-                if (!l.isNumber() || !r.isNumber())
-                {
-                    throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
-                }
-                lastValue = Value(l.asNumber() >= r.asNumber() ? true : false);
-                break;
-            case BinaryExpr::OP_EQ:
-                if (l.isNumber() && r.isNumber())
-                {
-                    lastValue = Value(l.asNumber() == r.asNumber() ? true : false);
-                }
-                else if (l.isString() && r.isString())
-                {
-                    lastValue = Value(l.asString() == r.asString() ? true : false);
-                }
-                else if (l.isBool() && r.isBool())
-                {
-                    lastValue = Value(l.asBool() == r.asBool() ? true : false);
-                }
-                else
-                {
-                    throw std::runtime_error(
-                        "ambos miembros en una comparacion deben ser del mismo tipo");
-                }
-                break;
-            case BinaryExpr::OP_NEQ:
-                if (l.isNumber() && r.isNumber())
-                {
-                    lastValue = Value(l.asNumber() != r.asNumber() ? true : false);
-                }
-                else if (l.isString() && r.isString())
-                {
-                    lastValue = Value(l.asString() != r.asString() ? true : false);
-                }
-                else if (l.isBool() && r.isBool())
-                {
-                    lastValue = Value(l.asBool() != r.asBool() ? true : false);
-                }
-                else
-                {
-                    throw std::runtime_error(
-                        "ambos miembros en una comparacion deben ser del mismo tipo");
-                }
-                break;
-            case BinaryExpr::OP_OR:
-                if (!l.isBool() || !r.isBool())
-                    throw std::runtime_error("or requiere booleanos");
-                lastValue = Value(l.asBool() || r.asBool() ? true : false);
-                break;
-            case BinaryExpr::OP_AND:
-                if (!l.isBool() || !r.isBool())
-                    throw std::runtime_error("and requiere booleanos");
-                lastValue = Value(l.asBool() && r.asBool() ? true : false);
-                break;
-            case BinaryExpr::OP_CONCAT:
+        case BinaryExpr::OP_ADD:
+            if (!l.isNumber() || !r.isNumber())
             {
-                std::string ls = l.toString();
-                std::string rs = r.toString();
-                lastValue = Value(ls + rs);
+                throw std::runtime_error("ambos miembros en una suma deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() + r.asNumber());
+            break;
+        case BinaryExpr::OP_SUB:
+            std::cout << "[DEBUG] BinaryExpr: OP_SUB" << std::endl;
+            std::cout << "[DEBUG] l: " << l.toString() << std::endl;
+            std::cout << "[DEBUG] r: " << r.toString() << std::endl;
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una resta deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() - r.asNumber());
+            break;
+        case BinaryExpr::OP_MUL:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error(
+                    "ambos miembros en una multiplicacion deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() * r.asNumber());
+            break;
+        case BinaryExpr::OP_DIV:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una division deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() / r.asNumber());
+            break;
+        case BinaryExpr::OP_MOD:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error(
+                    "ambos miembros en una operacion de resto deben ser numeros");
+            }
+            lastValue = Value(fmod(l.asNumber(), r.asNumber()));
+            break;
+        case BinaryExpr::OP_POW:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una potencia deben ser numeros");
+            }
+            lastValue = Value(pow(l.asNumber(), r.asNumber()));
+            break;
+        case BinaryExpr::OP_LT:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() < r.asNumber() ? true : false);
+            break;
+        case BinaryExpr::OP_GT:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() > r.asNumber() ? true : false);
+            break;
+        case BinaryExpr::OP_LE:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() <= r.asNumber() ? true : false);
+            break;
+        case BinaryExpr::OP_GE:
+            if (!l.isNumber() || !r.isNumber())
+            {
+                throw std::runtime_error("ambos miembros en una comparacion deben ser numeros");
+            }
+            lastValue = Value(l.asNumber() >= r.asNumber() ? true : false);
+            break;
+        case BinaryExpr::OP_EQ:
+            if (l.isNumber() && r.isNumber())
+            {
+                lastValue = Value(l.asNumber() == r.asNumber() ? true : false);
+            }
+            else if (l.isString() && r.isString())
+            {
+                lastValue = Value(l.asString() == r.asString() ? true : false);
+            }
+            else if (l.isBool() && r.isBool())
+            {
+                lastValue = Value(l.asBool() == r.asBool() ? true : false);
+            }
+            else
+            {
+                throw std::runtime_error(
+                    "ambos miembros en una comparacion deben ser del mismo tipo");
             }
             break;
-            case BinaryExpr::OP_CONCAT_WS:
+        case BinaryExpr::OP_NEQ:
+            if (l.isNumber() && r.isNumber())
             {
-                std::string ls = l.toString();
-                std::string rs = r.toString();
-                lastValue = Value(ls + " " + rs);
+                lastValue = Value(l.asNumber() != r.asNumber() ? true : false);
+            }
+            else if (l.isString() && r.isString())
+            {
+                lastValue = Value(l.asString() != r.asString() ? true : false);
+            }
+            else if (l.isBool() && r.isBool())
+            {
+                lastValue = Value(l.asBool() != r.asBool() ? true : false);
+            }
+            else
+            {
+                throw std::runtime_error(
+                    "ambos miembros en una comparacion deben ser del mismo tipo");
             }
             break;
-            default:
-                throw std::runtime_error("Operador desconocido");
+        case BinaryExpr::OP_OR:
+            if (!l.isBool() || !r.isBool())
+                throw std::runtime_error("or requiere booleanos");
+            lastValue = Value(l.asBool() || r.asBool() ? true : false);
+            break;
+        case BinaryExpr::OP_AND:
+            if (!l.isBool() || !r.isBool())
+                throw std::runtime_error("and requiere booleanos");
+            lastValue = Value(l.asBool() && r.asBool() ? true : false);
+            break;
+        case BinaryExpr::OP_CONCAT:
+        {
+            std::string ls = l.toString();
+            std::string rs = r.toString();
+            lastValue = Value(ls + rs);
+        }
+        break;
+        case BinaryExpr::OP_CONCAT_WS:
+        {
+            std::string ls = l.toString();
+            std::string rs = r.toString();
+            lastValue = Value(ls + " " + rs);
+        }
+        break;
+        default:
+            throw std::runtime_error("Operador desconocido");
         }
     }
 
     void
-    visit(CallExpr* e) override
+    visit(CallExpr *e) override
     {
         // std::cout << "Entrando a CallExpr: " << e->callee << std::endl;
         std::vector<Value> args;
-        for (auto& arg : e->args)
+        for (auto &arg : e->args)
         {
             arg->accept(this);
             args.push_back(lastValue);
@@ -279,7 +279,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         auto it = functions.find(e->callee);
         if (it != functions.end())
         {
-            FunctionDecl* f = it->second;
+            FunctionDecl *f = it->second;
 
             if (f->params.size() != args.size())
             {
@@ -360,7 +360,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             if (args.empty())
                 throw std::runtime_error("print espera al menos 1 argumento");
             std::cout << args[0] << std::endl;
-            lastValue = args[0];  // Asegurarnos de que print retorne el valor que imprime
+            lastValue = args[0]; // Asegurarnos de que print retorne el valor que imprime
             return;
         }
         else if (e->callee == "sqrt")
@@ -420,7 +420,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
                 lastValue = globalEnv->get(e->callee);
                 return;
             }
-            catch (const std::runtime_error&)
+            catch (const std::runtime_error &)
             {
                 throw std::runtime_error("Función o constante desconocida: " + e->callee);
             }
@@ -429,7 +429,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
     // for variable declarations
     void
-    visit(VariableExpr* expr) override
+    visit(VariableExpr *expr) override
     {
         // get() buscará en este frame y en los padres
         lastValue = env->get(expr->name);
@@ -437,21 +437,21 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
     // let in expressions
     void
-    visit(LetExpr* expr) override
+    visit(LetExpr *expr) override
     {
         // 1) Evaluar la expresión del inicializador
         expr->initializer->accept(this);
         Value initVal = lastValue;
 
         // 2) Abrir un nuevo frame (scope hijo)
-        auto oldEnv = env;  // guardar el frame padre
+        auto oldEnv = env; // guardar el frame padre
         env = std::make_shared<EnvFrame>(oldEnv);
 
         // 3) Insertar la variable en el mapa local
         env->locals[expr->name] = initVal;
 
         // 4) Evaluar el cuerpo (es un Stmt)
-        expr->body->accept(static_cast<StmtVisitor*>(this));
+        expr->body->accept(static_cast<StmtVisitor *>(this));
         Value result = lastValue;
 
         // 5) Al salir, restaurar el frame anterior
@@ -463,7 +463,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
     // destructive assignment
     void
-    visit(AssignExpr* expr) override
+    visit(AssignExpr *expr) override
     {
         // Antes de asignar, evaluamos la expresión de la derecha:
         expr->value->accept(this);
@@ -476,12 +476,12 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         }
         // Llamamos a set() para que reasigne en el frame correspondiente:
         env->set(expr->name, newVal);
-        lastValue = newVal;  // Devolvemos el nuevo valor asignado
+        lastValue = newVal; // Devolvemos el nuevo valor asignado
     }
 
     // functions declaration
     void
-    visit(FunctionDecl* f) override
+    visit(FunctionDecl *f) override
     {
         if (functions.count(f->name))
             throw std::runtime_error("Funcion ya definida: " + f->name);
@@ -490,7 +490,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
     // if-else
     void
-    visit(IfExpr* e) override
+    visit(IfExpr *e) override
     {
         e->condition->accept(this);
         if (!lastValue.isBool())
@@ -509,7 +509,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(ExprBlock* b) override
+    visit(ExprBlock *b) override
     {
         // std::cout << "Entrando a ExprBlock" << std::endl;
         // 1) Abrir un nuevo frame (scope hijo) antes de entrar al bloque
@@ -517,7 +517,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         env = std::make_shared<EnvFrame>(oldEnv);
 
         // 2) Evaluar cada sentencia dentro del bloque con este nuevo frame
-        for (auto& stmt : b->stmts)
+        for (auto &stmt : b->stmts)
         {
             // std::cout << "Evaluando statement en bloque" << std::endl;
             stmt->accept(this);
@@ -530,7 +530,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(WhileExpr* expr) override
+    visit(WhileExpr *expr) override
     {
         Value result;
         while (true)
@@ -542,13 +542,13 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
                 break;
 
             expr->body->accept(this);
-            result = lastValue;  // Guardamos el último valor evaluado
+            result = lastValue; // Guardamos el último valor evaluado
         }
-        lastValue = result;  // Devolvemos el último valor en lugar de void
+        lastValue = result; // Devolvemos el último valor en lugar de void
     }
 
     void
-    visit(TypeDecl* t) override
+    visit(TypeDecl *t) override
     {
         if (types.count(t->name))
         {
@@ -558,29 +558,29 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(MethodDecl* m) override
+    visit(MethodDecl *m) override
     {
         // Los métodos se registran en el tipo, no en el entorno
     }
 
     void
-    visit(NewExpr* e) override
+    visit(NewExpr *e) override
     {
         auto instance = std::make_shared<Instance>();
-        TypeDecl* type = types.at(e->typeName);
+        TypeDecl *type = types.at(e->typeName);
         instance->typeDef = type;
         instance->attrs = std::make_shared<EnvFrame>(globalEnv);
-        instance->self = instance;  // Establecer la referencia a sí mismo
+        instance->self = instance; // Establecer la referencia a sí mismo
 
         // 0. Herencia implícita de argumentos si no se definieron
         if (type->params.empty() && type->baseArgs.empty() && type->baseType != "Object")
         {
-            TypeDecl* parent = types.at(type->baseType);
+            TypeDecl *parent = types.at(type->baseType);
             if (!parent->getParams().empty())
             {
                 type->params = parent->getParams();
                 type->baseArgs.clear();
-                for (const auto& param : parent->getParams())
+                for (const auto &param : parent->getParams())
                 {
                     type->baseArgs.push_back(std::make_unique<VariableExpr>(param));
                 }
@@ -589,7 +589,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
         // 1. Evaluar argumentos de construcción
         {
-            const auto& paramNames = type->getParams();
+            const auto &paramNames = type->getParams();
             if (paramNames.size() != e->args.size())
                 throw std::runtime_error("Número de argumentos inválido para " + e->typeName);
 
@@ -604,7 +604,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // 2. Si hereda de otro tipo, instanciar atributos del padre
         if (type->baseType != "Object")
         {
-            TypeDecl* base = types.at(type->baseType);
+            TypeDecl *base = types.at(type->baseType);
             auto baseEnv = std::make_shared<EnvFrame>(instance->attrs);
 
             // Verificar que cantidad de argumentos coincida
@@ -621,7 +621,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             }
 
             // Inicializar atributos del padre
-            for (auto& attr : base->attributes)
+            for (auto &attr : base->attributes)
             {
                 attr->initializer->accept(this);
                 instance->attrs->locals[attr->name] = lastValue;
@@ -630,7 +630,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
         // 3. Inicializar atributos del tipo actual
         env = instance->attrs;
-        for (auto& attr : type->attributes)
+        for (auto &attr : type->attributes)
         {
             attr->initializer->accept(this);
             env->locals[attr->name] = lastValue;
@@ -640,7 +640,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(SelfExpr* expr) override
+    visit(SelfExpr *expr) override
     {
         if (!currentSelf)
         {
@@ -650,7 +650,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(GetAttrExpr* e) override
+    visit(GetAttrExpr *e) override
     {
         e->object->accept(this);
         auto object = lastValue;
@@ -663,12 +663,12 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
                           << "' = " << val.toString() << std::endl;
                 lastValue = val;
             }
-            catch (const std::runtime_error&)
+            catch (const std::runtime_error &)
             {
                 throw std::runtime_error("Undefined attribute: " + e->attrName);
             }
         }
-        else if (auto selfExpr = dynamic_cast<SelfExpr*>(e->object.get()))
+        else if (auto selfExpr = dynamic_cast<SelfExpr *>(e->object.get()))
         {
             if (!currentSelf)
                 throw std::runtime_error("Cannot use self outside of class methods");
@@ -679,7 +679,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
                           << "' = " << val.toString() << std::endl;
                 lastValue = val;
             }
-            catch (const std::runtime_error&)
+            catch (const std::runtime_error &)
             {
                 throw std::runtime_error("Undefined attribute: " + e->attrName);
             }
@@ -691,12 +691,12 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(SetAttrExpr* e) override
+    visit(SetAttrExpr *e) override
     {
         // Evaluar el objeto primero y GUARDAR el resultado
         e->object->accept(this);
         auto instanceVal = lastValue;
-        auto instance = instanceVal.asInstance();  // sin dynamic cast
+        auto instance = instanceVal.asInstance(); // sin dynamic cast
 
         // Evaluar el valor a asignar
         e->value->accept(this);
@@ -724,7 +724,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(BaseCallExpr* e) override
+    visit(BaseCallExpr *e) override
     {
         auto selfVal = env->get("self");
         if (!selfVal.isInstance())
@@ -734,13 +734,13 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         if (currentMethodName.empty())
             throw std::runtime_error("base() fuera de contexto de método");
 
-        TypeDecl* current = instance->typeDef;
-        MethodDecl* method = nullptr;
+        TypeDecl *current = instance->typeDef;
+        MethodDecl *method = nullptr;
 
         while (current->baseType != "Object")
         {
             current = types.at(current->baseType);
-            for (auto& m : current->methods)
+            for (auto &m : current->methods)
             {
                 if (m->name == currentMethodName)
                 {
@@ -767,7 +767,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
-    visit(MethodCallExpr* e) override
+    visit(MethodCallExpr *e) override
     {
         // Evaluar el objeto de la llamada (ej: a.setx() → 'a')
         e->object->accept(this);
@@ -781,8 +781,8 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         }
 
         // Busca el método en el tipo correspondiente
-        MethodDecl* method = nullptr;
-        for (const auto& m : instance->typeDef->methods)
+        MethodDecl *method = nullptr;
+        for (const auto &m : instance->typeDef->methods)
         {
             if (m->name == e->methodName)
             {
@@ -806,7 +806,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
         // ⚠️ Evalúa los argumentos DESPUÉS de establecer el entorno y currentSelf
         std::vector<Value> args;
-        for (const auto& arg : e->args)
+        for (const auto &arg : e->args)
         {
             arg->accept(this);
             args.push_back(lastValue);
@@ -830,6 +830,13 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         currentSelf = oldSelf;
 
         lastValue = result;
+    }
+    void visit(AttributeDecl *attr) override
+    {
+        // Evaluar el inicializador del atributo
+        attr->initializer->accept(this);
+        // El valor del atributo será el valor del inicializador
+        // No necesitamos hacer nada más aquí ya que los atributos se manejan en NewExpr
     }
 };
 #endif

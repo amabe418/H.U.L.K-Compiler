@@ -6,21 +6,18 @@
 #include "AST/ast.hpp"
 #include "Evaluator/evaluator.hpp"
 #include "PrintVisitor/print_visitor.hpp"
-#include "PrintVisitor/typed_print_visitor.hpp"
-#include "SymbolCollector/symbol_collector.hpp"
-#include "Symbols/symbol_table.hpp"
-#include "Types/type_checker.hpp"
+#include "SymbolTable/symbol_table.hpp"
 #include "Value/value.hpp"
+#include "SemanticCheck/semantic_checker.hpp"
 
-extern FILE* yyin;
+extern FILE *yyin;
 extern int yyparse();
 extern int yylineno;
 extern int yydebug;
-extern Program* rootAST;
+extern Program *rootAST;
 SymbolTable symbolTable;
 
-int
-main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     if (argc != 2)
     {
@@ -28,7 +25,7 @@ main(int argc, char** argv)
         return 1;
     }
 
-    FILE* input = fopen(argv[1], "r");
+    FILE *input = fopen(argv[1], "r");
     if (!input)
     {
         std::cerr << "Error: Could not open file " << argv[1] << std::endl;
@@ -40,7 +37,8 @@ main(int argc, char** argv)
     // extern int yydebug;
     // yydebug = 1;
 
-    std::cout << "\n=== Token Analysis ===\n" << std::endl;
+    std::cout << "\n=== Token Analysis ===\n"
+              << std::endl;
 
     if (yyparse() != 0)
     {
@@ -50,7 +48,8 @@ main(int argc, char** argv)
     }
     fclose(input);
 
-    std::cout << "\n=== End of Token Analysis ===\n" << std::endl;
+    std::cout << "\n=== End of Token Analysis ===\n"
+              << std::endl;
 
     if (!rootAST)
     {
@@ -58,36 +57,34 @@ main(int argc, char** argv)
         return 1;
     }
 
-    PrintVisitor printerr;
-    rootAST->accept(&printerr);
+    // Realizar análisis semántico
+    std::cout << "\n=== Semantic Analysis ===\n"
+              << std::endl;
+    SemanticAnalyzer semanticAnalyzer;
+    semanticAnalyzer.analyze(rootAST);
 
-    // Create symbol table and collector
-    SymbolCollector symbolCollector(symbolTable);
-
-    // Collect symbols
-    rootAST->accept(&symbolCollector);
-
-    // Print symbol table contents
-    // symbolCollector.printSymbolTable();
-
-    // Create type checker
-    TypeChecker typeChecker;
-
-    // Type check the program
-    if (!typeChecker.check(rootAST))
+    // Verificar si hay errores semánticos
+    if (semanticAnalyzer.hasErrors())
     {
-        std::cerr << "Error: Type checking failed" << std::endl;
+        std::cerr << "\nSemantic errors found:" << std::endl;
+        semanticAnalyzer.printErrors();
         return 1;
     }
-    std::cout << "Type checking passed" << std::endl;
+    std::cout << "\n=== End of Semantic Analysis ===\n"
+              << std::endl;
 
-    // Print the typed AST
-    TypedAstPrinter printer(typeChecker);
+    std::cout << "\n=== Print AST ===\n"
+              << std::endl;
+    PrintVisitor printer;
     rootAST->accept(&printer);
 
     // Evaluate the program
+    std::cout << "\n=== Program Evaluation ===\n"
+              << std::endl;
     EvaluatorVisitor evaluator;
     rootAST->accept(&evaluator);
+    std::cout << "\n=== End of Program Evaluation ===\n"
+              << std::endl;
 
     return 0;
 }

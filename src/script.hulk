@@ -1,8 +1,32 @@
+//type Point(x,y) {
+//    x=x;
+//    y=y;
+//
+//    getx() => self.x;
+//    gety() => self.y;
+//    sum(a,b) => a+b;
+//
+//   setx( )=> self.x := (self.x-1);
+//};
+
+//print("pedro" == "pedro");
+//let a = new Point(3,4) in while (a.getx() > 1){
+//    print(a.getx());
+//    a.setx();
+//};
+
+//let a = new Point(3,4) in {
+//    print("set " @ a.setx());
+//    print("get " @ a.getx());
+//};
+
+//print("prueba" @ 6<7);
+
 //====================================================
 //==============EXPRESIONES ARITEMTICAS =========
-//====================================================-
+//====================================================
 //42;
-//print(-42);
+//print(42);
 //print((((1 + 2) ^ 3) * 4) / 5);
 
 //====================================================
@@ -12,7 +36,7 @@
 //print("Hello World");
 //print("The message is Hello World");
 //print("The meaning of life is " @ 42);
-//
+
 //====================================================
 //========== FUNCIONES BUILT IN =============
 //====================================================
@@ -57,20 +81,20 @@
 //
 //let pt = new Point() in
 //    print("x: " @ pt.getX() @ "; y: " @ pt.getY());
+
+
+
+
+
 //type Vector() inherits Point(x,y) {
 //    getCoords() => self.getX() @ self.getY();
 //};
+
+
 //let a = new Point(3,4), b = new Vector(a) in print(a.getX() @ a.getY());
+
 //let a = 2 in print(a);
-
-function f(x)=> x + 2;
-//print(3+f(5));
-
-//let a = 4+50 in a + 3; 
+//
+let a =  3 in print(a);
 
 
-//====================================================
-//========== IF ELSE =============
-//====================================================
-
-//if(3<8) 4 else 5;

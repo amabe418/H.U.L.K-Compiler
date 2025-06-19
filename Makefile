@@ -17,21 +17,19 @@ $(PARSER_CPP): $(PARSER_Y)
 $(LEXER_CPP): $(LEXER_L)
 	flex -o $(LEXER_CPP) $(LEXER_L)
 
-# Archivos fuente específicos
-SYMBOL_COLLECTOR_SRCS = $(SRC_DIR)/SymbolCollector/symbol_collector.cpp
-MAIN_SRC = $(SRC_DIR)/main.cpp
 
 # Otros archivos fuente
 OTHER_SRCS = $(wildcard $(SRC_DIR)/AST/*.cpp) \
-             $(wildcard $(SRC_DIR)/Evaluator/*.cpp) \
-             $(wildcard $(SRC_DIR)/PrintVisitor/*.cpp) \
-             $(wildcard $(SRC_DIR)/Symbols/*.cpp) \
+             $(wildcard $(SRC_DIR)/NameResolver/*.cpp) \
+             $(wildcard $(SRC_DIR)/Scope/*.cpp) \
+             $(wildcard $(SRC_DIR)/SymbolTable/*.cpp) \
              $(wildcard $(SRC_DIR)/Types/*.cpp) \
-             $(wildcard $(SRC_DIR)/Value/*.cpp) \
-             $(SRC_DIR)/Parser/parser_globals.cpp
+             $(wildcard $(SRC_DIR)/SemanticCheck/*.cpp) \
+             $(SRC_DIR)/Parser/parser_globals.cpp \
+             $(SRC_DIR)/main.cpp
 
 # Todos los archivos fuente
-SRCS = $(PARSER_CPP) $(LEXER_CPP) $(SYMBOL_COLLECTOR_SRCS) $(MAIN_SRC) $(OTHER_SRCS)
+SRCS = $(PARSER_CPP) $(LEXER_CPP) $(OTHER_SRCS)
 
 # Objetos
 OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)

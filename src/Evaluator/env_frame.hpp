@@ -21,7 +21,7 @@ struct EnvFrame
     // Buscar recursivamente un nombre en esta cadena de frames.
     // Si no se halla en ningún nivel, lanza excepción.
     Value
-    get(const std::string& name) const
+    get(const std::string &name) const
     {
         auto it = locals.find(name);
         if (it != locals.end())
@@ -41,7 +41,7 @@ struct EnvFrame
     // esté originalmente.
     // - Si no existe en ningún lado, crearla en este frame (nivel actual).
     void
-    set(const std::string& name, const Value& v)
+    set(const std::string &name, const Value &v)
     {
         if (locals.count(name))
         {
@@ -60,7 +60,7 @@ struct EnvFrame
 
     // Verificar si un nombre existe en esta cadena de frames (local o ancestros).
     bool
-    existsInChain(const std::string& name) const
+    existsInChain(const std::string &name) const
     {
         if (locals.count(name))
             return true;
