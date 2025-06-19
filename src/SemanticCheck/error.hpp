@@ -23,7 +23,8 @@ enum class ErrorType
     ARGUMENT_COUNT_MISMATCH,
     INVALID_SELF,
     INVALID_BASE,
-    INVALID_SELF_ASSIGNMENT
+    INVALID_SELF_ASSIGNMENT,
+    INVALID_BASE_TYPE
 };
 
 /**
@@ -99,6 +100,8 @@ struct SemanticError
             return "Llamada a método inválida";
         case ErrorType::INVALID_SELF_ASSIGNMENT:
             return "Asignación inválida a self";
+        case ErrorType::INVALID_BASE_TYPE:
+            return "Herencia inválida de tipos";
         default:
             return "Error general";
         }

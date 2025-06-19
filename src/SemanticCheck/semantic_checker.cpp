@@ -77,6 +77,12 @@ void SemanticAnalyzer::reportError(ErrorType type, const std::string &message,
     error_manager_.reportError(type, message, line, col, context, "SemanticAnalyzer");
 }
 
+void SemanticAnalyzer::reportError(ErrorType type, const std::string &message,
+                                   const std::string &context)
+{
+    error_manager_.reportError(type, message, 0, 0, context, "SemanticAnalyzer");
+}
+
 void SemanticAnalyzer::visit(Program *prog)
 {
     // Enter global scope
@@ -912,22 +918,58 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
 
 void SemanticAnalyzer::visit(TypeDecl *stmt)
 {
+    // Validar recursivamente la cadena de herencia y detectar ciclos
+    std::set<std::string> visited;
+    if (!validateInheritanceChain(stmt->baseType, visited))
+    {
+        return;
+    }
+
     std::cout << "[DEBUG] Processing TypeDecl: " << stmt->name << std::endl;
+
+    // --- Herencia implícita de parámetros ---
+    if (stmt->baseType != "Object" && stmt->params.empty() && stmt->baseArgs.empty())
+    {
+        auto baseTypeDecl = symbol_table_.getTypeDeclaration(stmt->baseType);
+        if (baseTypeDecl)
+        {
+            stmt->params = baseTypeDecl->params;
+            stmt->paramTypes = baseTypeDecl->paramTypes;
+            // Generar baseArgs para pasar los parámetros al constructor del padre
+            for (const auto &param : baseTypeDecl->params)
+            {
+                stmt->baseArgs.push_back(std::make_unique<VariableExpr>(param));
+            }
+            std::cout << "[DEBUG] " << stmt->name << " hereda parámetros de " << stmt->baseType << std::endl;
+        }
+    }
+
+    // PASO 1: Validar existencia y validez del tipo base
+    if (stmt->baseType != "Object")
+    {
+        // No se puede heredar de tipos primitivos
+        if (stmt->baseType == "Number" || stmt->baseType == "String" || stmt->baseType == "Boolean")
+        {
+            reportError(ErrorType::INVALID_BASE_TYPE,
+                        "Cannot inherit from built-in type '" + stmt->baseType + "'",
+                        stmt, "declaración de tipo");
+            return;
+        }
+        // El tipo base debe existir
+        if (!symbol_table_.isTypeDeclared(stmt->baseType))
+        {
+            reportError(ErrorType::UNDEFINED_TYPE,
+                        "Base type '" + stmt->baseType + "' is not defined",
+                        stmt, "declaración de tipo");
+            return;
+        }
+    }
 
     // Check if type is already declared
     if (symbol_table_.isTypeDeclared(stmt->name))
     {
         reportError(ErrorType::REDEFINED_TYPE,
                     "Type '" + stmt->name + "' ya está definido",
-                    stmt, "declaración de tipo");
-        return;
-    }
-
-    // Check if base type exists (if not Object)
-    if (stmt->baseType != "Object" && !symbol_table_.isTypeDeclared(stmt->baseType))
-    {
-        reportError(ErrorType::UNDEFINED_TYPE,
-                    "Base type '" + stmt->baseType + "' is not defined",
                     stmt, "declaración de tipo");
         return;
     }
@@ -1018,6 +1060,10 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
         // Add self reference to method scope
         symbol_table_.declareVariable("self", selfType, false);
 
+        // Set current method name for base() calls
+        std::string oldMethodName = currentMethodName_;
+        currentMethodName_ = method->name;
+
         // Declare method parameters with unknown types initially
         std::vector<TypeInfo> paramTypes;
         for (const auto &param : method->params)
@@ -1030,12 +1076,67 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
         method->body->accept(this);
         TypeInfo returnType = current_type_;
 
-        // Add method to the type
-        if (!symbol_table_.addTypeMethod(stmt->name, method->name, paramTypes, returnType, method->line_number))
+        // Restore method name
+        currentMethodName_ = oldMethodName;
+
+        // Check for method redefinition (polimorfismo)
+        bool methodExists = false;
+        bool sameSignature = false;
+
+        // Check if method exists in inheritance chain for polymorphic override
+        auto baseTypeDecl = symbol_table_.getTypeDeclaration(stmt->baseType);
+        if (baseTypeDecl && baseTypeDecl->baseType != "Object")
         {
-            reportError(ErrorType::REDEFINED_METHOD,
-                        "Method '" + method->name + "' ya está definido en tipo '" + stmt->name + "'",
-                        method.get(), "declaración de método");
+            auto inheritedMethod = symbol_table_.lookupMethod(baseTypeDecl->baseType, method->name);
+            if (inheritedMethod)
+            {
+                // Check if signatures match for polymorphic override
+                bool signaturesMatch = inheritedMethod->parameter_types.size() == paramTypes.size() &&
+                                       inheritedMethod->return_type.getKind() == returnType.getKind();
+
+                // Check parameter types if count matches
+                if (signaturesMatch && inheritedMethod->parameter_types.size() == paramTypes.size())
+                {
+                    for (size_t i = 0; i < paramTypes.size(); ++i)
+                    {
+                        if (!paramTypes[i].isCompatibleWith(inheritedMethod->parameter_types[i]))
+                        {
+                            signaturesMatch = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (signaturesMatch)
+                {
+                    // Same signature - allow polymorphic override
+                    sameSignature = true;
+                    std::cout << "[DEBUG] Polymorphic override of method '" << method->name << "'" << std::endl;
+                }
+                else
+                {
+                    // Different signature - this is an error
+                    reportError(ErrorType::REDEFINED_METHOD,
+                                "Method '" + method->name + "' exists in base type with different signature",
+                                method.get(), "declaración de método");
+                    methodExists = true;
+                }
+            }
+        }
+
+        // Add method to the type (polymorphic override is allowed)
+        if (!methodExists)
+        {
+            if (!symbol_table_.addTypeMethod(stmt->name, method->name, paramTypes, returnType, method->line_number))
+            {
+                // Only report error if it's not a polymorphic override
+                if (!sameSignature)
+                {
+                    reportError(ErrorType::REDEFINED_METHOD,
+                                "Method '" + method->name + "' ya está definido en tipo '" + stmt->name + "'",
+                                method.get(), "declaración de método");
+                }
+            }
         }
 
         method->inferredType = std::make_shared<TypeInfo>(returnType);
@@ -1048,6 +1149,56 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
     symbol_table_.exitScope();
 
     std::cout << "[DEBUG] TypeDecl " << stmt->name << " processed successfully" << std::endl;
+
+    if (stmt->baseType != "Object")
+    {
+        auto baseTypeDecl = symbol_table_.getTypeDeclaration(stmt->baseType);
+        if (!baseTypeDecl)
+        {
+            // Ya se reportó error antes si no existe, pero por seguridad:
+            reportError(ErrorType::UNDEFINED_TYPE,
+                        "Base type declaration for '" + stmt->baseType + "' not found",
+                        stmt, "declaración de tipo");
+            return;
+        }
+        size_t baseParamCount = baseTypeDecl->getParams().size();
+        size_t baseArgsCount = stmt->baseArgs.size();
+
+        if (baseArgsCount > 0 && baseArgsCount == baseParamCount)
+        {
+            // Para cada argumento, verificar tipo
+            for (size_t i = 0; i < baseArgsCount; ++i)
+            {
+                // Declarar los parámetros del hijo en el scope temporal
+                symbol_table_.enterScope();
+                for (const auto &param : stmt->params)
+                {
+                    symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
+                }
+                // Analizar el tipo del argumento
+                stmt->baseArgs[i]->accept(this);
+                TypeInfo argType = current_type_;
+                if (argType.isUnknown())
+                    //{
+                    //    reportError(ErrorType::TYPE_ERROR,
+                    //                "Argument " + std::to_string(i + 1) + " for base type '" + stmt->baseType +
+                    //                    "' is not a valid expression",
+                    //                stmt, "declaración de tipo");
+                    //}
+                    // Salir del scope temporal
+                    symbol_table_.exitScope();
+            }
+        }
+        if (baseArgsCount == 0 && baseParamCount > 0 && stmt->params.size() != baseParamCount)
+        {
+            // Herencia implícita: el hijo debe tener los mismos parámetros que el padre
+            reportError(ErrorType::ARGUMENT_COUNT_MISMATCH,
+                        "Type '" + stmt->name + "' must declare the same number of parameters as its base type '" +
+                            stmt->baseType + "' (" + std::to_string(baseParamCount) + ") when no base arguments are given",
+                        stmt, "declaración de tipo");
+            return;
+        }
+    }
 }
 
 void SemanticAnalyzer::visit(NewExpr *expr)
@@ -1305,8 +1456,28 @@ void SemanticAnalyzer::visit(BaseCallExpr *expr)
         }
         else
         {
-            current_type_ = TypeInfo(TypeInfo::Kind::Object, typeInfo->base_type);
-            std::cout << "[DEBUG] BaseCallExpr type: " << current_type_.toString() << std::endl;
+            // Look up the method in the base type to get its return type
+            auto baseTypeDecl = symbol_table_.getTypeDeclaration(typeInfo->base_type);
+            if (baseTypeDecl)
+            {
+                // Find the method in the base type using currentMethodName_
+                for (const auto &method : baseTypeDecl->methods)
+                {
+                    if (method->name == currentMethodName_)
+                    {
+                        current_type_ = *method->inferredType;
+                        std::cout << "[DEBUG] BaseCallExpr method return type: " << current_type_.toString() << std::endl;
+                        break;
+                    }
+                }
+            }
+
+            // If we couldn't find the method, use Unknown
+            if (current_type_.isUnknown())
+            {
+                current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+                std::cout << "[DEBUG] BaseCallExpr type: Unknown (method not found)" << std::endl;
+            }
         }
     }
 
@@ -1519,4 +1690,34 @@ void SemanticAnalyzer::visit(MethodDecl *stmt)
 
     // Exit method scope
     symbol_table_.exitScope();
+}
+
+bool SemanticAnalyzer::validateInheritanceChain(const std::string &typeName, std::set<std::string> &visited)
+{
+    if (typeName == "Object")
+        return true;
+    if (visited.count(typeName))
+    {
+        reportError(ErrorType::INVALID_BASE_TYPE,
+                    "Cyclic inheritance detected involving type '" + typeName + "'",
+                    "declaración de tipo");
+        return false;
+    }
+    visited.insert(typeName);
+    auto baseTypeDecl = symbol_table_.getTypeDeclaration(typeName);
+    if (!baseTypeDecl)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Base type '" + typeName + "' is not defined",
+                    "declaración de tipo");
+        return false;
+    }
+    if (baseTypeDecl->baseType == "Number" || baseTypeDecl->baseType == "String" || baseTypeDecl->baseType == "Boolean")
+    {
+        reportError(ErrorType::INVALID_BASE_TYPE,
+                    "Cannot inherit from built-in type '" + baseTypeDecl->baseType + "'",
+                    "declaración de tipo");
+        return false;
+    }
+    return validateInheritanceChain(baseTypeDecl->baseType, visited);
 }

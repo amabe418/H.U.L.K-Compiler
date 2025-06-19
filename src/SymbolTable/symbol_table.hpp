@@ -351,33 +351,43 @@ public:
     }
 
     /**
-     * @brief Look up an attribute in a type
+     * @brief Look up an attribute in a type (recursively in base types)
      */
     Symbol *lookupAttribute(const std::string &type_name, const std::string &attr_name)
     {
         auto type_symbol = lookupType(type_name);
         if (!type_symbol)
-        {
             return nullptr;
-        }
 
         auto found = type_symbol->attributes.find(attr_name);
-        return (found != type_symbol->attributes.end()) ? &found->second : nullptr;
+        if (found != type_symbol->attributes.end())
+            return &found->second;
+
+        // Buscar en el padre si existe y no es Object
+        if (type_symbol->base_type != "Object")
+            return lookupAttribute(type_symbol->base_type, attr_name);
+
+        return nullptr;
     }
 
     /**
-     * @brief Look up a method in a type
+     * @brief Look up a method in a type (recursively in base types)
      */
     std::shared_ptr<FunctionSymbol> lookupMethod(const std::string &type_name, const std::string &method_name)
     {
         auto type_symbol = lookupType(type_name);
         if (!type_symbol)
-        {
             return nullptr;
-        }
 
         auto found = type_symbol->methods.find(method_name);
-        return (found != type_symbol->methods.end()) ? found->second : nullptr;
+        if (found != type_symbol->methods.end())
+            return found->second;
+
+        // Buscar en el padre si existe y no es Object
+        if (type_symbol->base_type != "Object")
+            return lookupMethod(type_symbol->base_type, method_name);
+
+        return nullptr;
     }
 
 private:

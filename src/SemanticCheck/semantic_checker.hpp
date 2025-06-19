@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <set>
 
 /**
  * @brief Semantic analyzer for HULK language
@@ -23,6 +24,7 @@ private:
     SymbolTable symbol_table_;
     ErrorManager error_manager_; // Use ErrorManager instead of vector<SemanticError>
     TypeInfo current_type_;
+    std::string currentMethodName_; // Track current method name for base() calls
 
 public:
     SemanticAnalyzer() : current_type_(TypeInfo::Kind::Unknown)
@@ -119,6 +121,12 @@ private:
                      const std::string &context = "");
 
     /**
+     * @brief Report a semantic error without specific AST node
+     */
+    void reportError(ErrorType type, const std::string &message,
+                     const std::string &context = "");
+
+    /**
      * @brief Convert binary operator enum to string
      */
     std::string getBinaryOpString(BinaryExpr::Op op);
@@ -132,4 +140,9 @@ private:
      * @brief Check if a word is reserved in HULK language
      */
     bool isReservedWord(const std::string &word);
+
+    /**
+     * @brief Validate inheritance chain and detect cycles
+     */
+    bool validateInheritanceChain(const std::string &typeName, std::set<std::string> &visited);
 };

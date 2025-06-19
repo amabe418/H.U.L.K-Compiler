@@ -51,9 +51,10 @@
 //    print(x / y);
 //};
 //print(sin(90*3.14/180));
-
-
-
+//function h(x,y) => x+y;
+//function g(x,y)=> h(x,y);
+//function f(x,y)=> g(x,y);
+//
 
 
 //====================================================
@@ -61,9 +62,9 @@
 //====================================================
 // Test file for type declaration semantic checking
 
-//type Point {
-//    x = 0;
-//    y = 0;
+//type Point(x,y) {
+//    x = x;
+//    y = y;
 //
 //    getX() => self.x;
 //    getY() => self.y;
@@ -71,6 +72,49 @@
 //    setX(x) => self.x := x;
 //    setY(y) => self.y := y;
 //};
+//
+//type PolarPoint(phi, rho) inherits Point(rho * sin(phi), rho * cos(phi)){
+//    rho() => sqrt(self.getX() ^ 2 + self.getY() ^ 2);
+//    // ...
+//};
+//let pt = new PolarPoint(3,4) in {
+//    pt.setX(2);
+//    pt.setY(4);
+//    print("rho: " @ pt.rho());
+//};
+
+type Person(firstname, lastname) {
+    firstname = firstname;
+    lastname = lastname;
+    name() => self.firstname @@ self.lastname;
+};
+
+type Knight inherits Person {
+    name() => "Sir" @@ base();
+};
+
+let p = new Knight("Phil", "Collins") in
+    print(p.name()); 
+
+    
+//
+//type vector (a:Number,b:Number) inherits Point {
+//
+//};
+
+//type Person(firstname, lastname) {
+//    firstname = firstname;
+//    lastname = lastname;
+//
+//    name() => self.firstname @@ self.lastname;
+//};
+//
+//type Knight inherits Person {
+//    name() => "Sir" @@ base();
+//}
+//
+//let p = new Knight("Phil", "Collins") in
+//    print(p.name()); // prints 'Sir Phil Collins'
 
 // Test attribute access
 //let p = new Point() in {

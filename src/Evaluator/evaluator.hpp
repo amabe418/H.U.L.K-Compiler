@@ -40,7 +40,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     EvaluatorVisitor()
     {
         globalEnv = env = std::make_shared<EnvFrame>(nullptr);
-        types["Object"] = new TypeDecl("Object", {}, {}, {});
+        types["Object"] = new TypeDecl("Object", {}, {}, {}, {}, "Object", {});
 
         // Agregar constantes matemáticas al entorno global
         globalEnv->locals["PI"] = Value(M_PI);
@@ -580,21 +580,6 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         instance->attrs = std::make_shared<EnvFrame>(globalEnv);
         instance->self = instance; // Establecer la referencia a sí mismo
 
-        // 0. Herencia implícita de argumentos si no se definieron
-        if (type->params.empty() && type->baseArgs.empty() && type->baseType != "Object")
-        {
-            TypeDecl *parent = types.at(type->baseType);
-            if (!parent->getParams().empty())
-            {
-                type->params = parent->getParams();
-                type->baseArgs.clear();
-                for (const auto &param : parent->getParams())
-                {
-                    type->baseArgs.push_back(std::make_unique<VariableExpr>(param));
-                }
-            }
-        }
-
         // 1. Evaluar argumentos de construcción
         {
             const auto &paramNames = type->getParams();
@@ -734,6 +719,8 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(BaseCallExpr *e) override
     {
+        std::cout << "[DEBUG] BaseCallExpr: currentMethodName = '" << currentMethodName << "'" << std::endl;
+
         auto selfVal = env->get("self");
         if (!selfVal.isInstance())
             throw std::runtime_error("base() requiere instancia");
@@ -742,41 +729,74 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         if (currentMethodName.empty())
             throw std::runtime_error("base() fuera de contexto de método");
 
+        // Buscar el método base en la cadena de herencia (excluyendo el tipo actual)
         TypeDecl *current = instance->typeDef;
         MethodDecl *method = nullptr;
-
-        while (current->baseType != "Object")
+        if (current->baseType != "Object")
         {
-            current = types.at(current->baseType);
-            for (auto &m : current->methods)
+            auto it = types.find(current->baseType);
+            if (it != types.end())
             {
-                if (m->name == currentMethodName)
-                {
-                    method = m.get();
-                    break;
-                }
+                method = findMethod(it->second, currentMethodName, types);
             }
-            if (method)
-                break;
         }
-
         if (!method)
             throw std::runtime_error("base(): método base no encontrado");
 
+        // Guardar entorno y self anteriores
         auto oldEnv = env;
+        auto oldSelf = currentSelf;
+
+        // Establecer entorno del método base y currentSelf
         env = std::make_shared<EnvFrame>(instance->attrs);
+        currentSelf = instance;
         env->locals["self"] = Value(instance);
 
-        auto oldMethod = currentMethodName;
-        currentMethodName = method->name;
+        // Inyectar argumentos como variables locales (usando los valores actuales en env)
+        for (const auto &param : method->params)
+        {
+            if (env->locals.find(param) == env->locals.end() && oldEnv->locals.find(param) != oldEnv->locals.end())
+            {
+                env->locals[param] = oldEnv->locals[param];
+            }
+        }
+
+        // Ejecutar el cuerpo del método base
         method->body->accept(this);
-        currentMethodName = oldMethod;
+        Value result = lastValue;
+
+        // Restaurar entorno y self anteriores
         env = oldEnv;
+        currentSelf = oldSelf;
+
+        lastValue = result;
+    }
+
+    // Búsqueda recursiva de métodos en la cadena de herencia
+    MethodDecl *findMethod(TypeDecl *type, const std::string &methodName, const std::unordered_map<std::string, TypeDecl *> &types)
+    {
+        // First, search in the current type (most specific)
+        for (const auto &m : type->methods)
+        {
+            if (m->name == methodName)
+                return m.get();
+        }
+
+        // If not found in current type, search in inheritance chain
+        if (type->baseType != "Object")
+        {
+            auto it = types.find(type->baseType);
+            if (it != types.end())
+                return findMethod(it->second, methodName, types);
+        }
+        return nullptr;
     }
 
     void
     visit(MethodCallExpr *e) override
     {
+        std::cout << "[DEBUG] MethodCallExpr: calling method '" << e->methodName << "'" << std::endl;
+
         // Evaluar el objeto de la llamada (ej: a.setx() → 'a')
         e->object->accept(this);
         auto object = lastValue;
@@ -788,16 +808,8 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             throw std::runtime_error("Cannot call methods on non-class instance");
         }
 
-        // Busca el método en el tipo correspondiente
-        MethodDecl *method = nullptr;
-        for (const auto &m : instance->typeDef->methods)
-        {
-            if (m->name == e->methodName)
-            {
-                method = m.get();
-                break;
-            }
-        }
+        // Busca el método en el tipo correspondiente (usando búsqueda recursiva)
+        MethodDecl *method = findMethod(instance->typeDef, e->methodName, types);
 
         if (!method)
         {
@@ -807,10 +819,15 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // Guardar entorno y self anteriores
         auto oldEnv = env;
         auto oldSelf = currentSelf;
+        auto oldMethodName = currentMethodName;
 
         // Establecer entorno del método y currentSelf
         env = std::make_shared<EnvFrame>(instance->attrs);
         currentSelf = instance;
+        currentMethodName = e->methodName;     // Set current method name
+        env->locals["self"] = Value(instance); // Add self to environment
+
+        std::cout << "[DEBUG] MethodCallExpr: set currentMethodName to '" << currentMethodName << "'" << std::endl;
 
         // ⚠️ Evalúa los argumentos DESPUÉS de establecer el entorno y currentSelf
         std::vector<Value> args;
@@ -836,6 +853,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // Restaurar entorno y self anteriores
         env = oldEnv;
         currentSelf = oldSelf;
+        currentMethodName = oldMethodName;
 
         lastValue = result;
     }

@@ -532,10 +532,17 @@ argument_list:
 ; 
 
 type_decl:
-    TYPE IDENT LPAREN ident_list RPAREN INHERITS IDENT LPAREN argument_list RPAREN LBRACE member_list RBRACE {
+    TYPE IDENT LPAREN param_list RPAREN INHERITS IDENT LPAREN argument_list RPAREN LBRACE member_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
         (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
-            std::move(*$4),
+            std::move(params),
+            std::move(param_types),
             std::move($12->first),
             std::move($12->second),
             std::string($7),
@@ -547,6 +554,7 @@ type_decl:
   | TYPE IDENT INHERITS IDENT LPAREN argument_list RPAREN LBRACE member_list RBRACE {
         (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
+            {},
             {},
             std::move($9->first),
             std::move($9->second),
@@ -560,6 +568,7 @@ type_decl:
         (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             {}, // sin parámetros propios
+            {},
             std::move($6->first),
             std::move($6->second),
             std::string($4), // tipo base
@@ -568,19 +577,46 @@ type_decl:
         delete $6;
         free($2); free($4);
     }
-  | TYPE IDENT LPAREN ident_list RPAREN LBRACE member_list RBRACE {
+  | TYPE IDENT LPAREN param_list RPAREN LBRACE member_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
         (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
-            std::move(*$4),
+            std::move(params),
+            std::move(param_types),
             std::move($7->first),
             std::move($7->second)
         ));
         delete $4; delete $7;
         free($2);
     }
+  | TYPE IDENT LPAREN param_list RPAREN INHERITS IDENT LBRACE member_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+            std::string($2),
+            std::move(params),
+            std::move(param_types),
+            std::move($9->first),
+            std::move($9->second),
+            std::string($7),
+            {} // sin baseArgs
+        ));
+        delete $4; delete $9;
+        free($2); free($7);
+    }
   | TYPE IDENT LBRACE member_list RBRACE {
         (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
+            {},
             {},
             std::move($4->first),
             std::move($4->second)

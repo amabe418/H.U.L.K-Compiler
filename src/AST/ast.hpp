@@ -444,6 +444,7 @@ struct TypeDecl : Stmt
 {
     std::string name;
     std::vector<std::string> params;
+    std::vector<std::shared_ptr<TypeInfo>> paramTypes; // Tipos explícitos de los parámetros
     std::vector<std::unique_ptr<AttributeDecl>> attributes;
     std::vector<std::unique_ptr<MethodDecl>> methods;
 
@@ -452,11 +453,13 @@ struct TypeDecl : Stmt
     std::vector<ExprPtr> baseArgs;
 
     TypeDecl(std::string n, std::vector<std::string> &&params_,
+             std::vector<std::shared_ptr<TypeInfo>> &&paramTypes_,
              std::vector<std::unique_ptr<AttributeDecl>> attrs,
              std::vector<std::unique_ptr<MethodDecl>> meths, std::string base = "Object",
              std::vector<ExprPtr> &&args = {})
         : name(std::move(n)),
           params(std::move(params_)),
+          paramTypes(std::move(paramTypes_)),
           attributes(std::move(attrs)),
           methods(std::move(meths)),
           baseType(std::move(base)),
@@ -473,6 +476,11 @@ struct TypeDecl : Stmt
     getParams() const
     {
         return params;
+    }
+    const std::vector<std::shared_ptr<TypeInfo>> &
+    getParamTypes() const
+    {
+        return paramTypes;
     }
 };
 // atributos de tipos
