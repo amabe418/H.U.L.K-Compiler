@@ -87,6 +87,7 @@
   std::vector<std::string>* str_list;
   std::pair<std::string, Expr*>* binding;
   std::vector<std::pair<std::string, Expr*>>* bindings;
+  std::vector<std::pair<std::string, std::pair<Expr*, std::shared_ptr<TypeInfo>>>>* bindings_with_types;
   std::pair<
       std::vector<std::unique_ptr<AttributeDecl>>,
       std::vector<std::unique_ptr<MethodDecl>>
@@ -98,6 +99,7 @@
     std::vector<std::shared_ptr<TypeInfo>>* type_info_list;
     std::pair<std::string, std::shared_ptr<TypeInfo>>* param_with_type;
     std::vector<std::pair<std::string, std::shared_ptr<TypeInfo>>>* param_list;
+    std::pair<std::string, std::pair<Expr*, std::shared_ptr<TypeInfo>>>* binding_with_type;
     char* str;
 }
 
@@ -108,9 +110,8 @@
 %type  <prog> input
 %type  <prog> program
 %type <stmts> stmt_list
-%type <binding> binding
 %type <str_list> ident_list
-%type <bindings> binding_list 
+%type <bindings_with_types> binding_list
 %type <expr> if_expr
 %type <expr_list> argument_list
 %type <stmt> type_decl
@@ -121,6 +122,7 @@
 %type <type_info> type
 %type <param_with_type> param
 %type <param_list> param_list
+%type <binding_with_type> binding
 
 
 %token LET IN 
@@ -171,12 +173,12 @@ program:
 
 binding_list:
     binding {
-          $$ = new std::vector<std::pair<std::string, Expr*>>();
-          $$->push_back(*$1);
+          $$ = new std::vector<std::pair<std::string, std::pair<Expr*, std::shared_ptr<TypeInfo>>>>();
+          $$->push_back(std::make_pair($1->first, std::make_pair($1->second.first, $1->second.second)));
           delete $1;
       }
     | binding_list COMMA binding {
-          $1->push_back(*$3);
+          $1->push_back(std::make_pair($3->first, std::make_pair($3->second.first, $3->second.second)));
           delete $3;
           $$ = $1;
       }
@@ -184,8 +186,19 @@ binding_list:
 
 binding:
       IDENT ASSIGN expr {
-          $$ = new std::pair<std::string, Expr*>(std::string($1), $3);
+          $$ = new std::pair<std::string, std::pair<Expr*, std::shared_ptr<TypeInfo>>>(
+              std::string($1), 
+              std::make_pair($3, std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown))
+          );
           free($1);
+      }
+      | IDENT COLON type ASSIGN expr {
+          $$ = new std::pair<std::string, std::pair<Expr*, std::shared_ptr<TypeInfo>>>(
+              std::string($1), 
+              std::make_pair($5, *$3)
+          );
+          free($1);
+          delete $3;
       }
 ;
 
@@ -210,7 +223,8 @@ stmt:
             std::string($2), 
             std::move(params), 
             std::move(block), 
-            std::move(param_types)
+            std::move(param_types),
+            *$7
         ));
         delete $4;
         delete $7;
@@ -256,6 +270,26 @@ stmt:
         delete $4;
         free($2);
     }
+    | FUNCTION IDENT LPAREN param_list RPAREN COLON type ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($9)), 
+            std::move(param_types),
+            *$7
+        ));
+        delete $4;
+        delete $7;
+        free($2);
+    }
     | FUNCTION IDENT LPAREN RPAREN ARROW expr {
         std::vector<std::string> params;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
@@ -266,6 +300,20 @@ stmt:
             std::make_unique<ExprStmt>(ExprPtr($6)), 
             std::move(param_types)
         ));
+        free($2);
+    }
+    | FUNCTION IDENT LPAREN RPAREN COLON type ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($8)), 
+            std::move(param_types),
+            *$6
+        ));
+        delete $6;
         free($2);
     }
     | type_decl
@@ -362,13 +410,41 @@ expr:
       $$ = new BaseCallExpr(std::vector<ExprPtr>());
   }
   | LET binding_list IN expr { 
-      std::vector<std::pair<std::string, ExprPtr>> bindings;
-      for (auto& binding : *$2) {
-          bindings.push_back({binding.first, ExprPtr(binding.second)});
+      // Desugar multiple bindings into nested LetExpr
+      // Start from the last binding and work backwards
+      Expr* result = $4;
+      
+      // Process bindings in reverse order to maintain correct nesting
+      for (int i = $2->size() - 1; i >= 0; --i) {
+          const auto& binding = (*$2)[i];
+          std::string name = binding.first;
+          Expr* init = binding.second.first;
+          std::shared_ptr<TypeInfo> type = binding.second.second;
+          
+          if (i == $2->size() - 1) {
+              // Last binding: body is the original expression
+              result = new LetExpr(name, ExprPtr(init), 
+                                  std::make_unique<ExprStmt>(ExprPtr(result)), type);
+          } else {
+              // Other bindings: body is the nested LetExpr
+              result = new LetExpr(name, ExprPtr(init), 
+                                  std::make_unique<ExprStmt>(ExprPtr(result)), type);
+          }
       }
-      $$ = new LetExpr(bindings[0].first, std::move(bindings[0].second), 
-                      std::make_unique<ExprStmt>(ExprPtr($4)));
+      
+      $$ = result;
       delete $2; 
+  }
+  | LET IDENT COLON type ASSIGN expr IN expr {
+      $$ = new LetExpr(std::string($2), ExprPtr($6), 
+                      std::make_unique<ExprStmt>(ExprPtr($8)), *$4);
+      delete $4;
+      free($2);
+  }
+  | LET IDENT ASSIGN expr IN expr {
+      $$ = new LetExpr(std::string($2), ExprPtr($4), 
+                      std::make_unique<ExprStmt>(ExprPtr($6)));
+      free($2);
   }
   | if_expr
   
@@ -376,6 +452,16 @@ expr:
       auto block = ExprPtr(new ExprBlock(std::move(*$4)));
       $$ = new WhileExpr(ExprPtr($2), std::move(block)); 
       delete $4;
+  }
+  | FOR LPAREN IDENT IN expr RPAREN expr {
+      $$ = new ForExpr(std::string($3), ExprPtr($5), ExprPtr($7));
+      free($3);
+  }
+  | FOR LPAREN IDENT IN expr RPAREN LBRACE stmt_list RBRACE {
+      auto block = ExprPtr(new ExprBlock(std::move(*$8)));
+      $$ = new ForExpr(std::string($3), ExprPtr($5), std::move(block));
+      free($3);
+      delete $8;
   }
   | LBRACE stmt_list RBRACE { 
       $$ = new ExprBlock(std::move(*$2)); 
@@ -401,7 +487,10 @@ expr:
   | BASE LPAREN RPAREN {
         $$ = new BaseCallExpr({});
     }  
-
+  | IDENT ASSIGN_DESTRUCT expr {
+        $$ = new AssignExpr(std::string($1), ExprPtr($3));
+        free($1);
+    }
 ;
 
 
@@ -560,7 +649,7 @@ method:
 ;
 
 type:
-    | IDENT { 
+    IDENT { 
         // Si es un tipo conocido, usarlo, sino usar Object
         std::string type_name($1);
         if (type_name == "Number") {

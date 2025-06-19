@@ -29,6 +29,7 @@ struct FunctionDecl;
 struct IfExpr;
 struct ExprBlock;
 struct WhileExpr;
+struct ForExpr;
 struct BaseCallExpr;
 
 struct TypeDecl;
@@ -272,11 +273,14 @@ struct VariableExpr : Expr
 // **LetExpr**: let <name> = <init> in <body>
 struct LetExpr : Expr
 {
-    std::string name;    // nombre de la variable
-    ExprPtr initializer; // expresión inicializadora
-    StmtPtr body;        // cuerpo donde la variable está en alcance
-    LetExpr(const std::string &n, ExprPtr init, StmtPtr b)
-        : name(n), initializer(std::move(init)), body(std::move(b))
+    std::string name;                       // nombre de la variable
+    ExprPtr initializer;                    // expresión inicializadora
+    StmtPtr body;                           // cuerpo donde la variable está en alcance
+    std::shared_ptr<TypeInfo> declaredType; // tipo anotado por el usuario (opcional)
+
+    LetExpr(const std::string &n, ExprPtr init, StmtPtr b,
+            std::shared_ptr<TypeInfo> type = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown))
+        : name(n), initializer(std::move(init)), body(std::move(b)), declaredType(std::move(type))
     {
     }
     void
@@ -410,6 +414,23 @@ struct WhileExpr : Expr
     ExprPtr body;
 
     WhileExpr(ExprPtr cond, ExprPtr b) : condition(std::move(cond)), body(std::move(b)) {}
+
+    void
+    accept(ExprVisitor *v) override
+    {
+        v->visit(this);
+    }
+};
+
+// para ciclos for
+struct ForExpr : Expr
+{
+    std::string variable; // nombre de la variable de iteración
+    ExprPtr iterable;     // expresión que evalúa a un iterable
+    ExprPtr body;         // cuerpo del ciclo
+
+    ForExpr(const std::string &var, ExprPtr iter, ExprPtr b)
+        : variable(var), iterable(std::move(iter)), body(std::move(b)) {}
 
     void
     accept(ExprVisitor *v) override

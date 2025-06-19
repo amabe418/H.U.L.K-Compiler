@@ -79,6 +79,7 @@ public:
     void visit(IfExpr *expr) override;
     void visit(ExprBlock *expr) override;
     void visit(WhileExpr *expr) override;
+    void visit(ForExpr *expr) override;
     void visit(NewExpr *expr) override;
     void visit(GetAttrExpr *expr) override;
     void visit(SelfExpr *expr) override;

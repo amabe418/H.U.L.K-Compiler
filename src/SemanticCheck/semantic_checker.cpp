@@ -5,24 +5,33 @@
 
 void SemanticAnalyzer::registerBuiltinFunctions()
 {
-    // Register built-in functions with their signatures    // Math functions
-    symbol_table_.declareFunction("sqrt", {"x"});
-    symbol_table_.declareFunction("sin", {"x"});
-    symbol_table_.declareFunction("cos", {"x"});
-    symbol_table_.declareFunction("exp", {"x"});
-    symbol_table_.declareFunction("log", {"x"});
-    symbol_table_.declareFunction("pow", {"base", "exponent"});
-    symbol_table_.declareFunction("rand", {});
+    std::cout << "[DEBUG] Registering built-in functions" << std::endl;
 
-    // I/O functions
-    symbol_table_.declareFunction("print", {"x"});
-    symbol_table_.declareFunction("println", {"x"});
+    // Register print function - takes any type and returns void
+    std::vector<TypeInfo> printParams = {TypeInfo(TypeInfo::Kind::Unknown)};
+    symbol_table_.declareFunction("print", printParams, TypeInfo(TypeInfo::Kind::Void));
 
-    // String functions
+    // Register mathematical functions
+    std::vector<TypeInfo> mathParams = {TypeInfo(TypeInfo::Kind::Number)};
+    symbol_table_.declareFunction("sin", mathParams, TypeInfo(TypeInfo::Kind::Number));
+    symbol_table_.declareFunction("cos", mathParams, TypeInfo(TypeInfo::Kind::Number));
+    symbol_table_.declareFunction("sqrt", mathParams, TypeInfo(TypeInfo::Kind::Number));
+    symbol_table_.declareFunction("log", mathParams, TypeInfo(TypeInfo::Kind::Number));
+    symbol_table_.declareFunction("exp", mathParams, TypeInfo(TypeInfo::Kind::Number));
+
+    // Register rand function - no parameters, returns number
+    std::vector<TypeInfo> randParams = {};
+    symbol_table_.declareFunction("rand", randParams, TypeInfo(TypeInfo::Kind::Number));
+
+    // Register range function - takes two numbers, returns iterable
+    std::vector<TypeInfo> rangeParams = {TypeInfo(TypeInfo::Kind::Number), TypeInfo(TypeInfo::Kind::Number)};
+    symbol_table_.declareFunction("range", rangeParams, TypeInfo(TypeInfo::Kind::Object, "Iterable"));
 
     // Register mathematical constants
     symbol_table_.declareVariable("PI", TypeInfo(TypeInfo::Kind::Number), false); // false means immutable
     symbol_table_.declareVariable("E", TypeInfo(TypeInfo::Kind::Number), false);  // false means immutable
+
+    std::cout << "[DEBUG] Built-in functions registered" << std::endl;
 }
 
 void SemanticAnalyzer::collectFunctions(Program *program)
@@ -480,7 +489,7 @@ void SemanticAnalyzer::visit(BinaryExpr *expr)
 
 void SemanticAnalyzer::visit(CallExpr *expr)
 {
-    std::cout << "DEBUG: Visiting CallExpr: " << expr->callee << std::endl;
+    std::cout << "[DEBUG] Visiting CallExpr: " << expr->callee << std::endl;
 
     // Check if function exists
     auto funcInfo = symbol_table_.lookupFunction(expr->callee);
@@ -488,18 +497,22 @@ void SemanticAnalyzer::visit(CallExpr *expr)
     {
         // Function not found - this might be because it hasn't been analyzed yet
         // For now, we'll assume it returns Unknown and continue
-        std::cout << "DEBUG: Function " << expr->callee << " not found in symbol table, assuming Unknown return type" << std::endl;
+        std::cout << "[DEBUG] Function " << expr->callee << " not found in symbol table, assuming Unknown return type" << std::endl;
 
         // Process arguments anyway to infer their types
         for (size_t i = 0; i < expr->args.size(); ++i)
         {
             expr->args[i]->accept(this);
+            std::cout << "[DEBUG] Argument " << i << " type: " << current_type_.toString() << std::endl;
         }
 
         current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
         expr->inferredType = std::make_shared<TypeInfo>(current_type_);
         return;
     }
+
+    std::cout << "[DEBUG] Function " << expr->callee << " found in symbol table" << std::endl;
+    std::cout << "[DEBUG] Expected " << funcInfo->parameter_types.size() << " arguments" << std::endl;
 
     // Check argument count
     if (expr->args.size() != funcInfo->parameter_types.size())
@@ -514,27 +527,29 @@ void SemanticAnalyzer::visit(CallExpr *expr)
     // Check argument types and propagate types
     for (size_t i = 0; i < expr->args.size() && i < funcInfo->parameter_types.size(); ++i)
     {
+        std::cout << "[DEBUG] Processing argument " << i << std::endl;
+
         // First, check if the argument is a variable and propagate its type
         if (auto varExpr = dynamic_cast<VariableExpr *>(expr->args[i].get()))
         {
-            if (varExpr->inferredType->getKind() == TypeInfo::Kind::Unknown)
-            {
-                std::cout << "DEBUG: Propagating type " << funcInfo->parameter_types[i].toString()
-                          << " to argument variable" << std::endl;
-                *varExpr->inferredType = funcInfo->parameter_types[i];
+            std::cout << "[DEBUG] Argument " << i << " is a VariableExpr: " << varExpr->name << std::endl;
 
-                // Update symbol table
-                auto varInfo = symbol_table_.lookupVariable(varExpr->name);
-                if (varInfo)
-                {
-                    std::cout << "DEBUG: Updating symbol table for " << varExpr->name << std::endl;
-                    varInfo->type = funcInfo->parameter_types[i];
-                }
+            // Look up the variable in symbol table to get its current type
+            auto varInfo = symbol_table_.lookupVariable(varExpr->name);
+            if (varInfo)
+            {
+                std::cout << "[DEBUG] Variable " << varExpr->name << " found in symbol table with type: " << varInfo->type.toString() << std::endl;
+                *varExpr->inferredType = varInfo->type;
+            }
+            else
+            {
+                std::cout << "[DEBUG] Variable " << varExpr->name << " not found in symbol table!" << std::endl;
             }
         }
 
         // Then visit the argument to get its type
         expr->args[i]->accept(this);
+        std::cout << "[DEBUG] Argument " << i << " type after visit: " << current_type_.toString() << std::endl;
 
         // If the argument is a variable and its type is Unknown, but the function expects a specific type,
         // propagate the expected type to the variable
@@ -542,7 +557,7 @@ void SemanticAnalyzer::visit(CallExpr *expr)
         {
             if (varExpr->inferredType->getKind() == TypeInfo::Kind::Unknown)
             {
-                std::cout << "DEBUG: Propagating type " << funcInfo->parameter_types[i].toString()
+                std::cout << "[DEBUG] Propagating type " << funcInfo->parameter_types[i].toString()
                           << " to argument variable" << std::endl;
                 *varExpr->inferredType = funcInfo->parameter_types[i];
 
@@ -550,7 +565,7 @@ void SemanticAnalyzer::visit(CallExpr *expr)
                 auto varInfo = symbol_table_.lookupVariable(varExpr->name);
                 if (varInfo)
                 {
-                    std::cout << "DEBUG: Updating symbol table for " << varExpr->name << std::endl;
+                    std::cout << "[DEBUG] Updating symbol table for " << varExpr->name << std::endl;
                     varInfo->type = funcInfo->parameter_types[i];
                 }
             }
@@ -569,6 +584,7 @@ void SemanticAnalyzer::visit(CallExpr *expr)
     // Set return type
     current_type_ = funcInfo->return_type;
     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    std::cout << "[DEBUG] CallExpr return type: " << current_type_.toString() << std::endl;
 }
 
 void SemanticAnalyzer::visit(VariableExpr *expr)
@@ -597,11 +613,14 @@ void SemanticAnalyzer::visit(LetExpr *expr)
     // Visit initializer first
     expr->initializer->accept(this);
     TypeInfo initType = current_type_;
+
     // Enter new scope
     symbol_table_.enterScope();
 
     // Add variable to symbol table
-    // Declare the variable with the type from the initializer
+    // If there's a declared type, use it; otherwise use the type from the initializer
+    TypeInfo varType = expr->declaredType->getKind() != TypeInfo::Kind::Unknown ? *expr->declaredType : initType;
+
     if (symbol_table_.isVariableDeclared(expr->name))
     {
         reportError(ErrorType::REDEFINED_VARIABLE,
@@ -610,7 +629,17 @@ void SemanticAnalyzer::visit(LetExpr *expr)
     }
     else
     {
-        symbol_table_.declareVariable(expr->name, initType);
+        symbol_table_.declareVariable(expr->name, varType);
+    }
+
+    // Check type compatibility if there's a declared type
+    if (expr->declaredType->getKind() != TypeInfo::Kind::Unknown &&
+        !initType.isCompatibleWith(*expr->declaredType))
+    {
+        reportError(ErrorType::TYPE_ERROR,
+                    "Cannot assign value of type " + initType.toString() +
+                        " to variable of type " + expr->declaredType->toString(),
+                    expr);
     }
 
     // Visit body
@@ -674,47 +703,112 @@ void SemanticAnalyzer::visit(IfExpr *expr)
 
 void SemanticAnalyzer::visit(ExprBlock *expr)
 {
-    // // Enter new scope
-    // symbol_table_.enterScope();
+    std::cout << "[DEBUG] Processing ExprBlock" << std::endl;
 
-    // // Visit all statements
-    // for (const auto &stmt : expr->stmts)
-    // {
-    //     stmt->accept(this);
-    // }
+    // Enter new scope
+    symbol_table_.enterScope();
 
-    // // Exit scope
-    // symbol_table_.exitScope();
+    // Visit all statements
+    for (const auto &stmt : expr->stmts)
+    {
+        stmt->accept(this);
+        std::cout << "[DEBUG] Statement type: " << current_type_.toString() << std::endl;
+    }
 
-    // // Block returns the type of its last statement
-    // if (!expr->stmts.empty())
-    // {
-    //     expr->inferredType = expr->stmts.back()->inferredType;
-    // }
-    // else
-    // {
-    //     current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    //     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
-    // }
+    // Exit scope
+    symbol_table_.exitScope();
+
+    // Block returns the type of its last statement
+    if (!expr->stmts.empty())
+    {
+        expr->inferredType = expr->stmts.back()->inferredType;
+        std::cout << "[DEBUG] Block type: " << expr->inferredType->toString() << std::endl;
+    }
+    else
+    {
+        current_type_ = TypeInfo(TypeInfo::Kind::Void);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        std::cout << "[DEBUG] Empty block type: " << current_type_.toString() << std::endl;
+    }
 }
 
 void SemanticAnalyzer::visit(WhileExpr *expr)
 {
-    // // Check condition type
-    // expr->condition->accept(this);
-    // if (!current_type_.isBoolean())
-    // {
-    //     reportError(ErrorType::TYPE_ERROR,
-    //                 "While condition must be of type Boolean, got " + current_type_.toString(),
-    //                 expr);
-    // }
+    std::cout << "[DEBUG] Processing WhileExpr" << std::endl;
 
-    // // Visit body
-    // expr->body->accept(this);
+    // Check condition type
+    expr->condition->accept(this);
+    auto condType = expr->condition->inferredType;
+    std::cout << "[DEBUG] While condition type: " << condType->toString() << std::endl;
 
-    // // While loop returns void
-    // current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-    // expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    if (condType->getKind() != TypeInfo::Kind::Boolean)
+    {
+        std::cout << "[DEBUG] Invalid while condition type: must be boolean" << std::endl;
+        reportError(ErrorType::TYPE_ERROR, "While condition must be boolean, got " + condType->toString(), expr);
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // Visit body
+    expr->body->accept(this);
+    auto bodyType = expr->body->inferredType;
+    std::cout << "[DEBUG] While body type: " << bodyType->toString() << std::endl;
+
+    // While loop returns void
+    current_type_ = TypeInfo(TypeInfo::Kind::Void);
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    std::cout << "[DEBUG] While expression type: " << current_type_.toString() << std::endl;
+}
+
+void SemanticAnalyzer::visit(ForExpr *expr)
+{
+    std::cout << "[DEBUG] Processing ForExpr for variable: " << expr->variable << std::endl;
+
+    // Check iterable type
+    expr->iterable->accept(this);
+    auto iterableType = expr->iterable->inferredType;
+    std::cout << "[DEBUG] For iterable type: " << iterableType->toString() << std::endl;
+
+    // Determine the type of elements that the iterable produces
+    std::shared_ptr<TypeInfo> elementType;
+
+    // Check if it's a range() call which produces numbers
+    if (auto callExpr = dynamic_cast<CallExpr *>(expr->iterable.get()))
+    {
+        if (callExpr->callee == "range")
+        {
+            std::cout << "[DEBUG] Detected range() call, element type is Number" << std::endl;
+            elementType = std::make_shared<TypeInfo>(TypeInfo::Kind::Number);
+        }
+    }
+
+    // If we couldn't determine the element type, use Unknown for now
+    if (!elementType)
+    {
+        std::cout << "[DEBUG] Could not determine element type, using Unknown" << std::endl;
+        elementType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);
+    }
+
+    // Enter new scope for the loop variable
+    symbol_table_.enterScope();
+
+    // Declare the iteration variable with the determined type
+    symbol_table_.declareVariable(expr->variable, *elementType);
+    std::cout << "[DEBUG] Declared variable " << expr->variable << " with type " << elementType->toString() << std::endl;
+
+    // Visit body
+    expr->body->accept(this);
+    auto bodyType = expr->body->inferredType;
+    std::cout << "[DEBUG] For body type: " << bodyType->toString() << std::endl;
+
+    // Exit scope
+    symbol_table_.exitScope();
+
+    // For loop returns void (like while)
+    current_type_ = TypeInfo(TypeInfo::Kind::Void);
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+    std::cout << "[DEBUG] For expression type: " << current_type_.toString() << std::endl;
 }
 
 void SemanticAnalyzer::visit(FunctionDecl *stmt)

@@ -13,6 +13,7 @@ struct IfExpr;
 struct ExprBlock;
 struct CallExpr;
 struct WhileExpr;
+struct ForExpr;
 struct NewExpr;
 struct GetAttrExpr;
 struct SetAttrExpr;
@@ -42,6 +43,7 @@ public:
     virtual void visit(IfExpr *expr) = 0;
     virtual void visit(ExprBlock *expr) = 0;
     virtual void visit(WhileExpr *expr) = 0;
+    virtual void visit(ForExpr *expr) = 0;
     virtual void visit(NewExpr *expr) = 0;
     virtual void visit(GetAttrExpr *expr) = 0;
     virtual void visit(SetAttrExpr *expr) = 0;

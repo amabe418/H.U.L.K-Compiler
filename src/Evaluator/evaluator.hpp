@@ -548,6 +548,14 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     }
 
     void
+    visit(ForExpr *expr) override
+    {
+        // TODO: Implementar evaluación del ciclo for
+        // Por ahora, dejamos vacío para que compile
+        // El for se puede implementar transpilando a while como se mencionó en la documentación
+    }
+
+    void
     visit(TypeDecl *t) override
     {
         if (types.count(t->name))

@@ -231,6 +231,31 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     }
 
     void
+    visit(ForExpr *expr) override
+    {
+        printIndent();
+        std::cout << "|_ ForExpr " << expr->inferredType->toString() << "\n";
+        indentLevel++;
+
+        printIndent();
+        std::cout << "|_ Variable: " << expr->variable << "\n";
+
+        printIndent();
+        std::cout << "|_ Iterable: " << expr->inferredType->toString() << "\n";
+        indentLevel++;
+        expr->iterable->accept(this);
+        indentLevel--;
+
+        printIndent();
+        std::cout << "|_ Body: " << expr->inferredType->toString() << "\n";
+        indentLevel++;
+        expr->body->accept(this);
+        indentLevel--;
+
+        indentLevel--;
+    }
+
+    void
     visit(TypeDecl *t) override
     {
         printIndent();
