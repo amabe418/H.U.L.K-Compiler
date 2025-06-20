@@ -25,12 +25,6 @@
 //};
 
 
-
-
-
-
-
-
 //====================================================
 //========== FUNCIONES =============
 //====================================================
@@ -83,20 +77,20 @@
 //    print("rho: " @ pt.rho());
 //};
 
-type Person(firstname, lastname) {
-    firstname = firstname;
-    lastname = lastname;
-    name() => self.firstname @@ self.lastname;
-};
+//type Person(firstname, lastname) {
+//    firstname = firstname;
+//    lastname = lastname;
+//    name() => self.firstname @@ self.lastname;
+//};
+//
+//type Knight inherits Person {
+//    name() => "Sir" @@ base();
+//};
+//
+//let p = new Knight("Phil", "Collins") in
+//    print(p.name()); 
 
-type Knight inherits Person {
-    name() => "Sir" @@ base();
-};
 
-let p = new Knight("Phil", "Collins") in
-    print(p.name()); 
-
-    
 //
 //type vector (a:Number,b:Number) inherits Point {
 //
@@ -166,3 +160,106 @@ let p = new Knight("Phil", "Collins") in
 //for ( i in range(1,3)){
 //    print(i);
 //};
+
+
+//====================================================
+//==========Type Conforming  =============
+//====================================================
+
+// Test file for type conforming (<=) relationship
+// This file demonstrates all the conforming rules in HULK
+
+// ====================================================
+// REGLA 1: Todo tipo conforma a Object
+// ====================================================
+type Animal() {
+    name() => "Animal";
+};
+
+type Dog() inherits Animal {
+    bark() => "Woof!";
+};
+
+type Cat() inherits Animal {
+    meow() => "Meow!";
+};
+
+// ====================================================
+// REGLA 2: Todo tipo conforma a sí mismo
+// ====================================================
+let dog1: Dog = new Dog() in
+let dog2: Dog = new Dog() in
+    print("Dog conforms to Dog: " @ (dog1 == dog2));
+
+// ====================================================
+// REGLA 3: Si T1 hereda T2 entonces T1 <= T2
+// ====================================================
+//let dog: Animal = new Dog() in  // Dog <= Animal
+//let cat: Animal = new Cat() in  // Cat <= Animal
+//    print("Dog conforms to Animal: " @ (dog.name() == "Animal"));
+
+
+
+// ====================================================
+// REGLA 4: Solo Number, String, Boolean conforman a sí mismos
+// ====================================================
+//let x: Number = 42 in
+//let y: String = "hello" in
+//let z: Boolean = true in
+//    print("Numbers conform to Number: " @ (x == 42));
+
+// ====================================================
+// REGLA 5: Transitividad - Si T1 <= T2 y T2 <= T3, entonces T1 <= T3
+// ====================================================
+//type Mammal() inherits Animal {
+//    warmBlooded() => true;
+//};
+//
+//type Canine() inherits Mammal {
+//    packAnimal() => true;
+//};
+//
+//let wolf: Animal = new Canine() in  // Canine <= Mammal <= Animal
+//    print("Canine conforms to Animal through inheritance: " @ (wolf.name() == "Animal"));
+
+// ====================================================
+// REGLA 6: Lowest Common Ancestor (LCA)
+// ====================================================
+// En una expresión como: if (condition) new Dog() else new Cat()
+// El tipo resultante debe ser Animal (LCA de Dog y Cat)
+//
+//let condition = true in
+//let result = if (condition) new Dog() else new Cat() in
+//    print("LCA of Dog and Cat is Animal: " @ (result.name() == "Animal"));
+//
+// ====================================================
+// REGLA 7: Verificación de tipos en asignaciones
+// ====================================================
+//let animals: [Animal] = [new Dog(), new Cat(), new Canine()] in
+//    print("Array of different animal types works with Animal type");
+
+// ====================================================
+// REGLA 8: Verificación de tipos en parámetros de función
+// ====================================================
+//function makeSound(animal: Animal) => animal.name();
+//
+//let dogSound = makeSound(new Dog()) in
+//let catSound = makeSound(new Cat()) in
+//    print("Function accepts subtypes: " @ dogSound @ " and " @ catSound);
+
+// ====================================================
+// REGLA 9: Verificación de tipos en retorno de función
+// ====================================================
+//function getRandomAnimal() => if (true) new Dog() else new Cat();
+//
+//let randomAnimal: Animal = getRandomAnimal() in
+//    print("Function returns LCA type: " @ randomAnimal.name());
+
+// ====================================================
+// REGLA 10: Verificación de tipos en expresiones binarias
+// ====================================================
+//let animal1: Animal = new Dog() in
+//let animal2: Animal = new Cat() in
+//let areEqual = animal1 == animal2 in  // Debe ser válido porque ambos conforman a Animal
+//    print("Comparison between subtypes is valid: " @ areEqual); 
+//

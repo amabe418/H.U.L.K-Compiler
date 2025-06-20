@@ -1,0 +1,26 @@
+// Test simple para type conforming
+type Animal() {
+    name() => "Animal";
+};
+
+type Dog() inherits Animal {
+    bark() => "Woof!";
+};
+
+// Test 1: Dog <= Animal (herencia)
+let dog: Animal = new Dog() in
+    print("Test 1 passed: Dog conforms to Animal");
+
+// Test 2: Dog <= Dog (mismo tipo)
+let dog2: Dog = new Dog() in
+    print("Test 2 passed: Dog conforms to Dog");
+
+// Test 3: Dog <= Object (todo tipo conforma a Object)
+let dog3: Object = new Dog() in
+    print("Test 3 passed: Dog conforms to Object");
+
+// Test 4: Comparación entre tipos que conforman
+let animal1: Animal = new Dog() in
+let animal2: Animal = new Dog() in
+let areEqual = animal1 == animal2 in
+    print("Test 4 passed: Comparison between conforming types works"); 

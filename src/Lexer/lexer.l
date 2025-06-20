@@ -86,6 +86,7 @@ void print_token(const char* token_name, const char* token_value) {
         return FALSE; 
     }
     if (strcmp(yytext,"function") == 0)  { print_token("FUNCTION", yytext); return FUNCTION; }
+    if (strcmp(yytext, "is") == 0)       { print_token("IS", yytext); return IS; }
 
     // Si no es ninguna palabra reservada, entonces es IDENT
     yylval.str = strdup(yytext);

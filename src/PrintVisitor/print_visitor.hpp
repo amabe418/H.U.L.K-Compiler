@@ -16,6 +16,20 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
             std::cout << "    "; // 4 espacios por nivel
     }
 
+    // Helper function to get the proper type string
+    std::string getTypeString(std::shared_ptr<TypeInfo> type)
+    {
+        if (!type)
+            return "(tipo desconocido)";
+
+        if (type->getKind() == TypeInfo::Kind::Object && !type->getTypeName().empty())
+        {
+            return type->getTypeName(); // Show the specific object type name
+        }
+
+        return type->toString();
+    }
+
     // StmtVisitor:
     void
     visit(Program *p) override
@@ -42,28 +56,28 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(NumberExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ " << expr->value << " " << expr->inferredType->toString() << std::endl;
+        std::cout << "|_ " << expr->value << " " << getTypeString(expr->inferredType) << std::endl;
     }
 
     void
     visit(StringExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ \"" << expr->value << " " << expr->inferredType->toString() << std::endl;
+        std::cout << "|_ \"" << expr->value << " " << getTypeString(expr->inferredType) << std::endl;
     }
 
     void
     visit(BooleanExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ Boolean: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Boolean: " << getTypeString(expr->inferredType) << "\n";
     }
 
     void
     visit(UnaryExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ UnaryOp: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ UnaryOp: " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->operand->accept(this);
         indentLevel--;
@@ -73,7 +87,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(BinaryExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ BinaryOp: " << opToString(expr->op) << " " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ BinaryOp: " << opToString(expr->op) << " " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->left->accept(this);
         expr->right->accept(this);
@@ -90,7 +104,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         }
         else
         {
-            std::cout << "|_ Call: " << expr->callee << " " << expr->inferredType->toString() << "\n";
+            std::cout << "|_ Call: " << expr->callee << " " << getTypeString(expr->inferredType) << "\n";
         }
         indentLevel++;
         for (const auto &arg : expr->args)
@@ -113,7 +127,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         }
         else
         {
-            std::cout << "|_ Variable: " << expr->name << " " << expr->inferredType->toString() << "\n";
+            std::cout << "|_ Variable: " << expr->name << " " << getTypeString(expr->inferredType) << "\n";
         }
     }
 
@@ -124,19 +138,19 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         if (!expr->inferredType)
         {
         }
-        std::cout << "|_ LetExpr: " << expr->name << " " << expr->body->inferredType->toString() << "\n";
+        std::cout << "|_ LetExpr: " << expr->name << " " << getTypeString(expr->body->inferredType) << "\n";
         indentLevel++;
 
         // 1) Mostrar subárbol del inicializador
         printIndent();
-        std::cout << "|_ Initializer: " << expr->initializer->inferredType->toString() << "\n";
+        std::cout << "|_ Initializer: " << getTypeString(expr->initializer->inferredType) << "\n";
         indentLevel++;
         expr->initializer->accept(this);
         indentLevel--;
 
         // 2) Mostrar subárbol del cuerpo
         printIndent();
-        std::cout << "|_ Body: " << expr->body->inferredType->toString() << "\n";
+        std::cout << "|_ Body: " << getTypeString(expr->body->inferredType) << "\n";
         indentLevel++;
         expr->body->accept(this);
         indentLevel--;
@@ -148,7 +162,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(AssignExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ AssignExpr: " << expr->name << " " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ AssignExpr: " << expr->name << " " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->value->accept(this);
         indentLevel--;
@@ -158,12 +172,12 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(FunctionDecl *f) override
     {
         printIndent();
-        std::cout << "|_FunctionDecl: " << f->name << " " << f->returnType->toString() << "\n";
+        std::cout << "|_FunctionDecl: " << f->name << " " << getTypeString(f->returnType) << "\n";
         indentLevel++;
         for (int i = 0; i < f->paramTypes.size(); i++)
         {
             printIndent();
-            std::cout << "|_ Param: " << f->params[i] << " " << f->paramTypes[i]->toString() << "\n";
+            std::cout << "|_ Param: " << f->params[i] << " " << getTypeString(f->paramTypes[i]) << "\n";
         }
         f->body->accept(this);
         indentLevel--;
@@ -173,23 +187,23 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(IfExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ IfExpr " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ IfExpr " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
 
         printIndent();
-        std::cout << "|_ Condition: " << expr->condition->inferredType->toString() << "\n";
+        std::cout << "|_ Condition: " << getTypeString(expr->condition->inferredType) << "\n";
         indentLevel++;
         expr->condition->accept(this);
         indentLevel--;
 
         printIndent();
-        std::cout << "|_ Then: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Then: " << getTypeString(expr->thenBranch->inferredType) << "\n";
         indentLevel++;
         expr->thenBranch->accept(this);
         indentLevel--;
 
         printIndent();
-        std::cout << "|_ Else: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Else: " << getTypeString(expr->elseBranch->inferredType) << "\n";
         indentLevel++;
         expr->elseBranch->accept(this);
         indentLevel--;
@@ -201,7 +215,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(ExprBlock *b) override
     {
         printIndent();
-        std::cout << "|_ ExprBlock " << b->inferredType->toString() << "\n";
+        std::cout << "|_ ExprBlock " << getTypeString(b->inferredType) << "\n";
         indentLevel++;
         for (auto &stmt : b->stmts)
             stmt->accept(this);
@@ -212,17 +226,17 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(WhileExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ WhileExpr " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ WhileExpr " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
 
         printIndent();
-        std::cout << "|_ Condition: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Condition: " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->condition->accept(this);
         indentLevel--;
 
         printIndent();
-        std::cout << "|_ Body: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Body: " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->body->accept(this);
         indentLevel--;
@@ -234,20 +248,20 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(ForExpr *expr) override
     {
         printIndent();
-        std::cout << "|_ ForExpr " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ ForExpr " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
 
         printIndent();
         std::cout << "|_ Variable: " << expr->variable << "\n";
 
         printIndent();
-        std::cout << "|_ Iterable: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Iterable: " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->iterable->accept(this);
         indentLevel--;
 
         printIndent();
-        std::cout << "|_ Body: " << expr->inferredType->toString() << "\n";
+        std::cout << "|_ Body: " << getTypeString(expr->inferredType) << "\n";
         indentLevel++;
         expr->body->accept(this);
         indentLevel--;
@@ -259,13 +273,13 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(TypeDecl *t) override
     {
         printIndent();
-        std::cout << "|_ TypeDecl: " << t->name << " " << t->inferredType->toString() << "\n";
+        std::cout << "|_ TypeDecl: " << t->name << " " << getTypeString(t->inferredType) << "\n";
         indentLevel++;
 
         for (auto &attr : t->attributes)
         {
             printIndent();
-            std::cout << "|_ Attribute: " << attr->name << " " << attr->inferredType->toString() << "\n";
+            std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->inferredType) << "\n";
         }
 
         for (auto &method : t->methods)
@@ -279,7 +293,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(MethodDecl *m) override
     {
         printIndent();
-        std::cout << "|_ Method: " << m->name << " " << m->inferredType->toString() << "\n";
+        std::cout << "|_ Method: " << m->name << " " << getTypeString(m->inferredType) << "\n";
         indentLevel++;
         m->body->accept(this);
         indentLevel--;
@@ -289,14 +303,14 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(NewExpr *e) override
     {
         printIndent();
-        std::cout << "|_ New: " << e->typeName << " " << e->inferredType->toString() << "\n";
+        std::cout << "|_ New: " << e->typeName << " " << getTypeString(e->inferredType) << "\n";
     }
 
     void
     visit(GetAttrExpr *e) override
     {
         printIndent();
-        std::cout << "|_ GetAttr: ." << e->attrName << " " << e->inferredType->toString() << "\n";
+        std::cout << "|_ GetAttr: ." << e->attrName << " " << getTypeString(e->inferredType) << "\n";
         indentLevel++;
         e->object->accept(this);
         indentLevel--;
@@ -306,7 +320,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(SetAttrExpr *e) override
     {
         printIndent();
-        std::cout << "|_ SetAttr: ." << e->attrName << " " << e->inferredType->toString() << "\n";
+        std::cout << "|_ SetAttr: ." << e->attrName << " " << getTypeString(e->inferredType) << "\n";
         indentLevel++;
         e->object->accept(this);
         e->value->accept(this);
@@ -317,7 +331,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(MethodCallExpr *e) override
     {
         printIndent();
-        std::cout << "|_ MethodCall: " << e->methodName << " " << e->inferredType->toString() << "\n";
+        std::cout << "|_ MethodCall: " << e->methodName << " " << getTypeString(e->inferredType) << "\n";
         indentLevel++;
         e->object->accept(this);
         for (auto &arg : e->args)
@@ -329,19 +343,19 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(SelfExpr *e) override
     {
         printIndent();
-        std::cout << "|_ self " << e->inferredType->toString() << "\n";
+        std::cout << "|_ self " << getTypeString(e->inferredType) << "\n";
     }
 
     void
     visit(BaseCallExpr *e) override
     {
         printIndent();
-        std::cout << "|_ Call base() " << e->inferredType->toString() << "\n";
+        std::cout << "|_ Call base() " << getTypeString(e->inferredType) << "\n";
     }
     void visit(AttributeDecl *attr) override
     {
         printIndent();
-        std::cout << "|_ Attribute: " << attr->name << " " << attr->inferredType->toString() << "\n";
+        std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->inferredType) << "\n";
         indentLevel++;
         attr->initializer->accept(this);
         indentLevel--;

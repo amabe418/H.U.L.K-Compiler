@@ -2,6 +2,10 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <iostream>
+
+// Forward declaration para evitar dependencias circulares
+class SymbolTable;
 
 /**
  * @brief Type information for HULK language types
@@ -27,13 +31,16 @@ private:
     std::vector<TypeInfo> parameter_types_;
     std::unique_ptr<TypeInfo> return_type_;
     std::string typeAssigned_;
+    static SymbolTable *symbolTable_; // Referencia estática al symbol table
 
 public:
     explicit TypeInfo(Kind k = Kind::Unknown, const std::string &name = "", const std::string &assigned = "")
         : kind_(k), typeName_(name), typeAssigned_(assigned) {}
     // Copy constructor
-    TypeInfo(const TypeInfo &other) : kind_(other.kind_), typeName_(other.typeName_), parameter_types_(other.parameter_types_)
+    TypeInfo(const TypeInfo &other) : kind_(other.kind_), typeName_(other.typeName_), parameter_types_(other.parameter_types_), typeAssigned_(other.typeAssigned_)
     {
+        // std::cout << "[DEBUG] TypeInfo copy constructor - from kind: " << (int)other.kind_ << ", typeName: '" << other.typeName_ << "'" << std::endl;
+        // std::cout << "[DEBUG] TypeInfo copy constructor - to kind: " << (int)kind_ << ", typeName: '" << typeName_ << "'" << std::endl;
         if (other.return_type_)
         {
             return_type_ = std::make_unique<TypeInfo>(*other.return_type_);
@@ -47,6 +54,7 @@ public:
             kind_ = other.kind_;
             typeName_ = other.typeName_;
             parameter_types_ = other.parameter_types_;
+            typeAssigned_ = other.typeAssigned_;
             if (other.return_type_)
             {
                 return_type_ = std::make_unique<TypeInfo>(*other.return_type_);
@@ -88,6 +96,36 @@ public:
     bool isObject() const { return kind_ == Kind::Object; }
     bool isNull() const { return kind_ == Kind::Null; }
     bool isUnknown() const { return kind_ == Kind::Unknown; }
+
+    /**
+     * @brief Check if this type conforms to another type (T1 <= T2)
+     * Implements the conforming relationship rules:
+     * 1. Every type conforms to Object
+     * 2. Every type conforms to itself
+     * 3. If T1 inherits T2 then T1 <= T2
+     * 4. Only Number, String, Boolean conform to themselves
+     */
+    bool conformsTo(const TypeInfo &other) const;
+
+    /**
+     * @brief Check if this type is a subtype of another type through inheritance
+     */
+    bool isSubtypeOf(const std::string &baseTypeName) const;
+
+    /**
+     * @brief Get the lowest common ancestor of multiple types
+     */
+    static TypeInfo getLowestCommonAncestor(const std::vector<TypeInfo> &types);
+
+    /**
+     * @brief Find the lowest common ancestor of two types
+     */
+    static std::string findLowestCommonAncestor(const std::string &type1, const std::string &type2);
+
+    /**
+     * @brief Set the symbol table reference for type checking
+     */
+    static void setSymbolTable(SymbolTable *table) { symbolTable_ = table; }
 
     /**
      * @brief Check if this type is compatible with another type
@@ -150,8 +188,7 @@ public:
     static TypeInfo Void() { return TypeInfo(Kind::Void); }
     static TypeInfo Object(const std::string &assigned = "")
     {
-        TypeInfo obj(Kind::Object);
-        obj.setTypeAssigned(assigned);
+        TypeInfo obj(Kind::Object, assigned, assigned); // name = assigned, typeAssigned = assigned
         return obj;
     }
 
@@ -199,18 +236,29 @@ public:
         // Comparison operations
         if (op == "==" || op == "!=")
         {
-            return TypeInfo(Kind::Boolean);
-        }
-
-        if (op == "<" || op == ">" || op == "<=" || op == ">=")
-        {
-            return TypeInfo(Kind::Boolean);
+            // If both types conform to each other, return Boolean
+            if (left.conformsTo(right) || right.conformsTo(left))
+            {
+                return TypeInfo(Kind::Boolean);
+            }
         }
 
         // Logical operations
-        if (op == "&&" || op == "||")
+        if (op == "||" || op == "&&")
         {
-            return TypeInfo(Kind::Boolean);
+            if (left.isBoolean() && right.isBoolean())
+            {
+                return TypeInfo(Kind::Boolean);
+            }
+        }
+
+        // Relational operations
+        if (op == "<" || op == ">" || op == "<=" || op == ">=")
+        {
+            if (left.isNumeric() && right.isNumeric())
+            {
+                return TypeInfo(Kind::Boolean);
+            }
         }
 
         return TypeInfo(Kind::Unknown);
@@ -223,17 +271,24 @@ public:
     {
         if (op == "-")
         {
-            return operand.isNumeric() ? TypeInfo(Kind::Number) : TypeInfo(Kind::Unknown);
+            if (operand.isNumeric())
+            {
+                return TypeInfo(Kind::Number);
+            }
         }
-
-        if (op == "!" || op == "not")
+        else if (op == "!")
         {
-            return TypeInfo(Kind::Boolean);
+            if (operand.isBoolean())
+            {
+                return TypeInfo(Kind::Boolean);
+            }
         }
-
         return TypeInfo(Kind::Unknown);
     }
 
     void setTypeAssigned(const std::string &assigned) { typeAssigned_ = assigned; }
     const std::string &getTypeAssigned() const { return typeAssigned_; }
 };
+
+// Inicialización de la variable estática
+inline SymbolTable *TypeInfo::symbolTable_ = nullptr;

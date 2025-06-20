@@ -131,7 +131,7 @@
 %token IF ELSE ELIF
 %token FUNCTION ARROW
 %token ASSIGN ASSIGN_DESTRUCT
-%token TYPE DOT SELF NEW INHERITS BASE
+%token TYPE DOT SELF NEW INHERITS BASE IS
 %token <expr> TRUE FALSE NUMBER STRING
 %token PLUS MINUS MULT DIV MOD POW CONCAT CONCAT_WS
 %token LE GE EQ NEQ LESS_THAN GREATER_THAN OR AND
@@ -493,6 +493,10 @@ expr:
   | IDENT ASSIGN_DESTRUCT expr {
         $$ = new AssignExpr(std::string($1), ExprPtr($3));
         free($1);
+    }
+  | expr IS IDENT {
+        $$ = new IsExpr(ExprPtr($1), std::string($3));
+        free($3);
     }
 ;
 

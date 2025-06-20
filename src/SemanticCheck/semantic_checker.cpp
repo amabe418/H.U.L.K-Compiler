@@ -599,6 +599,8 @@ void SemanticAnalyzer::visit(VariableExpr *expr)
     {
         current_type_ = varInfo->type;
         std::cout << "DEBUG: Variable type from symbol table: " << current_type_.toString() << std::endl;
+        std::cout << "DEBUG: Variable type kind: " << (int)current_type_.getKind() << std::endl;
+        std::cout << "DEBUG: Variable type name: '" << current_type_.getTypeName() << "'" << std::endl;
     }
 
     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
@@ -609,13 +611,76 @@ void SemanticAnalyzer::visit(LetExpr *expr)
     // Visit initializer first
     expr->initializer->accept(this);
     TypeInfo initType = current_type_;
+    std::cout << "[DEBUG] LetExpr initializer type: " << initType.toString() << std::endl;
+    std::cout << "[DEBUG] LetExpr initializer typeName: '" << initType.getTypeName() << "'" << std::endl;
 
     // Enter new scope
     symbol_table_.enterScope();
 
     // Add variable to symbol table
     // If there's a declared type, use it; otherwise use the type from the initializer
-    TypeInfo varType = expr->declaredType->getKind() != TypeInfo::Kind::Unknown ? *expr->declaredType : initType;
+    TypeInfo varType;
+
+    if (expr->declaredType->getKind() != TypeInfo::Kind::Unknown)
+    {
+        // There's a declared type
+        if (expr->declaredType->getKind() == TypeInfo::Kind::Object)
+        {
+            // It's an object type - check if it exists in symbol table
+            std::string declaredTypeName = expr->declaredType->getTypeAssigned();
+            std::cout << "[DEBUG] LetExpr declared type name: '" << declaredTypeName << "'" << std::endl;
+            if (declaredTypeName.empty())
+            {
+                // Try to get the name from typeAssigned
+                declaredTypeName = expr->declaredType->toString();
+                if (declaredTypeName == "Object")
+                {
+                    // This means it's a generic Object type, not a specific type
+                    declaredTypeName = "";
+                }
+            }
+
+            // std::cout << "[DEBUG] LetExpr declared type name: '" << declaredTypeName << "'" << std::endl;
+
+            if (!declaredTypeName.empty())
+            {
+                // Check if the declared type exists in symbol table
+                auto typeInfo = symbol_table_.lookupType(declaredTypeName);
+                if (typeInfo)
+                {
+                    // Use the actual type from symbol table
+                    varType = TypeInfo(TypeInfo::Kind::Object, declaredTypeName);
+                    std::cout << "[DEBUG] LetExpr found type in symbol table: " << varType.toString() << std::endl;
+                }
+                else
+                {
+                    reportError(ErrorType::UNDEFINED_TYPE,
+                                "Type '" + declaredTypeName + "' is not defined",
+                                expr, "expresión let");
+                    varType = TypeInfo(TypeInfo::Kind::Unknown);
+                }
+            }
+            else
+            {
+                // Generic Object type
+                varType = *expr->declaredType;
+            }
+        }
+        else
+        {
+            // Non-object declared type
+            varType = *expr->declaredType;
+        }
+    }
+    else
+    {
+        // No declared type - use the initializer type
+        varType = initType;
+    }
+
+    std::cout << "[DEBUG] LetExpr variable type to be stored: " << varType.toString() << std::endl;
+    std::cout << "[DEBUG] LetExpr variable typeName: '" << varType.getTypeName() << "'" << std::endl;
+    std::cout << "[DEBUG] LetExpr variable kind: " << (int)varType.getKind() << std::endl;
 
     if (symbol_table_.isVariableDeclared(expr->name))
     {
@@ -626,15 +691,16 @@ void SemanticAnalyzer::visit(LetExpr *expr)
     else
     {
         symbol_table_.declareVariable(expr->name, varType);
+        std::cout << "[DEBUG] LetExpr declared variable " << expr->name << " with type: " << varType.toString() << std::endl;
     }
 
-    // Check type compatibility if there's a declared type
+    // Check type compatibility
     if (expr->declaredType->getKind() != TypeInfo::Kind::Unknown &&
-        !initType.isCompatibleWith(*expr->declaredType))
+        !initType.conformsTo(varType))
     {
         reportError(ErrorType::TYPE_ERROR,
                     "Cannot assign value of type " + initType.toString() +
-                        " to variable of type " + expr->declaredType->toString(),
+                        " to variable of type " + varType.toString(),
                     expr);
     }
 
@@ -675,7 +741,7 @@ void SemanticAnalyzer::visit(AssignExpr *expr)
                     "Cannot assign to undefined variable '" + expr->name + "'",
                     expr, "asignación destructiva");
     }
-    else if (!valueType.isCompatibleWith(varInfo->type))
+    else if (!valueType.conformsTo(varInfo->type))
     {
         reportError(ErrorType::TYPE_ERROR,
                     "Cannot assign value of type " + valueType.toString() +
@@ -1148,6 +1214,9 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
     // Exit type scope
     symbol_table_.exitScope();
 
+    // Set the inferred type of the TypeDecl itself
+    stmt->inferredType = std::make_shared<TypeInfo>(TypeInfo::Kind::Object, stmt->name);
+
     std::cout << "[DEBUG] TypeDecl " << stmt->name << " processed successfully" << std::endl;
 
     if (stmt->baseType != "Object")
@@ -1329,16 +1398,12 @@ void SemanticAnalyzer::visit(SetAttrExpr *expr)
         {
             // Visit value
             expr->value->accept(this);
-            if (!current_type_.isCompatibleWith(attrInfo->type))
+            if (!current_type_.conformsTo(attrInfo->type))
             {
                 reportError(ErrorType::TYPE_ERROR,
                             "Cannot assign value of type " + current_type_.toString() +
                                 " to attribute of type " + attrInfo->type.toString(),
                             expr, "asignación de atributo");
-            }
-            else
-            {
-                std::cout << "[DEBUG] SetAttrExpr " << expr->attrName << " assigned value of type: " << current_type_.toString() << std::endl;
             }
         }
     }
@@ -1389,7 +1454,7 @@ void SemanticAnalyzer::visit(MethodCallExpr *expr)
             for (size_t i = 0; i < expr->args.size() && i < methodInfo->parameter_types.size(); ++i)
             {
                 expr->args[i]->accept(this);
-                if (!current_type_.isCompatibleWith(methodInfo->parameter_types[i]))
+                if (!current_type_.conformsTo(methodInfo->parameter_types[i]))
                 {
                     reportError(ErrorType::TYPE_ERROR,
                                 "Argument " + std::to_string(i + 1) + " of method '" + expr->methodName +
@@ -1542,22 +1607,9 @@ std::string SemanticAnalyzer::getBinaryOpString(BinaryExpr::Op op)
 
 bool SemanticAnalyzer::areTypesCompatible(const TypeInfo &type1, const TypeInfo &type2)
 {
-    // Basic type compatibility check
-    if (type1.getKind() == TypeInfo::Kind::Unknown || type2.getKind() == TypeInfo::Kind::Unknown)
-    {
-        return true; // Unknown types are compatible with anything
-    }
-
-    if (type1.getKind() == type2.getKind())
-    {
-        if (type1.getKind() == TypeInfo::Kind::Object)
-        {
-            return type1.getTypeName() == type2.getTypeName();
-        }
-        return true;
-    }
-
-    return false;
+    // Usar la relación de conforming (<=) para verificar compatibilidad
+    // type1 <= type2 significa que type1 conforma a type2
+    return type1.conformsTo(type2);
 }
 
 bool SemanticAnalyzer::isReservedWord(const std::string &word)

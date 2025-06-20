@@ -31,6 +31,7 @@ struct ExprBlock;
 struct WhileExpr;
 struct ForExpr;
 struct BaseCallExpr;
+struct IsExpr;
 
 struct TypeDecl;
 struct AttributeDecl;
@@ -42,6 +43,8 @@ struct MethodCallExpr;
 struct SelfExpr;
 
 struct Instance;
+
+// Forward declarations for visitors
 
 // Base class for all expression nodes
 struct Expr
@@ -598,6 +601,20 @@ struct BaseCallExpr : Expr
 {
     std::vector<ExprPtr> args;
     BaseCallExpr(std::vector<ExprPtr> &&a) : args(std::move(a)) {}
+
+    void
+    accept(ExprVisitor *v) override
+    {
+        v->visit(this);
+    }
+};
+
+struct IsExpr : Expr
+{
+    ExprPtr object;
+    std::string typeName;
+
+    IsExpr(ExprPtr obj, std::string type) : object(std::move(obj)), typeName(std::move(type)) {}
 
     void
     accept(ExprVisitor *v) override

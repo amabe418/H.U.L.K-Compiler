@@ -29,6 +29,9 @@ private:
 public:
     SemanticAnalyzer() : current_type_(TypeInfo::Kind::Unknown)
     {
+        // Configurar el symbol table en TypeInfo para que pueda acceder a la información de herencia
+        TypeInfo::setSymbolTable(&symbol_table_);
+
         // Registrar funciones built-in
         registerBuiltinFunctions();
     }
@@ -132,7 +135,7 @@ private:
     std::string getBinaryOpString(BinaryExpr::Op op);
 
     /**
-     * @brief Check if two types are compatible
+     * @brief Check if two types are compatible using conforming relationship
      */
     bool areTypesCompatible(const TypeInfo &type1, const TypeInfo &type2);
 

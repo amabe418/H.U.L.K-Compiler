@@ -14,15 +14,18 @@ class RangeValue;
 class RangeIterator;
 struct Instance;
 
+// Incluir la definición de Instance desde evaluator.hpp
+#include "../Evaluator/evaluator.hpp"
+
 class Value
 {
-   public:
+public:
     using Storage = std::variant<double, std::string, bool, std::shared_ptr<RangeValue>,
                                  std::shared_ptr<RangeIterator>, std::shared_ptr<Instance>>;
 
     Value() : val(0.0) {}
     Value(double d) : val(d) {}
-    Value(const std::string& s) : val(s) {}
+    Value(const std::string &s) : val(s) {}
     Value(bool b) : val(b) {}
     Value(std::shared_ptr<RangeValue> rv) : val(rv) {}
     Value(std::shared_ptr<RangeIterator> it) : val(it) {}
@@ -66,7 +69,7 @@ class Value
     {
         return std::get<double>(val);
     }
-    const std::string&
+    const std::string &
     asString() const
     {
         return std::get<std::string>(val);
@@ -122,16 +125,20 @@ class Value
         {
             return "<iterator>";
         }
+        if (isInstance())
+        {
+            return "<instance>";
+        }
         return "<unknown>";
     }
 
-   private:
+private:
     Storage val;
-    friend std::ostream& operator<<(std::ostream& os, const Value& v);
+    friend std::ostream &operator<<(std::ostream &os, const Value &v);
 };
 
-inline std::ostream&
-operator<<(std::ostream& os, const Value& v)
+inline std::ostream &
+operator<<(std::ostream &os, const Value &v)
 {
     if (v.isNumber())
     {
@@ -152,6 +159,10 @@ operator<<(std::ostream& os, const Value& v)
     else if (v.isIterable())
     {
         os << "<iterator>";
+    }
+    else if (v.isInstance())
+    {
+        os << "<instance>";
     }
     else
     {
