@@ -923,5 +923,30 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // El valor del atributo será el valor del inicializador
         // No necesitamos hacer nada más aquí ya que los atributos se manejan en NewExpr
     }
+
+    void visit(IsExpr *expr) override
+    {
+        std::cout << "[DEBUG] Evaluator: IsExpr checking if object is of type " << expr->typeName << std::endl;
+
+        // Evaluar el objeto
+        expr->object->accept(this);
+        Value objectValue = lastValue;
+
+        // Verificar si el objeto es del tipo especificado
+        bool result = false;
+        if (objectValue.isInstance())
+        {
+            auto instance = objectValue.asInstance();
+            if (instance && instance->typeDef)
+            {
+                result = instance->typeDef->name == expr->typeName;
+                std::cout << "[DEBUG] Evaluator: IsExpr object type: " << instance->typeDef->name
+                          << ", checking against: " << expr->typeName << ", result: " << (result ? "true" : "false") << std::endl;
+            }
+        }
+
+        lastValue = Value(result);
+        std::cout << "[DEBUG] Evaluator: IsExpr result: " << lastValue.toString() << std::endl;
+    }
 };
 #endif

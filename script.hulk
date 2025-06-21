@@ -187,16 +187,18 @@ type Cat() inherits Animal {
 // ====================================================
 // REGLA 2: Todo tipo conforma a sí mismo
 // ====================================================
-let dog1: Dog = new Dog() in
-let dog2: Dog = new Dog() in
-    print("Dog conforms to Dog: " @ (dog1 == dog2));
+//let dog1: Dog = new Dog() in
+//let dog2: Dog = new Dog() in
+//    print("Dog conforms to Dog: " @ (dog1 == dog2));
 
 // ====================================================
 // REGLA 3: Si T1 hereda T2 entonces T1 <= T2
 // ====================================================
-//let dog: Animal = new Dog() in  // Dog <= Animal
-//let cat: Animal = new Cat() in  // Cat <= Animal
-//    print("Dog conforms to Animal: " @ (dog.name() == "Animal"));
+let dog: Animal = new Dog() in  // Dog <= Animal
+let cat: Animal = new Cat() in {
+    print("Dog conforms to Animal: " @ (dog.name() == "Animal"));
+    print(dog.bark());
+};
 
 
 

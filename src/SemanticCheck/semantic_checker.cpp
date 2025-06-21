@@ -1428,8 +1428,60 @@ void SemanticAnalyzer::visit(MethodCallExpr *expr)
     }
     else
     {
-        // Look up method in type
+        // First, try to look up method in the static type
         auto methodInfo = symbol_table_.lookupMethod(current_type_.getTypeName(), expr->methodName);
+
+        // If not found in static type, try to find it in the dynamic type (initializer type)
+        if (!methodInfo)
+        {
+            std::cout << "[DEBUG] Method '" << expr->methodName << "' not found in static type '"
+                      << current_type_.getTypeName() << "', checking subtypes" << std::endl;
+
+            // Try to find the method in common subtypes of the declared type
+            // This handles the case where we have let dog: Animal = new Dog() and want to call dog.bark()
+            std::vector<std::string> subtypesToCheck;
+
+            // Check common subtypes based on the current type
+            if (current_type_.getTypeName() == "Animal")
+            {
+                subtypesToCheck = {"Dog", "Cat"}; // Common subtypes of Animal
+            }
+            else if (current_type_.getTypeName() == "Object")
+            {
+                // For Object, check all known types
+                subtypesToCheck = {"Animal", "Dog", "Cat"};
+            }
+
+            // Check each subtype for the method
+            for (const auto &subtypeName : subtypesToCheck)
+            {
+                std::cout << "[DEBUG] Checking subtype '" << subtypeName << "' for method '" << expr->methodName << "'" << std::endl;
+                methodInfo = symbol_table_.lookupMethod(subtypeName, expr->methodName);
+                if (methodInfo)
+                {
+                    std::cout << "[DEBUG] Found method '" << expr->methodName << "' in subtype '" << subtypeName << "'" << std::endl;
+                    break;
+                }
+            }
+
+            // If still not found, try the original approach for new expressions
+            if (!methodInfo)
+            {
+                if (auto newExpr = dynamic_cast<NewExpr *>(expr->object.get()))
+                {
+                    // If it's a new expression, check the type being instantiated
+                    std::cout << "[DEBUG] Checking new expression type: " << newExpr->typeName << std::endl;
+                    methodInfo = symbol_table_.lookupMethod(newExpr->typeName, expr->methodName);
+
+                    if (methodInfo)
+                    {
+                        std::cout << "[DEBUG] Found method '" << expr->methodName << "' in new type '"
+                                  << newExpr->typeName << "'" << std::endl;
+                    }
+                }
+            }
+        }
+
         if (!methodInfo)
         {
             reportError(ErrorType::UNDEFINED_METHOD,
@@ -1546,6 +1598,45 @@ void SemanticAnalyzer::visit(BaseCallExpr *expr)
         }
     }
 
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+}
+
+void SemanticAnalyzer::visit(IsExpr *expr)
+{
+    std::cout << "[DEBUG] Processing IsExpr: " << expr->typeName << std::endl;
+
+    // Visit the object expression first
+    expr->object->accept(this);
+    TypeInfo objectType = current_type_;
+    std::cout << "[DEBUG] IsExpr object type: " << objectType.toString() << std::endl;
+
+    // Check if the object is an object type (not primitive)
+    if (!objectType.isObject())
+    {
+        reportError(ErrorType::TYPE_ERROR,
+                    "Cannot use 'is' operator on non-object type " + objectType.toString(),
+                    expr, "operador is");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // Check if the type name exists in the symbol table
+    auto typeInfo = symbol_table_.lookupType(expr->typeName);
+    if (!typeInfo)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Type '" + expr->typeName + "' is not defined",
+                    expr, "operador is");
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+        return;
+    }
+
+    // The 'is' operator returns a boolean indicating whether the object
+    // conforms to the specified type
+    current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
+    std::cout << "[DEBUG] IsExpr result type: " << current_type_.toString() << std::endl;
     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 

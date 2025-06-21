@@ -44,8 +44,6 @@ struct SelfExpr;
 
 struct Instance;
 
-// Forward declarations for visitors
-
 // Base class for all expression nodes
 struct Expr
 {
