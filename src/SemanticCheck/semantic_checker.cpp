@@ -67,13 +67,14 @@ void SemanticAnalyzer::collectFunctions(Program *program)
         }
         else if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
         {
-            if (symbol_table_.isTypeDeclared(typeDecl->name))
-            {
-                error_manager_.reportError(ErrorType::REDEFINED_TYPE,
-                                           "Tipo '" + typeDecl->name + "' ya está definido",
-                                           typeDecl->line_number, typeDecl->column_number,
-                                           "declaración de tipo", "SemanticAnalyzer");
-            }
+            // Comment out this check temporarily to see if it's causing the issue
+            // if (symbol_table_.isTypeDeclared(typeDecl->name))
+            // {
+            //     error_manager_.reportError(ErrorType::REDEFINED_TYPE,
+            //                                "Tipo '" + typeDecl->name + "' ya está definido",
+            //                                typeDecl->line_number, typeDecl->column_number,
+            //                                "declaración de tipo", "SemanticAnalyzer");
+            // }
         }
     }
 }
@@ -1059,13 +1060,16 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
     }
 
     // Check if type is already declared
+    std::cout << "[DEBUG] Checking if type '" << stmt->name << "' is already declared" << std::endl;
     if (symbol_table_.isTypeDeclared(stmt->name))
     {
+        std::cout << "[DEBUG] Type '" << stmt->name << "' is already declared!" << std::endl;
         reportError(ErrorType::REDEFINED_TYPE,
                     "Type '" + stmt->name + "' ya está definido",
                     stmt, "declaración de tipo");
         return;
     }
+    std::cout << "[DEBUG] Type '" << stmt->name << "' is not declared yet, proceeding with declaration" << std::endl;
 
     // Declare the type first
     if (!symbol_table_.declareType(stmt->name, stmt->baseType, stmt->line_number))
@@ -1655,6 +1659,17 @@ void SemanticAnalyzer::analyze(Program *program)
     // First pass: collect all function declarations (but don't declare them yet)
     collectFunctions(program);
 
+    // Second pass: process all type declarations first
+    std::cout << "DEBUG: Processing type declarations" << std::endl;
+    for (auto &stmt : program->stmts)
+    {
+        if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
+        {
+            std::cout << "DEBUG: Processing type declaration: " << typeDecl->name << std::endl;
+            typeDecl->accept(this);
+        }
+    }
+
     // Multiple passes: analyze function bodies and infer types until no changes
     bool typesChanged = true;
     int pass = 0;
@@ -1697,6 +1712,11 @@ void SemanticAnalyzer::analyze(Program *program)
                     std::cout << "DEBUG: Return type changed from " << oldReturnType.toString()
                               << " to " << funcDecl->returnType->toString() << std::endl;
                 }
+            }
+            else if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
+            {
+                // Skip type declarations as they were already processed
+                continue;
             }
             else
             {

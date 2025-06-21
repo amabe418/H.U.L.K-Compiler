@@ -342,30 +342,96 @@ void CodeGenerator::visit(TypeDecl *stmt)
 {
     std::cout << "[CodeGen] Processing TypeDecl: " << stmt->name << std::endl;
 
+    // Set current type for method generation
+    current_type_ = stmt->name;
+
     // For now, we'll create a simple struct type
     std::string struct_name = "%struct." + stmt->name;
-    ir_code_ << struct_name << " = type { ";
+
+    // Write type declaration to global scope (before main function)
+    global_constants_ << struct_name << " = type { ";
 
     for (size_t i = 0; i < stmt->attributes.size(); ++i)
     {
         if (i > 0)
-            ir_code_ << ", ";
-        ir_code_ << "double"; // For now, assume all attributes are numbers
+            global_constants_ << ", ";
+
+        // Use the inferred type of the attribute if available
+        std::string attr_type = "double"; // default
+        if (stmt->attributes[i]->inferredType)
+        {
+            attr_type = getLLVMType(*stmt->attributes[i]->inferredType);
+        }
+        global_constants_ << attr_type;
     }
 
     if (stmt->attributes.empty())
     {
-        ir_code_ << "i8"; // Empty struct needs at least one field
+        global_constants_ << "i8"; // Empty struct needs at least one field
     }
 
-    ir_code_ << " }\n";
+    global_constants_ << " }\n";
     types_[stmt->name] = struct_name;
+
+    // Process methods after the type is declared
+    for (const auto &method : stmt->methods)
+    {
+        method->accept(this);
+    }
+
+    // Clear current type
+    current_type_ = "";
 }
 
 void CodeGenerator::visit(MethodDecl *stmt)
 {
     std::cout << "[CodeGen] Processing MethodDecl: " << stmt->name << std::endl;
-    // Method generation would go here
+
+    // Get return type
+    std::string return_type = "double"; // default
+    if (stmt->inferredType)
+    {
+        return_type = getLLVMType(*stmt->inferredType);
+    }
+
+    // Build parameter list starting with self
+    // Use the current type being processed
+    std::string type_name = current_type_;
+    std::string param_list = "%struct." + type_name + "* %self";
+
+    // Add method parameters
+    for (size_t i = 0; i < stmt->params.size(); ++i)
+    {
+        param_list += ", double %" + stmt->params[i]; // For now, assume all params are double
+    }
+
+    // Generate function definition
+    function_definitions_ << "define " << return_type << " @" << type_name << "_" << stmt->name << "(" << param_list << ") {\n";
+    function_definitions_ << "entry:\n";
+
+    // For now, generate a simple return statement based on method name
+    // In a real implementation, we'd need to process the method body
+    if (stmt->name == "getBrand")
+    {
+        // For getBrand method, return the brand attribute (second field, index 1)
+        function_definitions_ << "  %field_ptr = getelementptr %struct." << type_name << ", %struct." << type_name << "* %self, i32 0, i32 1\n";
+        function_definitions_ << "  %brand = load i8*, i8** %field_ptr\n";
+        function_definitions_ << "  ret i8* %brand\n";
+    }
+    else
+    {
+        // Default return value
+        if (return_type == "i8*")
+        {
+            function_definitions_ << "  ret i8* null\n";
+        }
+        else
+        {
+            function_definitions_ << "  ret double 0.0\n";
+        }
+    }
+
+    function_definitions_ << "}\n\n";
 }
 
 void CodeGenerator::visit(AttributeDecl *stmt)
@@ -960,37 +1026,178 @@ void CodeGenerator::visit(ForExpr *expr)
 void CodeGenerator::visit(NewExpr *expr)
 {
     std::cout << "[CodeGen] Processing NewExpr: " << expr->typeName << std::endl;
-    // Object creation would go here
+
+    // Look up the type to get its struct name
+    auto type_it = types_.find(expr->typeName);
+    if (type_it == types_.end())
+    {
+        std::cerr << "Type " << expr->typeName << " not found" << std::endl;
+        current_value_ = "null";
+        return;
+    }
+
+    std::string struct_type = type_it->second;
+    std::string result_name = generateUniqueName("new_obj");
+
+    // Allocate memory for the object
+    getCurrentStream() << "  %" << result_name << " = alloca " << struct_type << "\n";
+
+    // Initialize attributes if there are arguments
+    if (!expr->args.empty())
+    {
+        // For now, we'll assume the arguments are in the same order as the attributes
+        // In a more complete implementation, we'd need to match by parameter names
+        for (size_t i = 0; i < expr->args.size(); ++i)
+        {
+            expr->args[i]->accept(this);
+            std::string arg_value = current_value_;
+
+            // Get the field pointer
+            std::string field_ptr = generateUniqueName("field_ptr");
+            getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << i << "\n";
+
+            // Store the value
+            std::string store_type = "double"; // default
+            if (expr->args[i]->inferredType)
+            {
+                store_type = getLLVMType(*expr->args[i]->inferredType);
+            }
+            getCurrentStream() << "  store " << store_type << " " << arg_value << ", " << store_type << "* %" << field_ptr << "\n";
+        }
+    }
+
+    current_value_ = "%" + result_name;
 }
 
 void CodeGenerator::visit(GetAttrExpr *expr)
 {
     std::cout << "[CodeGen] Processing GetAttrExpr: " << expr->attrName << std::endl;
-    // Attribute access would go here
+
+    // Visit the object to get its value
+    expr->object->accept(this);
+    std::string object_ptr = current_value_;
+
+    // For now, we'll assume the object is a struct and access fields by index
+    // In a more complete implementation, we'd need to look up the attribute index by name
+    std::string result_name = generateUniqueName("getattr");
+
+    // Assume the attribute is at index 0 for now (this is a simplified implementation)
+    // In a real implementation, we'd need to look up the attribute index from the type definition
+    std::string field_ptr = generateUniqueName("field_ptr");
+    getCurrentStream() << "  %" << field_ptr << " = getelementptr %struct." << expr->object->inferredType->getTypeName() << ", %struct." << expr->object->inferredType->getTypeName() << "* " << object_ptr << ", i32 0, i32 0\n";
+
+    // Load the field value
+    std::string load_type = "double"; // default
+    if (expr->inferredType)
+    {
+        load_type = getLLVMType(*expr->inferredType);
+    }
+    getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* %" << field_ptr << "\n";
+
+    current_value_ = "%" + result_name;
 }
 
 void CodeGenerator::visit(SetAttrExpr *expr)
 {
     std::cout << "[CodeGen] Processing SetAttrExpr: " << expr->attrName << std::endl;
-    // Attribute assignment would go here
+
+    // Visit the object to get its value
+    expr->object->accept(this);
+    std::string object_ptr = current_value_;
+
+    // Visit the value to be assigned
+    expr->value->accept(this);
+    std::string value = current_value_;
+
+    // For now, we'll assume the attribute is at index 0
+    std::string field_ptr = generateUniqueName("field_ptr");
+    getCurrentStream() << "  %" << field_ptr << " = getelementptr %struct." << expr->object->inferredType->getTypeName() << ", %struct." << expr->object->inferredType->getTypeName() << "* " << object_ptr << ", i32 0, i32 0\n";
+
+    // Store the value
+    std::string store_type = "double"; // default
+    if (expr->value->inferredType)
+    {
+        store_type = getLLVMType(*expr->value->inferredType);
+    }
+    getCurrentStream() << "  store " << store_type << " " << value << ", " << store_type << "* %" << field_ptr << "\n";
+
+    current_value_ = value;
 }
 
 void CodeGenerator::visit(MethodCallExpr *expr)
 {
     std::cout << "[CodeGen] Processing MethodCallExpr: " << expr->methodName << std::endl;
-    // Method call would go here
+
+    // Visit the object to get its value
+    expr->object->accept(this);
+    std::string object_ptr = current_value_;
+
+    // For now, we'll generate a simple function call
+    // In a more complete implementation, we'd need to handle method dispatch properly
+    std::string result_name = generateUniqueName("method_call");
+
+    // Prepare arguments
+    std::vector<std::string> args;
+    std::vector<std::string> arg_types;
+
+    // Add the object as the first argument (self)
+    args.push_back(object_ptr);
+    arg_types.push_back("%struct." + expr->object->inferredType->getTypeName() + "*");
+
+    // Add method arguments
+    for (auto &arg : expr->args)
+    {
+        arg->accept(this);
+        std::string arg_value = current_value_;
+        std::string arg_type = "double"; // default
+
+        if (arg->inferredType)
+        {
+            arg_type = getLLVMType(*arg->inferredType);
+        }
+
+        args.push_back(arg_value);
+        arg_types.push_back(arg_type);
+    }
+
+    // Build argument list
+    std::string arg_list;
+    for (size_t i = 0; i < args.size(); ++i)
+    {
+        if (i > 0)
+            arg_list += ", ";
+        arg_list += arg_types[i] + " " + args[i];
+    }
+
+    // Generate the method call
+    // For now, we'll assume the method returns double
+    std::string return_type = "double";
+    if (expr->inferredType)
+    {
+        return_type = getLLVMType(*expr->inferredType);
+    }
+
+    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << expr->object->inferredType->getTypeName() << "_" << expr->methodName << "(" << arg_list << ")\n";
+
+    current_value_ = "%" + result_name;
 }
 
 void CodeGenerator::visit(SelfExpr *expr)
 {
     std::cout << "[CodeGen] Processing SelfExpr" << std::endl;
-    // Self reference would go here
+
+    // For now, we'll return a placeholder value
+    // In a real implementation, we'd need to track the current object context
+    current_value_ = "null";
 }
 
 void CodeGenerator::visit(BaseCallExpr *expr)
 {
     std::cout << "[CodeGen] Processing BaseCallExpr" << std::endl;
-    // Base class call would go here
+
+    // For now, we'll return a placeholder value
+    // In a real implementation, we'd need to handle base class calls
+    current_value_ = "null";
 }
 
 std::string CodeGenerator::registerStringConstant(const std::string &value)

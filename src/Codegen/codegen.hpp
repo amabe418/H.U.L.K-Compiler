@@ -33,6 +33,9 @@ private:
     // Current function being generated
     std::string current_function_;
 
+    // Current type being generated
+    std::string current_type_;
+
     // Current return value for expressions
     std::string current_value_;
 
