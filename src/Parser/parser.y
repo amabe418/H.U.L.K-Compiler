@@ -494,10 +494,7 @@ expr:
         $$ = new AssignExpr(std::string($1), ExprPtr($3));
         free($1);
     }
-  | expr IS IDENT {
-        $$ = new IsExpr(ExprPtr($1), std::string($3));
-        free($3);
-    }
+  
 ;
 
 
