@@ -36,17 +36,34 @@ void SemanticAnalyzer::registerBuiltinFunctions()
 
 void SemanticAnalyzer::collectFunctions(Program *program)
 {
+    std::cout << "[DEBUG] Collecting and declaring all functions with Unknown types" << std::endl;
+
     for (auto &stmt : program->stmts)
     {
         if (auto funcDecl = dynamic_cast<FunctionDecl *>(stmt.get()))
         {
+            std::cout << "[DEBUG] Declaring function: " << funcDecl->name << " with Unknown types" << std::endl;
+
+            // Check for redefinition
             if (symbol_table_.isFunctionDeclared(funcDecl->name))
             {
                 error_manager_.reportError(ErrorType::REDEFINED_FUNCTION,
                                            "Función '" + funcDecl->name + "' ya está definida",
                                            funcDecl->line_number, funcDecl->column_number,
                                            "declaración de función", "SemanticAnalyzer");
+                continue;
             }
+
+            // Create parameter types vector with Unknown types
+            std::vector<TypeInfo> paramTypes;
+            for (size_t i = 0; i < funcDecl->params.size(); ++i)
+            {
+                paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
+            }
+
+            // Declare function with Unknown return type
+            symbol_table_.declareFunction(funcDecl->name, paramTypes, TypeInfo(TypeInfo::Kind::Unknown));
+            std::cout << "[DEBUG] Function " << funcDecl->name << " declared with Unknown types" << std::endl;
         }
         else if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
         {
@@ -492,6 +509,15 @@ void SemanticAnalyzer::visit(BinaryExpr *expr)
 void SemanticAnalyzer::visit(CallExpr *expr)
 {
     std::cout << "[DEBUG] Visiting CallExpr: " << expr->callee << std::endl;
+
+    // Special handling for print() without arguments
+    if (expr->callee == "print" && expr->args.empty())
+    {
+        std::cout << "[DEBUG] print() called without arguments, using default newline" << std::endl;
+        // Create a default string expression with newline
+        auto defaultArg = std::make_unique<StringExpr>("\n");
+        expr->args.push_back(std::move(defaultArg));
+    }
 
     // Check if function exists
     auto funcInfo = symbol_table_.lookupFunction(expr->callee);
@@ -951,15 +977,16 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
     // Exit function scope
     symbol_table_.exitScope();
 
-    // Add function to symbol table with updated types
+    // Update function signature in symbol table with inferred types
     std::vector<TypeInfo> paramTypes;
     for (const auto &type : stmt->paramTypes)
     {
         paramTypes.push_back(*type);
     }
-    std::cout << "DEBUG: Declaring function with " << paramTypes.size() << " parameters" << std::endl;
+    std::cout << "DEBUG: Updating function signature with " << paramTypes.size() << " parameters" << std::endl;
 
-    symbol_table_.declareFunction(stmt->name, paramTypes, *stmt->returnType);
+    // Remove the old function declaration and add the new one with updated types
+    symbol_table_.updateFunctionSignature(stmt->name, paramTypes, *stmt->returnType);
 
     // Look up the function in symbol table and print its types
     auto funcInfo = symbol_table_.lookupFunction(stmt->name);
