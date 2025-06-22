@@ -481,24 +481,81 @@ void CodeGenerator::visit(MethodDecl *stmt)
     function_definitions_ << "define " << return_type << " @" << function_name << "(" << param_list << ") {\n";
     function_definitions_ << "entry:\n";
 
-    // For now, generate a simple return statement based on method name
-    // In a real implementation, we'd need to process the method body
+    // Enter a new scope for the method
+    enterScope();
 
-    // Default return value based on return type
-    if (return_type == "i8*")
+    // Register parameters in the current scope
+    for (size_t i = 0; i < stmt->params.size(); ++i)
     {
-        function_definitions_ << "  ret i8* null\n";
+        std::string param_var = generateUniqueName("param");
+        function_definitions_ << "  %" << param_var << " = alloca double\n";
+        function_definitions_ << "  store double %" << stmt->params[i] << ", double* %" << param_var << "\n";
+        current_scope_->variables[stmt->params[i]] = param_var;
     }
-    else if (return_type == "i1")
+
+    // Process the method body
+    if (stmt->body)
     {
-        function_definitions_ << "  ret i1 false\n";
+        // Switch to function_definitions_ stream for method body
+        std::stringstream old_stream;
+        old_stream << ir_code_.str();
+        ir_code_.str("");
+        ir_code_.clear();
+
+        stmt->body->accept(this);
+        std::string body_code = ir_code_.str();
+
+        // Restore the main stream
+        ir_code_.str("");
+        ir_code_.clear();
+        ir_code_ << old_stream.str();
+
+        // Add the body code to function_definitions_
+        function_definitions_ << body_code;
+
+        // Add return statement based on the last value
+        if (!current_value_.empty())
+        {
+            function_definitions_ << "  ret " << return_type << " " << current_value_ << "\n";
+        }
+        else
+        {
+            // Default return value based on return type
+            if (return_type == "i8*")
+            {
+                function_definitions_ << "  ret i8* null\n";
+            }
+            else if (return_type == "i1")
+            {
+                function_definitions_ << "  ret i1 false\n";
+            }
+            else
+            {
+                function_definitions_ << "  ret double 0.0\n";
+            }
+        }
     }
     else
     {
-        function_definitions_ << "  ret double 0.0\n";
+        // Default return value based on return type
+        if (return_type == "i8*")
+        {
+            function_definitions_ << "  ret i8* null\n";
+        }
+        else if (return_type == "i1")
+        {
+            function_definitions_ << "  ret i1 false\n";
+        }
+        else
+        {
+            function_definitions_ << "  ret double 0.0\n";
+        }
     }
 
     function_definitions_ << "}\n\n";
+
+    // Exit the method scope
+    exitScope();
 
     // Register the function for future use
     functions_[function_name] = return_type;
@@ -1245,7 +1302,7 @@ void CodeGenerator::visit(GetAttrExpr *expr)
     std::cout << "[CodeGen] Loading attribute " << expr->attrName << " at index " << attr_index
               << " with LLVM type: " << load_type << std::endl;
 
-    getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* " << field_ptr << "\n";
+    getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* %" << field_ptr << "\n";
 
     current_value_ = "%" + result_name;
 }
@@ -1376,9 +1433,9 @@ void CodeGenerator::visit(SelfExpr *expr)
 {
     std::cout << "[CodeGen] Processing SelfExpr" << std::endl;
 
-    // For now, we'll return a placeholder value
-    // In a real implementation, we'd need to track the current object context
-    current_value_ = "null";
+    // In a method context, self is the first parameter
+    // We need to return the self pointer that was passed to the method
+    current_value_ = "%self";
 }
 
 void CodeGenerator::visit(BaseCallExpr *expr)
