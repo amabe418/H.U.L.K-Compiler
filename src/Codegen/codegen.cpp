@@ -38,6 +38,7 @@ void CodeGenerator::registerBuiltinFunctions()
     ir_code_ << "declare double @tan(double)\n";
     ir_code_ << "declare double @exp(double)\n";
     ir_code_ << "declare double @log(double)\n";
+    ir_code_ << "declare double @pow(double, double)\n";
     ir_code_ << "declare i32 @rand()\n";
     ir_code_ << "declare i32 @printf(i8*, ...)\n";
     ir_code_ << "declare i32 @sprintf(i8*, i8*, ...)\n";
@@ -320,6 +321,24 @@ void CodeGenerator::registerBuiltinFunctions()
     ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     ir_code_ << "  %result = fdiv double %left_num, %right_num\n";
+    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
+    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
+    ir_code_ << "}\n\n";
+    
+    ir_code_ << "define %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    ir_code_ << "entry:\n";
+    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
+    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
+    ir_code_ << "  %result = frem double %left_num, %right_num\n";
+    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
+    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
+    ir_code_ << "}\n\n";
+    
+    ir_code_ << "define %struct.BoxedValue* @boxedPower(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    ir_code_ << "entry:\n";
+    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
+    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
+    ir_code_ << "  %result = call double @pow(double %left_num, double %right_num)\n";
     ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
     ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
     ir_code_ << "}\n\n";
@@ -1325,6 +1344,12 @@ void CodeGenerator::visit(BinaryExpr *expr)
     case BinaryExpr::OP_CONCAT_WS:
         operation = "concat_ws";
         break;
+    case BinaryExpr::OP_MOD:
+        operation = "mod";
+        break;
+    case BinaryExpr::OP_POW:
+        operation = "pow";
+        break;
     default:
         std::cerr << "Unsupported binary operator" << std::endl;
         current_value_ = left;
@@ -2225,6 +2250,12 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
             } else if (operation == "div" && left_type.getKind() == TypeInfo::Kind::Number) {
                 getCurrentStream() << "  %" << result_name << " = fdiv double " << left << ", " << right << "\n";
                 return "%" + result_name;
+            } else if (operation == "mod" && left_type.getKind() == TypeInfo::Kind::Number) {
+                getCurrentStream() << "  %" << result_name << " = frem double " << left << ", " << right << "\n";
+                return "%" + result_name;
+            } else if (operation == "pow" && left_type.getKind() == TypeInfo::Kind::Number) {
+                getCurrentStream() << "  %" << result_name << " = call double @pow(double " << left << ", double " << right << ")\n";
+                return "%" + result_name;
             } else if (operation == "eq" && left_type.getKind() == TypeInfo::Kind::Number) {
                 getCurrentStream() << "  %" << result_name << " = fcmp ueq double " << left << ", " << right << "\n";
                 return "%" + result_name;
@@ -2277,6 +2308,10 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
         getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedMultiply(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     } else if (operation == "div") {
         getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedDivide(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    } else if (operation == "mod") {
+        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    } else if (operation == "pow") {
+        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedPower(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     } else if (operation == "eq") {
         getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     } else if (operation == "neq") {

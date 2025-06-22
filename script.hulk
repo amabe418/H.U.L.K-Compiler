@@ -274,6 +274,9 @@
 //print(3*2);
 //print(3/2);
 //print(2-3);
+//print(2^3);
+//print(8%2);
+
 //print("Hello, " @ "World!");
 //print("Probando declaracion de variables e impresion de valores");
 //let a = 2, b = 3, c = 4, d = 5 in {
