@@ -267,15 +267,14 @@
 //// [CODEGEN TESTS]
 //
 //print("Hello, World!");
-print(true);
-print(false);
+//print(true);
+//print(false);
 //print(3+2);
 //print(3-2);
 //print(3*2);
 //print(3/2);
 //print(2-3);
 //print("Hello, " @ "World!");
-print(true@"false");
 //print("Probando declaracion de variables e impresion de valores");
 //let a = 2, b = 3, c = 4, d = 5 in {
 //    print("hello, world");
@@ -341,7 +340,7 @@ print(true@"false");
 //print("false" @ true);
 //print("Hola " @ "Mundo");
 //print("4"@2);
-//
+
 //function concat(x,y) => x @ y;
 //print(concat("Hola, ", "Mundo!"));
 //

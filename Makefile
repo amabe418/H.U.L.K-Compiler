@@ -69,4 +69,6 @@ debug: compile
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR) \
 	       $(PARSER_CPP) $(PARSER_HPP) \
-	       $(LEXER_CPP)
+	       $(LEXER_CPP) \
+		   script.hulk.ll
+
