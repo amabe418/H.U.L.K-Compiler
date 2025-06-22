@@ -87,16 +87,16 @@ int main(int argc, char **argv)
     codegen.generateCode(rootAST);
 
     // Print generated IR
-    std::cout << "\nGenerated LLVM IR:" << std::endl;
-    codegen.printIR();
+    // std::cout << "\nGenerated LLVM IR:" << std::endl;
+    // codegen.printIR();
 
     // Write IR to file
     std::string output_file = std::string(argv[1]) + ".ll";
     codegen.writeIRToFile(output_file);
-    std::cout << "\nLLVM IR written to: " << output_file << std::endl;
+    // std::cout << "\nLLVM IR written to: " << output_file << std::endl;
 
-    std::cout << "\n=== End of LLVM Code Generation ===\n"
-              << std::endl;
+    // std::cout << "\n=== End of LLVM Code Generation ===\n"
+    //           << std::endl;
 
     // Evaluate the program
     std::cout << "\n=== Program Evaluation ===\n"

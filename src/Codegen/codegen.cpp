@@ -151,10 +151,35 @@ std::string CodeGenerator::getLLVMType(const TypeInfo &type)
     case TypeInfo::Kind::Void:
         return "double"; // Don't use void for variables
     case TypeInfo::Kind::Object:
-        return "i8*"; // For now, treat objects as opaque pointers
+        // Check if we have a registered type for this object
+        if (!type.getTypeName().empty() && types_.find(type.getTypeName()) != types_.end())
+        {
+            return types_[type.getTypeName()] + "*"; // Return pointer to the struct type
+        }
+        return "i8*"; // Fallback to opaque pointer for unknown object types
+    case TypeInfo::Kind::Unknown:
+        return "i8*"; // Generic type for unknown types
     default:
-        return "double"; // Default to double
+        return "i8*"; // Default to generic pointer for safety
     }
+}
+
+std::string CodeGenerator::getAttributeLLVMType(const std::string &typeName, const std::string &attrName)
+{
+    // Look up the attribute type in our mapping
+    auto type_it = attribute_types_.find(typeName);
+    if (type_it != attribute_types_.end())
+    {
+        auto attr_it = type_it->second.find(attrName);
+        if (attr_it != type_it->second.end())
+        {
+            return attr_it->second;
+        }
+    }
+
+    // Fallback to generic type if not found
+    std::cout << "[CodeGen] Warning: Attribute type not found for " << typeName << "." << attrName << ", using i8*" << std::endl;
+    return "i8*";
 }
 
 std::string CodeGenerator::createConstant(const TypeInfo &type, const std::string &value)
@@ -345,33 +370,77 @@ void CodeGenerator::visit(TypeDecl *stmt)
     // Set current type for method generation
     current_type_ = stmt->name;
 
-    // For now, we'll create a simple struct type
+    // Create struct type name
     std::string struct_name = "%struct." + stmt->name;
 
     // Write type declaration to global scope (before main function)
     global_constants_ << struct_name << " = type { ";
 
+    // Process attributes and determine their LLVM types
+    std::vector<std::string> attribute_types;
+    std::unordered_map<std::string, std::string> type_attr_map;
+    std::vector<std::string> param_to_attr_mapping;
+    std::unordered_map<std::string, int> attr_index_map;
+
+    // Create mapping from parameters to attributes
+    // In H.U.L.K, parameters are assigned to attributes in the same order
+    // e.g., type Point(x,y) { x = x; y = y; }
     for (size_t i = 0; i < stmt->attributes.size(); ++i)
     {
-        if (i > 0)
-            global_constants_ << ", ";
+        std::string attr_name = stmt->attributes[i]->name;
+        std::string param_name = (i < stmt->params.size()) ? stmt->params[i] : "";
+
+        std::string attr_type = "i8*"; // default to generic type
 
         // Use the inferred type of the attribute if available
-        std::string attr_type = "double"; // default
         if (stmt->attributes[i]->inferredType)
         {
             attr_type = getLLVMType(*stmt->attributes[i]->inferredType);
+            std::cout << "[CodeGen] Attribute " << attr_name << " has type: " << stmt->attributes[i]->inferredType->toString()
+                      << " -> LLVM type: " << attr_type << std::endl;
         }
-        global_constants_ << attr_type;
+        else
+        {
+            std::cout << "[CodeGen] Warning: Attribute " << attr_name << " has no inferred type, using i8*" << std::endl;
+        }
+
+        attribute_types.push_back(attr_type);
+        type_attr_map[attr_name] = attr_type;
+        param_to_attr_mapping.push_back(attr_name);
+        attr_index_map[attr_name] = i; // Store the index for direct access
+
+        if (!param_name.empty())
+        {
+            std::cout << "[CodeGen] Parameter " << param_name << " maps to attribute " << attr_name << " at position " << i << std::endl;
+        }
     }
 
+    // Build the struct definition
+    for (size_t i = 0; i < attribute_types.size(); ++i)
+    {
+        if (i > 0)
+            global_constants_ << ", ";
+        global_constants_ << attribute_types[i];
+    }
+
+    // If no attributes, add a dummy field to avoid empty struct
     if (stmt->attributes.empty())
     {
         global_constants_ << "i8"; // Empty struct needs at least one field
     }
 
     global_constants_ << " }\n";
+
+    // Register the type, its attribute types, and parameter mapping for future use
     types_[stmt->name] = struct_name;
+    attribute_types_[stmt->name] = type_attr_map;
+    parameter_to_attribute_mappings_[stmt->name] = param_to_attr_mapping;
+    attribute_indices_[stmt->name] = attr_index_map;
+    type_declarations_[stmt->name] = stmt; // Store the type declaration for access to initializers
+
+    std::cout << "[CodeGen] Created struct type: " << struct_name << " for type " << stmt->name << std::endl;
+    std::cout << "[CodeGen] Registered " << type_attr_map.size() << " attributes for type " << stmt->name << std::endl;
+    std::cout << "[CodeGen] Parameter mapping: " << param_to_attr_mapping.size() << " parameters mapped to attributes" << std::endl;
 
     // Process methods after the type is declared
     for (const auto &method : stmt->methods)
@@ -392,46 +461,47 @@ void CodeGenerator::visit(MethodDecl *stmt)
     if (stmt->inferredType)
     {
         return_type = getLLVMType(*stmt->inferredType);
+        std::cout << "[CodeGen] Method " << stmt->name << " return type: " << stmt->inferredType->toString()
+                  << " -> LLVM type: " << return_type << std::endl;
     }
 
     // Build parameter list starting with self
-    // Use the current type being processed
     std::string type_name = current_type_;
     std::string param_list = "%struct." + type_name + "* %self";
 
-    // Add method parameters
+    // Add method parameters - for now assume all params are double
+    // In a more sophisticated implementation, we'd track parameter types
     for (size_t i = 0; i < stmt->params.size(); ++i)
     {
-        param_list += ", double %" + stmt->params[i]; // For now, assume all params are double
+        param_list += ", double %" + stmt->params[i];
     }
 
     // Generate function definition
-    function_definitions_ << "define " << return_type << " @" << type_name << "_" << stmt->name << "(" << param_list << ") {\n";
+    std::string function_name = type_name + "_" + stmt->name;
+    function_definitions_ << "define " << return_type << " @" << function_name << "(" << param_list << ") {\n";
     function_definitions_ << "entry:\n";
 
     // For now, generate a simple return statement based on method name
     // In a real implementation, we'd need to process the method body
-    if (stmt->name == "getBrand")
+
+    // Default return value based on return type
+    if (return_type == "i8*")
     {
-        // For getBrand method, return the brand attribute (second field, index 1)
-        function_definitions_ << "  %field_ptr = getelementptr %struct." << type_name << ", %struct." << type_name << "* %self, i32 0, i32 1\n";
-        function_definitions_ << "  %brand = load i8*, i8** %field_ptr\n";
-        function_definitions_ << "  ret i8* %brand\n";
+        function_definitions_ << "  ret i8* null\n";
+    }
+    else if (return_type == "i1")
+    {
+        function_definitions_ << "  ret i1 false\n";
     }
     else
     {
-        // Default return value
-        if (return_type == "i8*")
-        {
-            function_definitions_ << "  ret i8* null\n";
-        }
-        else
-        {
-            function_definitions_ << "  ret double 0.0\n";
-        }
+        function_definitions_ << "  ret double 0.0\n";
     }
 
     function_definitions_ << "}\n\n";
+
+    // Register the function for future use
+    functions_[function_name] = return_type;
 }
 
 void CodeGenerator::visit(AttributeDecl *stmt)
@@ -627,10 +697,14 @@ void CodeGenerator::visit(CallExpr *expr)
                 break;
             }
             case TypeInfo::Kind::Number:
-            default:
             {
                 // Default: treat as double
                 getCurrentStream() << "  %" << result_name << " = call double @print_double(double " << arg_value << ")\n";
+                break;
+            }
+            default:
+            {
+                getCurrentStream() << "  %" << result_name << " = call double @print_string(i8* " << arg_value << ")\n";
                 break;
             }
             }
@@ -1031,7 +1105,7 @@ void CodeGenerator::visit(NewExpr *expr)
     auto type_it = types_.find(expr->typeName);
     if (type_it == types_.end())
     {
-        std::cerr << "Type " << expr->typeName << " not found" << std::endl;
+        std::cerr << "[CodeGen] Error: Type " << expr->typeName << " not found in types map" << std::endl;
         current_value_ = "null";
         return;
     }
@@ -1042,28 +1116,74 @@ void CodeGenerator::visit(NewExpr *expr)
     // Allocate memory for the object
     getCurrentStream() << "  %" << result_name << " = alloca " << struct_type << "\n";
 
-    // Initialize attributes if there are arguments
-    if (!expr->args.empty())
+    // Get the type declaration to access attribute initializers
+    auto type_decl_it = type_declarations_.find(expr->typeName);
+    auto attr_types_it = attribute_types_.find(expr->typeName);
+
+    if (type_decl_it != type_declarations_.end() &&
+        attr_types_it != attribute_types_.end())
     {
-        // For now, we'll assume the arguments are in the same order as the attributes
-        // In a more complete implementation, we'd need to match by parameter names
+        TypeDecl *type_decl = type_decl_it->second;
+        const auto &attr_types = attr_types_it->second;
+
+        std::cout << "[CodeGen] Initializing object with " << expr->args.size() << " constructor arguments" << std::endl;
+
+        // Enter a new scope for constructor parameters
+        enterScope();
+
+        // Process constructor arguments and store them as local variables
+        // These will be available as parameters in the attribute initializers
         for (size_t i = 0; i < expr->args.size(); ++i)
         {
             expr->args[i]->accept(this);
             std::string arg_value = current_value_;
 
+            // Store parameter as local variable
+            std::string param_var = generateUniqueName("param");
+
+            // Get the parameter type from the type system
+            std::string param_type = getLLVMType(*expr->args[i]->inferredType);
+
+            getCurrentStream() << "  %" << param_var << " = alloca " << param_type << "\n";
+            getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "\n";
+
+            // Register parameter in current scope
+            if (i < type_decl->params.size())
+            {
+                current_scope_->variables[type_decl->params[i]] = param_var;
+                std::cout << "[CodeGen] Registered parameter " << type_decl->params[i] << " as " << param_var << " (type: " << param_type << ")" << std::endl;
+            }
+        }
+
+        // Initialize attributes by evaluating their initializers
+        // Each attribute's initializer is evaluated in the context where parameters are available
+        for (size_t attr_index = 0; attr_index < type_decl->attributes.size(); ++attr_index)
+        {
+            const auto &attr = type_decl->attributes[attr_index];
+            std::string attr_name = attr->name;
+            std::string store_type = attr_types.at(attr_name);
+
             // Get the field pointer
             std::string field_ptr = generateUniqueName("field_ptr");
-            getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << i << "\n";
+            getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << attr_index << "\n";
 
-            // Store the value
-            std::string store_type = "double"; // default
-            if (expr->args[i]->inferredType)
-            {
-                store_type = getLLVMType(*expr->args[i]->inferredType);
-            }
-            getCurrentStream() << "  store " << store_type << " " << arg_value << ", " << store_type << "* %" << field_ptr << "\n";
+            // Evaluate the attribute initializer
+            // This will use the parameters we just registered in the scope
+            attr->initializer->accept(this);
+            std::string init_value = current_value_;
+
+            std::cout << "[CodeGen] Initializing attribute " << attr_name << " at index " << attr_index
+                      << " with value " << init_value << " (LLVM type: " << store_type << ")" << std::endl;
+
+            getCurrentStream() << "  store " << store_type << " " << init_value << ", " << store_type << "* %" << field_ptr << "\n";
         }
+
+        // Exit the constructor scope
+        exitScope();
+    }
+    else
+    {
+        std::cout << "[CodeGen] Warning: No type information found for " << expr->typeName << ", leaving attributes uninitialized" << std::endl;
     }
 
     current_value_ = "%" + result_name;
@@ -1077,22 +1197,55 @@ void CodeGenerator::visit(GetAttrExpr *expr)
     expr->object->accept(this);
     std::string object_ptr = current_value_;
 
-    // For now, we'll assume the object is a struct and access fields by index
-    // In a more complete implementation, we'd need to look up the attribute index by name
+    // Get the object type
+    std::string object_type_name = "Object"; // default
+    if (expr->object->inferredType && !expr->object->inferredType->getTypeName().empty())
+    {
+        object_type_name = expr->object->inferredType->getTypeName();
+    }
+
+    // Look up the struct type
+    auto type_it = types_.find(object_type_name);
+    if (type_it == types_.end())
+    {
+        std::cerr << "[CodeGen] Error: Type " << object_type_name << " not found for attribute access" << std::endl;
+        current_value_ = "null";
+        return;
+    }
+
+    std::string struct_type = type_it->second;
     std::string result_name = generateUniqueName("getattr");
 
-    // Assume the attribute is at index 0 for now (this is a simplified implementation)
-    // In a real implementation, we'd need to look up the attribute index from the type definition
-    std::string field_ptr = generateUniqueName("field_ptr");
-    getCurrentStream() << "  %" << field_ptr << " = getelementptr %struct." << expr->object->inferredType->getTypeName() << ", %struct." << expr->object->inferredType->getTypeName() << "* " << object_ptr << ", i32 0, i32 0\n";
+    // Get the attribute type from our mapping
+    std::string load_type = getAttributeLLVMType(object_type_name, expr->attrName);
 
-    // Load the field value
-    std::string load_type = "double"; // default
-    if (expr->inferredType)
+    // Find the attribute index using our direct mapping
+    int attr_index = 0; // default
+    auto attr_indices_it = attribute_indices_.find(object_type_name);
+    if (attr_indices_it != attribute_indices_.end())
     {
-        load_type = getLLVMType(*expr->inferredType);
+        auto index_it = attr_indices_it->second.find(expr->attrName);
+        if (index_it != attr_indices_it->second.end())
+        {
+            attr_index = index_it->second;
+        }
+        else
+        {
+            std::cout << "[CodeGen] Warning: Attribute " << expr->attrName << " not found in type " << object_type_name << ", using index 0" << std::endl;
+        }
     }
-    getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* %" << field_ptr << "\n";
+    else
+    {
+        std::cout << "[CodeGen] Warning: No attribute indices found for type " << object_type_name << ", using index 0" << std::endl;
+    }
+
+    std::string field_ptr = generateUniqueName("field_ptr");
+    getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* " << object_ptr << ", i32 0, i32 " << attr_index << "\n";
+
+    std::cout << "[CodeGen] Loading attribute " << expr->attrName << " at index " << attr_index
+              << " with LLVM type: " << load_type << std::endl;
+
+    getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* " << field_ptr << "\n";
 
     current_value_ = "%" + result_name;
 }
@@ -1109,16 +1262,53 @@ void CodeGenerator::visit(SetAttrExpr *expr)
     expr->value->accept(this);
     std::string value = current_value_;
 
-    // For now, we'll assume the attribute is at index 0
-    std::string field_ptr = generateUniqueName("field_ptr");
-    getCurrentStream() << "  %" << field_ptr << " = getelementptr %struct." << expr->object->inferredType->getTypeName() << ", %struct." << expr->object->inferredType->getTypeName() << "* " << object_ptr << ", i32 0, i32 0\n";
-
-    // Store the value
-    std::string store_type = "double"; // default
-    if (expr->value->inferredType)
+    // Get the object type
+    std::string object_type_name = "Object"; // default
+    if (expr->object->inferredType && !expr->object->inferredType->getTypeName().empty())
     {
-        store_type = getLLVMType(*expr->value->inferredType);
+        object_type_name = expr->object->inferredType->getTypeName();
     }
+
+    // Look up the struct type
+    auto type_it = types_.find(object_type_name);
+    if (type_it == types_.end())
+    {
+        std::cerr << "[CodeGen] Error: Type " << object_type_name << " not found for attribute assignment" << std::endl;
+        current_value_ = "null";
+        return;
+    }
+
+    std::string struct_type = type_it->second;
+
+    // Get the attribute type from our mapping
+    std::string store_type = getAttributeLLVMType(object_type_name, expr->attrName);
+
+    // Find the attribute index using our direct mapping
+    int attr_index = 0; // default
+    auto attr_indices_it = attribute_indices_.find(object_type_name);
+    if (attr_indices_it != attribute_indices_.end())
+    {
+        auto index_it = attr_indices_it->second.find(expr->attrName);
+        if (index_it != attr_indices_it->second.end())
+        {
+            attr_index = index_it->second;
+        }
+        else
+        {
+            std::cout << "[CodeGen] Warning: Attribute " << expr->attrName << " not found in type " << object_type_name << ", using index 0" << std::endl;
+        }
+    }
+    else
+    {
+        std::cout << "[CodeGen] Warning: No attribute indices found for type " << object_type_name << ", using index 0" << std::endl;
+    }
+
+    std::string field_ptr = generateUniqueName("field_ptr");
+    getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* " << object_ptr << ", i32 0, i32 " << attr_index << "\n";
+
+    std::cout << "[CodeGen] Setting attribute " << expr->attrName << " at index " << attr_index
+              << " with LLVM type: " << store_type << std::endl;
+
     getCurrentStream() << "  store " << store_type << " " << value << ", " << store_type << "* %" << field_ptr << "\n";
 
     current_value_ = value;

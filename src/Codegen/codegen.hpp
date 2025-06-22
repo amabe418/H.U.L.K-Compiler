@@ -30,6 +30,18 @@ private:
     // Type declarations
     std::unordered_map<std::string, std::string> types_;
 
+    // Attribute type mappings for each type
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> attribute_types_;
+
+    // Parameter to attribute mappings for each type
+    std::unordered_map<std::string, std::vector<std::string>> parameter_to_attribute_mappings_;
+
+    // Attribute name to index mappings for each type
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> attribute_indices_;
+
+    // Type declarations for accessing attribute initializers
+    std::unordered_map<std::string, TypeDecl *> type_declarations_;
+
     // Current function being generated
     std::string current_function_;
 
@@ -61,6 +73,7 @@ private:
     // Helper methods
     std::string generateUniqueName(const std::string &base);
     std::string getLLVMType(const TypeInfo &type);
+    std::string getAttributeLLVMType(const std::string &typeName, const std::string &attrName);
     std::string createConstant(const TypeInfo &type, const std::string &value);
     void enterScope();
     void exitScope();

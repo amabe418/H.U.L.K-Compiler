@@ -337,10 +337,10 @@
 //
 //print("Probando tipos");
 
-type Car(brand){
-    wheels = 4;
-    brand = brand;
-    getBrand() => self.brand;
-};
+// type Car(brand){
+//     wheels = 4;
+//     brand = brand;
+//     getBrand() => self.brand;
+// };
 
-let a = new Car("Mercedes") in print(a.getBrand());
+// let a = new Car("Mercedes") in print(a.getBrand());
