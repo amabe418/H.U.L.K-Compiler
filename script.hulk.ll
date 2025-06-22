@@ -501,25 +501,7 @@ entry:
   %true_str = getelementptr [5 x i8], [5 x i8]* @.str_true, i32 0, i32 0
   %false_str = getelementptr [6 x i8], [6 x i8]* @.str_false, i32 0, i32 0
   %str_to_copy = select i1 %value, i8* %true_str, i8* %false_str
-  ; Copy the string manually to avoid sprintf issues
-  %char1 = load i8, i8* %str_to_copy
-  store i8 %char1, i8* %buffer
-  %str_to_copy_1 = getelementptr i8, i8* %str_to_copy, i32 1
-  %buffer_1 = getelementptr i8, i8* %buffer, i32 1
-  %char2 = load i8, i8* %str_to_copy_1
-  store i8 %char2, i8* %buffer_1
-  %str_to_copy_2 = getelementptr i8, i8* %str_to_copy, i32 2
-  %buffer_2 = getelementptr i8, i8* %buffer, i32 2
-  %char3 = load i8, i8* %str_to_copy_2
-  store i8 %char3, i8* %buffer_2
-  %str_to_copy_3 = getelementptr i8, i8* %str_to_copy, i32 3
-  %buffer_3 = getelementptr i8, i8* %buffer, i32 3
-  %char4 = load i8, i8* %str_to_copy_3
-  store i8 %char4, i8* %buffer_3
-  %str_to_copy_4 = getelementptr i8, i8* %str_to_copy, i32 4
-  %buffer_4 = getelementptr i8, i8* %buffer, i32 4
-  %char5 = load i8, i8* %str_to_copy_4
-  store i8 %char5, i8* %buffer_4
+  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %str_to_copy)
   ret i8* %buffer
 }
 
