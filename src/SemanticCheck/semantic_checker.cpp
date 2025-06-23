@@ -36,27 +36,45 @@ void SemanticAnalyzer::registerBuiltinFunctions()
 
 void SemanticAnalyzer::collectFunctions(Program *program)
 {
+    std::cout << "[DEBUG] Collecting and declaring all functions with Unknown types" << std::endl;
+
     for (auto &stmt : program->stmts)
     {
         if (auto funcDecl = dynamic_cast<FunctionDecl *>(stmt.get()))
         {
+            std::cout << "[DEBUG] Declaring function: " << funcDecl->name << " with Unknown types" << std::endl;
+
+            // Check for redefinition
             if (symbol_table_.isFunctionDeclared(funcDecl->name))
             {
                 error_manager_.reportError(ErrorType::REDEFINED_FUNCTION,
                                            "Función '" + funcDecl->name + "' ya está definida",
                                            funcDecl->line_number, funcDecl->column_number,
                                            "declaración de función", "SemanticAnalyzer");
+                continue;
             }
+
+            // Create parameter types vector with Unknown types
+            std::vector<TypeInfo> paramTypes;
+            for (size_t i = 0; i < funcDecl->params.size(); ++i)
+            {
+                paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
+            }
+
+            // Declare function with Unknown return type
+            symbol_table_.declareFunction(funcDecl->name, paramTypes, TypeInfo(TypeInfo::Kind::Unknown));
+            std::cout << "[DEBUG] Function " << funcDecl->name << " declared with Unknown types" << std::endl;
         }
         else if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
         {
-            if (symbol_table_.isTypeDeclared(typeDecl->name))
-            {
-                error_manager_.reportError(ErrorType::REDEFINED_TYPE,
-                                           "Tipo '" + typeDecl->name + "' ya está definido",
-                                           typeDecl->line_number, typeDecl->column_number,
-                                           "declaración de tipo", "SemanticAnalyzer");
-            }
+            // Comment out this check temporarily to see if it's causing the issue
+            // if (symbol_table_.isTypeDeclared(typeDecl->name))
+            // {
+            //     error_manager_.reportError(ErrorType::REDEFINED_TYPE,
+            //                                "Tipo '" + typeDecl->name + "' ya está definido",
+            //                                typeDecl->line_number, typeDecl->column_number,
+            //                                "declaración de tipo", "SemanticAnalyzer");
+            // }
         }
     }
 }
@@ -492,6 +510,15 @@ void SemanticAnalyzer::visit(BinaryExpr *expr)
 void SemanticAnalyzer::visit(CallExpr *expr)
 {
     std::cout << "[DEBUG] Visiting CallExpr: " << expr->callee << std::endl;
+
+    // Special handling for print() without arguments
+    if (expr->callee == "print" && expr->args.empty())
+    {
+        std::cout << "[DEBUG] print() called without arguments, using default newline" << std::endl;
+        // Create a default string expression with newline
+        auto defaultArg = std::make_unique<StringExpr>("\n");
+        expr->args.push_back(std::move(defaultArg));
+    }
 
     // Check if function exists
     auto funcInfo = symbol_table_.lookupFunction(expr->callee);
@@ -951,15 +978,16 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
     // Exit function scope
     symbol_table_.exitScope();
 
-    // Add function to symbol table with updated types
+    // Update function signature in symbol table with inferred types
     std::vector<TypeInfo> paramTypes;
     for (const auto &type : stmt->paramTypes)
     {
         paramTypes.push_back(*type);
     }
-    std::cout << "DEBUG: Declaring function with " << paramTypes.size() << " parameters" << std::endl;
+    std::cout << "DEBUG: Updating function signature with " << paramTypes.size() << " parameters" << std::endl;
 
-    symbol_table_.declareFunction(stmt->name, paramTypes, *stmt->returnType);
+    // Remove the old function declaration and add the new one with updated types
+    symbol_table_.updateFunctionSignature(stmt->name, paramTypes, *stmt->returnType);
 
     // Look up the function in symbol table and print its types
     auto funcInfo = symbol_table_.lookupFunction(stmt->name);
@@ -1032,13 +1060,16 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
     }
 
     // Check if type is already declared
+    std::cout << "[DEBUG] Checking if type '" << stmt->name << "' is already declared" << std::endl;
     if (symbol_table_.isTypeDeclared(stmt->name))
     {
+        std::cout << "[DEBUG] Type '" << stmt->name << "' is already declared!" << std::endl;
         reportError(ErrorType::REDEFINED_TYPE,
                     "Type '" + stmt->name + "' ya está definido",
                     stmt, "declaración de tipo");
         return;
     }
+    std::cout << "[DEBUG] Type '" << stmt->name << "' is not declared yet, proceeding with declaration" << std::endl;
 
     // Declare the type first
     if (!symbol_table_.declareType(stmt->name, stmt->baseType, stmt->line_number))
@@ -1083,9 +1114,9 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
             }
         }
 
-        // Visit the initializer to get its type
-        attr->initializer->accept(this);
-        TypeInfo attrType = current_type_;
+        // Use the visit method to handle type checking and inference
+        attr->accept(this);
+        TypeInfo attrType = *attr->inferredType;
 
         // Add attribute to the type
         if (!symbol_table_.addTypeAttribute(stmt->name, attr->name, attrType, attr->line_number))
@@ -1099,8 +1130,6 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
             // Also declare it in the current scope for method analysis
             symbol_table_.declareVariable(attr->name, attrType, false); // Attributes are private (immutable from outside)
         }
-
-        attr->inferredType = std::make_shared<TypeInfo>(attrType);
     }
 
     // Process methods
@@ -1130,17 +1159,16 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
         std::string oldMethodName = currentMethodName_;
         currentMethodName_ = method->name;
 
-        // Declare method parameters with unknown types initially
-        std::vector<TypeInfo> paramTypes;
-        for (const auto &param : method->params)
-        {
-            symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
-            paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
-        }
+        // Use the visit method to handle type checking and inference
+        method->accept(this);
+        TypeInfo returnType = *method->inferredType;
 
-        // Visit method body to infer parameter types
-        method->body->accept(this);
-        TypeInfo returnType = current_type_;
+        // Get parameter types from the method
+        std::vector<TypeInfo> paramTypes;
+        for (const auto &type : method->paramTypes)
+        {
+            paramTypes.push_back(*type);
+        }
 
         // Restore method name
         currentMethodName_ = oldMethodName;
@@ -1204,8 +1232,6 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
                 }
             }
         }
-
-        method->inferredType = std::make_shared<TypeInfo>(returnType);
 
         // Exit method scope
         symbol_table_.exitScope();
@@ -1428,60 +1454,8 @@ void SemanticAnalyzer::visit(MethodCallExpr *expr)
     }
     else
     {
-        // First, try to look up method in the static type
+        // Look up method in type
         auto methodInfo = symbol_table_.lookupMethod(current_type_.getTypeName(), expr->methodName);
-
-        // If not found in static type, try to find it in the dynamic type (initializer type)
-        if (!methodInfo)
-        {
-            std::cout << "[DEBUG] Method '" << expr->methodName << "' not found in static type '"
-                      << current_type_.getTypeName() << "', checking subtypes" << std::endl;
-
-            // Try to find the method in common subtypes of the declared type
-            // This handles the case where we have let dog: Animal = new Dog() and want to call dog.bark()
-            std::vector<std::string> subtypesToCheck;
-
-            // Check common subtypes based on the current type
-            if (current_type_.getTypeName() == "Animal")
-            {
-                subtypesToCheck = {"Dog", "Cat"}; // Common subtypes of Animal
-            }
-            else if (current_type_.getTypeName() == "Object")
-            {
-                // For Object, check all known types
-                subtypesToCheck = {"Animal", "Dog", "Cat"};
-            }
-
-            // Check each subtype for the method
-            for (const auto &subtypeName : subtypesToCheck)
-            {
-                std::cout << "[DEBUG] Checking subtype '" << subtypeName << "' for method '" << expr->methodName << "'" << std::endl;
-                methodInfo = symbol_table_.lookupMethod(subtypeName, expr->methodName);
-                if (methodInfo)
-                {
-                    std::cout << "[DEBUG] Found method '" << expr->methodName << "' in subtype '" << subtypeName << "'" << std::endl;
-                    break;
-                }
-            }
-
-            // If still not found, try the original approach for new expressions
-            if (!methodInfo)
-            {
-                if (auto newExpr = dynamic_cast<NewExpr *>(expr->object.get()))
-                {
-                    // If it's a new expression, check the type being instantiated
-                    std::cout << "[DEBUG] Checking new expression type: " << newExpr->typeName << std::endl;
-                    methodInfo = symbol_table_.lookupMethod(newExpr->typeName, expr->methodName);
-
-                    if (methodInfo)
-                    {
-                        std::cout << "[DEBUG] Found method '" << expr->methodName << "' in new type '"
-                                  << newExpr->typeName << "'" << std::endl;
-                    }
-                }
-            }
-        }
-
         if (!methodInfo)
         {
             reportError(ErrorType::UNDEFINED_METHOD,
@@ -1601,54 +1575,40 @@ void SemanticAnalyzer::visit(BaseCallExpr *expr)
     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
-void SemanticAnalyzer::visit(IsExpr *expr)
-{
-    std::cout << "[DEBUG] Processing IsExpr: " << expr->typeName << std::endl;
-
-    // Visit the object expression first
-    expr->object->accept(this);
-    TypeInfo objectType = current_type_;
-    std::cout << "[DEBUG] IsExpr object type: " << objectType.toString() << std::endl;
-
-    // Check if the object is an object type (not primitive)
-    if (!objectType.isObject())
-    {
-        reportError(ErrorType::TYPE_ERROR,
-                    "Cannot use 'is' operator on non-object type " + objectType.toString(),
-                    expr, "operador is");
-        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
-        return;
-    }
-
-    // Check if the type name exists in the symbol table
-    auto typeInfo = symbol_table_.lookupType(expr->typeName);
-    if (!typeInfo)
-    {
-        reportError(ErrorType::UNDEFINED_TYPE,
-                    "Type '" + expr->typeName + "' is not defined",
-                    expr, "operador is");
-        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
-        expr->inferredType = std::make_shared<TypeInfo>(current_type_);
-        return;
-    }
-
-    // The 'is' operator returns a boolean indicating whether the object
-    // conforms to the specified type
-    current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
-    std::cout << "[DEBUG] IsExpr result type: " << current_type_.toString() << std::endl;
-    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
-}
-
 void SemanticAnalyzer::visit(AttributeDecl *stmt)
 {
     std::cout << "[DEBUG] Processing AttributeDecl: " << stmt->name << std::endl;
 
     // Visit the initializer to get its type
     stmt->initializer->accept(this);
-    TypeInfo attrType = current_type_;
+    TypeInfo initType = current_type_;
+    std::cout << "[DEBUG] AttributeDecl initializer type: " << initType.toString() << std::endl;
 
-    // The type of the attribute is the type inferred from the initializer
+    // Determine the attribute type
+    TypeInfo attrType;
+    if (stmt->declaredType->getKind() != TypeInfo::Kind::Unknown)
+    {
+        // There's a declared type - use it
+        attrType = *stmt->declaredType;
+        std::cout << "[DEBUG] AttributeDecl declared type: " << attrType.toString() << std::endl;
+
+        // Check type compatibility
+        if (!initType.conformsTo(attrType))
+        {
+            reportError(ErrorType::TYPE_ERROR,
+                        "Cannot assign value of type " + initType.toString() +
+                            " to attribute of type " + attrType.toString(),
+                        stmt, "declaración de atributo");
+        }
+    }
+    else
+    {
+        // No declared type - use the initializer type
+        attrType = initType;
+        std::cout << "[DEBUG] AttributeDecl inferred type: " << attrType.toString() << std::endl;
+    }
+
+    // The type of the attribute is the determined type
     stmt->inferredType = std::make_shared<TypeInfo>(attrType);
 
     std::cout << "[DEBUG] AttributeDecl " << stmt->name << " has type: " << attrType.toString() << std::endl;
@@ -1719,6 +1679,17 @@ void SemanticAnalyzer::analyze(Program *program)
     // First pass: collect all function declarations (but don't declare them yet)
     collectFunctions(program);
 
+    // Second pass: process all type declarations first
+    std::cout << "DEBUG: Processing type declarations" << std::endl;
+    for (auto &stmt : program->stmts)
+    {
+        if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
+        {
+            std::cout << "DEBUG: Processing type declaration: " << typeDecl->name << std::endl;
+            typeDecl->accept(this);
+        }
+    }
+
     // Multiple passes: analyze function bodies and infer types until no changes
     bool typesChanged = true;
     int pass = 0;
@@ -1762,6 +1733,11 @@ void SemanticAnalyzer::analyze(Program *program)
                               << " to " << funcDecl->returnType->toString() << std::endl;
                 }
             }
+            else if (auto typeDecl = dynamic_cast<TypeDecl *>(stmt.get()))
+            {
+                // Skip type declarations as they were already processed
+                continue;
+            }
             else
             {
                 stmt->accept(this);
@@ -1797,12 +1773,26 @@ void SemanticAnalyzer::visit(MethodDecl *stmt)
     // Enter method scope
     symbol_table_.enterScope();
 
-    // Register parameters in the method's scope with unknown types initially
+    // Register parameters in the method's scope
     std::vector<TypeInfo> paramTypes;
-    for (const auto &param : stmt->params)
+    for (size_t i = 0; i < stmt->params.size(); ++i)
     {
-        symbol_table_.declareVariable(param, TypeInfo(TypeInfo::Kind::Unknown));
-        paramTypes.push_back(TypeInfo(TypeInfo::Kind::Unknown));
+        TypeInfo paramType;
+        if (i < stmt->paramTypes.size() && stmt->paramTypes[i]->getKind() != TypeInfo::Kind::Unknown)
+        {
+            // Use declared parameter type
+            paramType = *stmt->paramTypes[i];
+            std::cout << "[DEBUG] Parameter " << stmt->params[i] << " declared as: " << paramType.toString() << std::endl;
+        }
+        else
+        {
+            // Use Unknown type for inference
+            paramType = TypeInfo(TypeInfo::Kind::Unknown);
+            std::cout << "[DEBUG] Parameter " << stmt->params[i] << " will be inferred" << std::endl;
+        }
+
+        symbol_table_.declareVariable(stmt->params[i], paramType);
+        paramTypes.push_back(paramType);
     }
 
     // Visit method body to infer parameter types and return type
@@ -1811,15 +1801,41 @@ void SemanticAnalyzer::visit(MethodDecl *stmt)
         stmt->body->accept(this);
         TypeInfo returnType = current_type_;
 
-        // Update parameter types based on their usage in the body
+        // Update parameter types based on their usage in the body (only if not declared)
         for (size_t i = 0; i < stmt->params.size(); ++i)
         {
-            auto varInfo = symbol_table_.lookupVariable(stmt->params[i]);
-            if (varInfo && varInfo->type.getKind() != TypeInfo::Kind::Unknown)
+            if (paramTypes[i].getKind() == TypeInfo::Kind::Unknown)
             {
-                paramTypes[i] = varInfo->type;
-                std::cout << "[DEBUG] Parameter " << stmt->params[i] << " inferred as: " << varInfo->type.toString() << std::endl;
+                auto varInfo = symbol_table_.lookupVariable(stmt->params[i]);
+                if (varInfo && varInfo->type.getKind() != TypeInfo::Kind::Unknown)
+                {
+                    paramTypes[i] = varInfo->type;
+                    std::cout << "[DEBUG] Parameter " << stmt->params[i] << " inferred as: " << varInfo->type.toString() << std::endl;
+                }
             }
+        }
+
+        // Check return type compatibility
+        if (stmt->returnType->getKind() != TypeInfo::Kind::Unknown)
+        {
+            if (!returnType.conformsTo(*stmt->returnType))
+            {
+                reportError(ErrorType::TYPE_ERROR,
+                            "Method '" + stmt->name + "' returns type " + returnType.toString() +
+                                " but declared return type is " + stmt->returnType->toString(),
+                            stmt, "declaración de método");
+            }
+            else
+            {
+                returnType = *stmt->returnType;
+                std::cout << "[DEBUG] Method return type matches declared type: " << returnType.toString() << std::endl;
+            }
+        }
+        else
+        {
+            // Update the declared return type with the inferred type
+            *stmt->returnType = returnType;
+            std::cout << "[DEBUG] Method return type inferred as: " << returnType.toString() << std::endl;
         }
 
         stmt->inferredType = std::make_shared<TypeInfo>(returnType);

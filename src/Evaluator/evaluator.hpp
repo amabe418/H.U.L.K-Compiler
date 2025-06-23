@@ -635,21 +635,26 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         instance->attrs = std::make_shared<EnvFrame>(globalEnv);
         instance->self = instance; // Establecer la referencia a sí mismo
 
-        // 1. Evaluar argumentos de construcción
+        // 1. Evaluar argumentos de construcción en el entorno original
+        std::vector<Value> constructorArgs;
+        for (const auto &arg : e->args)
         {
-            const auto &paramNames = type->getParams();
-            if (paramNames.size() != e->args.size())
-                throw std::runtime_error("Número de argumentos inválido para " + e->typeName);
-
-            env = instance->attrs;
-            for (size_t i = 0; i < paramNames.size(); ++i)
-            {
-                e->args[i]->accept(this);
-                env->locals[paramNames[i]] = lastValue;
-            }
+            arg->accept(this);
+            constructorArgs.push_back(lastValue);
         }
 
-        // 2. Si hereda de otro tipo, instanciar atributos del padre
+        // 2. Asignar los argumentos evaluados a los parámetros del constructor
+        const auto &paramNames = type->getParams();
+        if (paramNames.size() != constructorArgs.size())
+            throw std::runtime_error("Número de argumentos inválido para " + e->typeName);
+
+        env = instance->attrs;
+        for (size_t i = 0; i < paramNames.size(); ++i)
+        {
+            env->locals[paramNames[i]] = constructorArgs[i];
+        }
+
+        // 3. Si hereda de otro tipo, instanciar atributos del padre
         if (type->baseType != "Object")
         {
             TypeDecl *base = types.at(type->baseType);
@@ -676,7 +681,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             }
         }
 
-        // 3. Inicializar atributos del tipo actual
+        // 4. Inicializar atributos del tipo actual
         env = instance->attrs;
         for (auto &attr : type->attributes)
         {
@@ -875,6 +880,14 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             throw std::runtime_error("Undefined method: " + e->methodName);
         }
 
+        // ⚠️ Evalúa los argumentos ANTES de cambiar el entorno
+        std::vector<Value> args;
+        for (const auto &arg : e->args)
+        {
+            arg->accept(this);
+            args.push_back(lastValue);
+        }
+
         // Guardar entorno y self anteriores
         auto oldEnv = env;
         auto oldSelf = currentSelf;
@@ -887,14 +900,6 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         env->locals["self"] = Value(instance); // Add self to environment
 
         std::cout << "[DEBUG] MethodCallExpr: set currentMethodName to '" << currentMethodName << "'" << std::endl;
-
-        // ⚠️ Evalúa los argumentos DESPUÉS de establecer el entorno y currentSelf
-        std::vector<Value> args;
-        for (const auto &arg : e->args)
-        {
-            arg->accept(this);
-            args.push_back(lastValue);
-        }
 
         // Inyectar argumentos como variables locales
         for (size_t i = 0; i < method->params.size(); ++i)
@@ -922,31 +927,6 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         attr->initializer->accept(this);
         // El valor del atributo será el valor del inicializador
         // No necesitamos hacer nada más aquí ya que los atributos se manejan en NewExpr
-    }
-
-    void visit(IsExpr *expr) override
-    {
-        std::cout << "[DEBUG] Evaluator: IsExpr checking if object is of type " << expr->typeName << std::endl;
-
-        // Evaluar el objeto
-        expr->object->accept(this);
-        Value objectValue = lastValue;
-
-        // Verificar si el objeto es del tipo especificado
-        bool result = false;
-        if (objectValue.isInstance())
-        {
-            auto instance = objectValue.asInstance();
-            if (instance && instance->typeDef)
-            {
-                result = instance->typeDef->name == expr->typeName;
-                std::cout << "[DEBUG] Evaluator: IsExpr object type: " << instance->typeDef->name
-                          << ", checking against: " << expr->typeName << ", result: " << (result ? "true" : "false") << std::endl;
-            }
-        }
-
-        lastValue = Value(result);
-        std::cout << "[DEBUG] Evaluator: IsExpr result: " << lastValue.toString() << std::endl;
     }
 };
 #endif

@@ -361,22 +361,6 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         indentLevel--;
     }
 
-    void visit(IsExpr *expr) override
-    {
-        // Imprimir la expresión is
-        printIndent();
-        std::cout << "├── IsExpr" << std::endl;
-
-        // Visitar el objeto
-        indentLevel++;
-        expr->object->accept(this);
-        indentLevel--;
-
-        // Imprimir el tipo
-        printIndent();
-        std::cout << "└── Type: " << expr->typeName << std::endl;
-    }
-
 private:
     std::string
     opToString(BinaryExpr::Op op)

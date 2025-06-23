@@ -31,7 +31,7 @@ struct ExprBlock;
 struct WhileExpr;
 struct ForExpr;
 struct BaseCallExpr;
-struct IsExpr;
+// struct IsExpr;
 
 struct TypeDecl;
 struct AttributeDecl;
@@ -43,6 +43,8 @@ struct MethodCallExpr;
 struct SelfExpr;
 
 struct Instance;
+
+// Forward declarations for visitors
 
 // Base class for all expression nodes
 struct Expr
@@ -489,7 +491,11 @@ struct AttributeDecl : Stmt
 {
     std::string name;
     ExprPtr initializer;
-    AttributeDecl(std::string n, ExprPtr expr) : name(std::move(n)), initializer(std::move(expr)) {}
+    std::shared_ptr<TypeInfo> declaredType; // tipo anotado por el usuario (opcional)
+
+    AttributeDecl(std::string n, ExprPtr expr,
+                  std::shared_ptr<TypeInfo> type = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown))
+        : name(std::move(n)), initializer(std::move(expr)), declaredType(std::move(type)) {}
 
     void accept(StmtVisitor *v) override
     {
@@ -502,10 +508,15 @@ struct MethodDecl : Stmt
 {
     std::string name;
     std::vector<std::string> params;
+    std::vector<std::shared_ptr<TypeInfo>> paramTypes; // Tipos anotados por el usuario
+    std::shared_ptr<TypeInfo> returnType;              // Tipo de retorno anotado (opcional)
     StmtPtr body;
 
-    MethodDecl(const std::string &n, std::vector<std::string> &&p, StmtPtr b)
-        : name(n), params(std::move(p)), body(std::move(b))
+    MethodDecl(const std::string &n, std::vector<std::string> &&p, StmtPtr b,
+               std::vector<std::shared_ptr<TypeInfo>> &&pt = {},
+               std::shared_ptr<TypeInfo> rt = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown))
+        : name(n), params(std::move(p)), paramTypes(std::move(pt)),
+          returnType(std::move(rt)), body(std::move(b))
     {
     }
 
@@ -607,18 +618,18 @@ struct BaseCallExpr : Expr
     }
 };
 
-struct IsExpr : Expr
-{
-    ExprPtr object;
-    std::string typeName;
+// struct IsExpr : Expr
+// {
+//     ExprPtr object;
+//     std::string typeName;
 
-    IsExpr(ExprPtr obj, std::string type) : object(std::move(obj)), typeName(std::move(type)) {}
+//     IsExpr(ExprPtr obj, std::string type) : object(std::move(obj)), typeName(std::move(type)) {}
 
-    void
-    accept(ExprVisitor *v) override
-    {
-        v->visit(this);
-    }
-};
+//     void
+//     accept(ExprVisitor *v) override
+//     {
+//         v->visit(this);
+//     }
+// };
 
 #endif // AST_HPP

@@ -28,7 +28,38 @@
 //====================================================
 //========== FUNCIONES =============
 //====================================================
+// Test file for function return type declarations
 
+// Function with explicit return type - should work
+//function add(x: Number, y: Number) : Number => x + y;
+
+// Function with explicit return type and block body - should work
+//function multiply(x: Number, y: Number) : Number {
+//    x * y;
+//};
+
+// Function without explicit return type - should infer Number
+//function subtract(x: Number, y: Number) => x - y;
+
+// Function with wrong return type - should give error
+//function wrongReturn(x: Number) : String => x + 1;
+
+// Function with compatible return type - should work
+//function compatibleReturn(x: Number) : Number => x * 2;
+
+// Function with no parameters and explicit return type
+//function getPi() : Number => 3.14159;
+
+// Function with no parameters and no explicit return type
+//function getE() => 2.71828;
+
+// Test calls
+//add(5, 3);
+//multiply(4, 6);
+//subtract(10, 3);
+//compatibleReturn(7);
+//getPi();
+//getE();
 //function s(a,b)=>a;
 //print(s(2));
 //function tan(x: Number): Number => sin(x) / cos(x);
@@ -133,6 +164,80 @@
 //let pt = new Pointa(3,4) in
 //    print("x: " @ pt.getX() @ "; y: " @ pt.getY());
 
+// Type with typed parameters
+type Point(x: Number, y: Number) {
+    // Attributes with explicit types
+    x: Number = x;
+    y: Number = y;
+    
+    // Method with typed parameters and return type
+    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
+    
+    // Method with typed parameters but inferred return type
+    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
+    
+    // Method with no parameters and explicit return type
+    magnitude() : Number => sqrt(self.x^2 + self.y^2);
+    
+    // Method with no parameters and inferred return type
+    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
+};
+
+// Type with inheritance and typed parameters
+type Circle(center: Point, radius: Number) inherits Object {
+    // Attributes with explicit types
+    center: Point = center;
+    radius: Number = radius;
+    
+    // Method with typed parameters and return type
+    area() : Number => PI * self.radius^2;
+    
+    // Method with typed parameters but inferred return type
+    contains(point: Point) => (point.x - self.center.x)^2 + (point.y - self.center.y)^2 <= self.radius^2;
+    
+    // Method with no parameters and explicit return type
+    circumference() : Number => 2 * PI * self.radius;
+};
+
+// Type with no parameters
+type Counter {
+    // Attribute with explicit type
+    count: Number = 0;
+    
+    // Method with typed parameters and return type
+    increment(amount: Number) : Number {
+        self.count := self.count + amount;
+        self.count;
+    };
+    
+    // Method with no parameters and explicit return type
+    getCount() : Number => self.count;
+    
+    // Method with no parameters and inferred return type
+    reset() => self.count := 0;
+};
+
+// Test function with typed parameters and return type
+function createPoint(x: Number, y: Number) : Point => new Point(x, y);
+
+// Test function with typed parameters but inferred return type
+function distance(p1: Point, p2: Point) => p1.distance(p2);
+
+// Test calls
+let p1 = createPoint(3, 4) in
+let p2 = createPoint(6, 8) in
+let c = new Circle(p1, 5) in
+let counter = new Counter() in
+{
+    print("Distance: " @ distance(p1, p2));
+    print("Circle area: " @ c.area());
+    print("Point magnitude: " @ p1.magnitude());
+    print("Counter count: " @ counter.getCount());
+    counter.increment(10);
+    print("After increment: " @ counter.getCount());
+}; 
+
+
 //====================================================
 //========== IF ELSE =============
 //====================================================
@@ -172,17 +277,17 @@
 // ====================================================
 // REGLA 1: Todo tipo conforma a Object
 // ====================================================
-type Animal() {
-    name() => "Animal";
-};
-
-type Dog() inherits Animal {
-    bark() => "Woof!";
-};
-
-type Cat() inherits Animal {
-    meow() => "Meow!";
-};
+//type Animal() {
+//    name() => "Animal";
+//};
+//
+//type Dog() inherits Animal {
+//    bark() => "Woof!";
+//};
+//
+//type Cat() inherits Animal {
+//    meow() => "Meow!";
+//};
 
 // ====================================================
 // REGLA 2: Todo tipo conforma a sí mismo
@@ -194,11 +299,9 @@ type Cat() inherits Animal {
 // ====================================================
 // REGLA 3: Si T1 hereda T2 entonces T1 <= T2
 // ====================================================
-let dog: Animal = new Dog() in  // Dog <= Animal
-let cat: Animal = new Cat() in {
-    print("Dog conforms to Animal: " @ (dog.name() == "Animal"));
-    print(dog.bark());
-};
+//let dog: Animal = new Dog() in  // Dog <= Animal
+//let cat: Animal = new Cat() in  // Cat <= Animal
+//    print("Dog conforms to Animal: " @ (dog.name() == "Animal"));
 
 
 
@@ -265,3 +368,85 @@ let cat: Animal = new Cat() in {
 //let areEqual = animal1 == animal2 in  // Debe ser válido porque ambos conforman a Animal
 //    print("Comparison between subtypes is valid: " @ areEqual); 
 //
+
+//// [CODEGEN TESTS]
+//
+//print("Probando declaracion de variables e impresion de valores");
+//let a = 2, b = 3, c = 4, d = 5 in {
+//    print("hello, world");
+//    print(a+b+c+d);
+//    print(true);
+//    print(false);
+//};
+//
+//print("Probando declaracion de variables con condicionales e impresion de su valor:");
+//let a = if(3 < 4) 5 else 10 in print(a);
+//
+//print("Probando bucle while");
+//let a = 5 in {
+//    while(a > 0){
+//        print(a);
+//        a := a - 1;
+//    };
+//};
+//
+//print("Probando funciones");
+//
+//print("Sucesor de 0");
+//function successor(x) => x+1;
+//print(successor(0));
+//
+//print("Funcion que devuelve Hello, World!");
+//function hw() => "Hello, World";
+//print(hw());
+//
+//print("Probando recursividad");
+//print("n-esimo numero de fibonacci");
+//print("fib(5)");
+//function fib(n) => if(n < 2) 1 else fib(n-1) + fib(n-2);
+//print(fib(5));
+//
+//print("Probando funcion con parametros dinamicos");
+//print("f(x,y) => Hello, World!");
+//function f(x,y) => "Hello, World!";
+//
+//print("f(a,b), donde a y b son strings.");
+//print(f("a","b"));
+//
+//print("f(2,3)");
+//print(f(2,3));
+//
+//print("f(true,false)");
+//print(f(true,false));
+//
+//print("Probando otra funcion recursiva, suma recursiva hasta n");
+//function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
+//print(sum_to(100));
+//
+//print("Probando for loops");
+////[TO DO: FOR LOOPS]
+//for(i in range(1,7)){
+//    print("El valor de i es " @ i);
+//    print("Moviendo i a " @ i + 1);  
+//};
+//
+//print();
+//print("Probando concatenaciones:");
+//print(true @ "false");
+//print("false" @ true);
+//print("Hola " @ "Mundo");
+//print("4"@2);
+//
+//function concat(x,y) => x @ y;
+//print(concat("Hola, ", "Mundo!"));
+//
+//print("Probando tipos");
+
+//type Car(brand){
+//    wheels = 4;
+//    brand = brand;
+//    getBrand() => self.brand;
+//    getWheels() => self.wheels;
+//};
+//
+//let a = new Car("mercedes") in print(a.getBrand());

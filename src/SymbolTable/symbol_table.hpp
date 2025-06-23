@@ -188,6 +188,24 @@ public:
     }
 
     /**
+     * @brief Update function signature with new parameter and return types
+     */
+    bool updateFunctionSignature(const std::string &name, const std::vector<TypeInfo> &params,
+                                 const TypeInfo &return_type)
+    {
+        auto found = functions_.find(name);
+        if (found == functions_.end())
+        {
+            return false; // Function not found
+        }
+
+        // Update the existing function with new types
+        found->second->parameter_types = params;
+        found->second->return_type = return_type;
+        return true;
+    }
+
+    /**
      * @brief Check if variable exists in current scope only
      */
     bool hasLocalVariable(const std::string &name) const

@@ -9,6 +9,7 @@
 #include "SymbolTable/symbol_table.hpp"
 #include "Value/value.hpp"
 #include "SemanticCheck/semantic_checker.hpp"
+#include "Codegen/codegen.hpp"
 
 extern FILE *yyin;
 extern int yyparse();
@@ -77,6 +78,25 @@ int main(int argc, char **argv)
               << std::endl;
     PrintVisitor printer;
     rootAST->accept(&printer);
+
+    // Generate LLVM IR code
+    std::cout << "\n=== LLVM Code Generation ===\n"
+              << std::endl;
+    CodeGenerator codegen;
+    codegen.initialize("hulk_module");
+    codegen.generateCode(rootAST);
+
+    // Print generated IR
+    // std::cout << "\nGenerated LLVM IR:" << std::endl;
+    // codegen.printIR();
+
+    // Write IR to file
+    std::string output_file = std::string(argv[1]) + ".ll";
+    codegen.writeIRToFile(output_file);
+    // std::cout << "\nLLVM IR written to: " << output_file << std::endl;
+
+    // std::cout << "\n=== End of LLVM Code Generation ===\n"
+    //           << std::endl;
 
     // Evaluate the program
     std::cout << "\n=== Program Evaluation ===\n"
