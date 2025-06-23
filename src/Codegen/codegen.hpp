@@ -30,6 +30,9 @@ private:
     // Function declarations
     std::unordered_map<std::string, std::string> functions_;
 
+    // Function signatures - store parameter types for each function
+    std::unordered_map<std::string, std::vector<TypeInfo::Kind>> function_signatures_;
+
     // Type declarations
     std::unordered_map<std::string, std::string> types_;
 

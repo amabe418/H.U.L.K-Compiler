@@ -25,803 +25,6 @@ void CodeGenerator::initialize(const std::string &module_name)
     registerBuiltinFunctions();
 }
 
-void CodeGenerator::registerBuiltinFunctions()
-{
-    if (builtins_registered_)
-        return;
-
-    // Add built-in function declarations
-    ir_code_ << "; Built-in function declarations\n";
-    ir_code_ << "declare double @sqrt(double)\n";
-    ir_code_ << "declare double @sin(double)\n";
-    ir_code_ << "declare double @cos(double)\n";
-    ir_code_ << "declare double @tan(double)\n";
-    ir_code_ << "declare double @exp(double)\n";
-    ir_code_ << "declare double @log(double)\n";
-    ir_code_ << "declare double @pow(double, double)\n";
-    ir_code_ << "declare i32 @rand()\n";
-    ir_code_ << "declare i32 @printf(i8*, ...)\n";
-    ir_code_ << "declare i32 @sprintf(i8*, i8*, ...)\n";
-    ir_code_ << "declare i8* @malloc(i32)\n";
-    ir_code_ << "declare void @free(i8*)\n";
-    ir_code_ << "declare double @strtod(i8*, i8**)\n";
-    ir_code_ << "\n";
-
-    // Add BoxedValue struct definition BEFORE the functions that use it
-    ir_code_ << "%struct.BoxedValue = type { i8, [7 x i8], i64 }\n";
-    ir_code_ << "\n";
-
-    // Add boxed value runtime functions
-    ir_code_ << "; Boxed value runtime functions\n";
-    
-    // Boxing functions
-    ir_code_ << "define %struct.BoxedValue* @boxNumber(double %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box = call i8* @malloc(i32 16)\n";
-    ir_code_ << "  %box_ptr = bitcast i8* %box to %struct.BoxedValue*\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 0\n";
-    ir_code_ << "  store i8 0, i8* %type_ptr\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = bitcast double %value to i64\n";
-    ir_code_ << "  store i64 %value_int, i64* %value_ptr\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box_ptr\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxString(i8* %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box = call i8* @malloc(i32 16)\n";
-    ir_code_ << "  %box_ptr = bitcast i8* %box to %struct.BoxedValue*\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 0\n";
-    ir_code_ << "  store i8 1, i8* %type_ptr\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = ptrtoint i8* %value to i64\n";
-    ir_code_ << "  store i64 %value_int, i64* %value_ptr\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box_ptr\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxBoolean(i1 %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box = call i8* @malloc(i32 16)\n";
-    ir_code_ << "  %box_ptr = bitcast i8* %box to %struct.BoxedValue*\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 0\n";
-    ir_code_ << "  store i8 2, i8* %type_ptr\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = zext i1 %value to i64\n";
-    ir_code_ << "  store i64 %value_int, i64* %value_ptr\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box_ptr\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxObject(i8* %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box = call i8* @malloc(i32 16)\n";
-    ir_code_ << "  %box_ptr = bitcast i8* %box to %struct.BoxedValue*\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 0\n";
-    ir_code_ << "  store i8 3, i8* %type_ptr\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = ptrtoint i8* %value to i64\n";
-    ir_code_ << "  store i64 %value_int, i64* %value_ptr\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box_ptr\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxNull() {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box = call i8* @malloc(i32 16)\n";
-    ir_code_ << "  %box_ptr = bitcast i8* %box to %struct.BoxedValue*\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 0\n";
-    ir_code_ << "  store i8 4, i8* %type_ptr\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box_ptr, i32 0, i32 2\n";
-    ir_code_ << "  store i64 0, i64* %value_ptr\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box_ptr\n";
-    ir_code_ << "}\n\n";
-    
-    // Unboxing functions
-    ir_code_ << "define double @unboxNumber(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = load i64, i64* %value_ptr\n";
-    ir_code_ << "  %value = bitcast i64 %value_int to double\n";
-    ir_code_ << "  ret double %value\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i8* @unboxString(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = load i64, i64* %value_ptr\n";
-    ir_code_ << "  %value = inttoptr i64 %value_int to i8*\n";
-    ir_code_ << "  ret i8* %value\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i1 @unboxBoolean(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = load i64, i64* %value_ptr\n";
-    ir_code_ << "  %value = trunc i64 %value_int to i1\n";
-    ir_code_ << "  ret i1 %value\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i8* @unboxObject(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %value_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 2\n";
-    ir_code_ << "  %value_int = load i64, i64* %value_ptr\n";
-    ir_code_ << "  %value = inttoptr i64 %value_int to i8*\n";
-    ir_code_ << "  ret i8* %value\n";
-    ir_code_ << "}\n\n";
-    
-    // Type checking functions
-    ir_code_ << "define i1 @isNumber(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    // ir_code_ << "  ; Debug: Print function call\n";
-    // // ir_code_ << "  %debug_msg = getelementptr [25 x i8], [25 x i8]* @.str_debug_is_number, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_msg)\n";
-    ir_code_ << "  ; Check for null pointer\n";
-    ir_code_ << "  %is_null = icmp eq %struct.BoxedValue* %box, null\n";
-    ir_code_ << "  br i1 %is_null, label %return_false, label %check_type\n";
-    ir_code_ << "return_false:\n";
-    // ir_code_ << "  ; Debug: Print result for null case\n";
-    // // ir_code_ << "  %debug_result_null = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result_null, i32 0)\n";
-    ir_code_ << "  ret i1 false\n";
-    ir_code_ << "check_type:\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 0\n";
-    ir_code_ << "  %type = load i8, i8* %type_ptr\n";
-    // ir_code_ << "  ; Debug: Print type value\n";
-    // // ir_code_ << "  %debug_type = getelementptr [20 x i8], [20 x i8]* @.str_debug_type_value, i32 0, i32 0\n";
-    ir_code_ << "  %type_int = zext i8 %type to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_type, i32 %type_int)\n";
-    ir_code_ << "  %result = icmp eq i8 %type, 0\n";
-    // ir_code_ << "  ; Debug: Print result\n";
-    // // ir_code_ << "  %debug_result = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    ir_code_ << "  %result_int = zext i1 %result to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result, i32 %result_int)\n";
-    ir_code_ << "  ret i1 %result\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i1 @isString(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    // ir_code_ << "  ; Debug: Print function call\n";
-    // // ir_code_ << "  %debug_msg = getelementptr [25 x i8], [25 x i8]* @.str_debug_is_string, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_msg)\n";
-    ir_code_ << "  ; Check for null pointer\n";
-    ir_code_ << "  %is_null = icmp eq %struct.BoxedValue* %box, null\n";
-    ir_code_ << "  br i1 %is_null, label %return_false, label %check_type\n";
-    ir_code_ << "return_false:\n";
-    // ir_code_ << "  ; Debug: Print result for null case\n";
-    // // ir_code_ << "  %debug_result_null = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result_null, i32 0)\n";
-    ir_code_ << "  ret i1 false\n";
-    ir_code_ << "check_type:\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 0\n";
-    ir_code_ << "  %type = load i8, i8* %type_ptr\n";
-    // ir_code_ << "  ; Debug: Print type value\n";
-    // // ir_code_ << "  %debug_type = getelementptr [20 x i8], [20 x i8]* @.str_debug_type_value, i32 0, i32 0\n";
-    ir_code_ << "  %type_int = zext i8 %type to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_type, i32 %type_int)\n";
-    ir_code_ << "  %result = icmp eq i8 %type, 1\n";
-    // ir_code_ << "  ; Debug: Print result\n";
-    // // ir_code_ << "  %debug_result = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    ir_code_ << "  %result_int = zext i1 %result to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result, i32 %result_int)\n";
-    ir_code_ << "  ret i1 %result\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i1 @isBoolean(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    // ir_code_ << "  ; Debug: Print function call\n";
-    // // ir_code_ << "  %debug_msg = getelementptr [26 x i8], [26 x i8]* @.str_debug_is_boolean, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_msg)\n";
-    ir_code_ << "  ; Check for null pointer\n";
-    ir_code_ << "  %is_null = icmp eq %struct.BoxedValue* %box, null\n";
-    ir_code_ << "  br i1 %is_null, label %return_false, label %check_type\n";
-    ir_code_ << "return_false:\n";
-    // ir_code_ << "  ; Debug: Print result for null case\n";
-    // // ir_code_ << "  %debug_result_null = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result_null, i32 0)\n";
-    ir_code_ << "  ret i1 false\n";
-    ir_code_ << "check_type:\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 0\n";
-    ir_code_ << "  %type = load i8, i8* %type_ptr\n";
-    // ir_code_ << "  ; Debug: Print type value\n";
-    // // ir_code_ << "  %debug_type = getelementptr [20 x i8], [20 x i8]* @.str_debug_type_value, i32 0, i32 0\n";
-    ir_code_ << "  %type_int = zext i8 %type to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_type, i32 %type_int)\n";
-    ir_code_ << "  %result = icmp eq i8 %type, 2\n";
-    // ir_code_ << "  ; Debug: Print result\n";
-    // // ir_code_ << "  %debug_result = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    ir_code_ << "  %result_int = zext i1 %result to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result, i32 %result_int)\n";
-    ir_code_ << "  ret i1 %result\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i1 @isObject(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    // ir_code_ << "  ; Debug: Print function call\n";
-    // // ir_code_ << "  %debug_msg = getelementptr [25 x i8], [25 x i8]* @.str_debug_is_object, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_msg)\n";
-    ir_code_ << "  ; Check for null pointer\n";
-    ir_code_ << "  %is_null = icmp eq %struct.BoxedValue* %box, null\n";
-    ir_code_ << "  br i1 %is_null, label %return_false, label %check_type\n";
-    ir_code_ << "return_false:\n";
-    // ir_code_ << "  ; Debug: Print result for null case\n";
-    // // ir_code_ << "  %debug_result_null = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result_null, i32 0)\n";
-    ir_code_ << "  ret i1 false\n";
-    ir_code_ << "check_type:\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 0\n";
-    ir_code_ << "  %type = load i8, i8* %type_ptr\n";
-    // ir_code_ << "  ; Debug: Print type value\n";
-    // // ir_code_ << "  %debug_type = getelementptr [20 x i8], [20 x i8]* @.str_debug_type_value, i32 0, i32 0\n";
-    ir_code_ << "  %type_int = zext i8 %type to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_type, i32 %type_int)\n";
-    ir_code_ << "  %result = icmp eq i8 %type, 3\n";
-    // ir_code_ << "  ; Debug: Print result\n";
-    // // ir_code_ << "  %debug_result = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    ir_code_ << "  %result_int = zext i1 %result to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result, i32 %result_int)\n";
-    ir_code_ << "  ret i1 %result\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define i1 @isNull(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    // ir_code_ << "  ; Debug: Print function call\n";
-    // // ir_code_ << "  %debug_msg = getelementptr [23 x i8], [23 x i8]* @.str_debug_is_null, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_msg)\n";
-    ir_code_ << "  ; Check for null pointer\n";
-    ir_code_ << "  %is_null = icmp eq %struct.BoxedValue* %box, null\n";
-    ir_code_ << "  br i1 %is_null, label %return_true, label %check_type\n";
-    ir_code_ << "return_true:\n";
-    // ir_code_ << "  ; Debug: Print result for null pointer case\n";
-    // // ir_code_ << "  %debug_result_null_ptr = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result_null_ptr, i32 1)\n";
-    ir_code_ << "  ret i1 true\n";
-    ir_code_ << "check_type:\n";
-    ir_code_ << "  %type_ptr = getelementptr %struct.BoxedValue, %struct.BoxedValue* %box, i32 0, i32 0\n";
-    ir_code_ << "  %type = load i8, i8* %type_ptr\n";
-    // ir_code_ << "  ; Debug: Print type value\n";
-    // // ir_code_ << "  %debug_type = getelementptr [20 x i8], [20 x i8]* @.str_debug_type_value, i32 0, i32 0\n";
-    ir_code_ << "  %type_int = zext i8 %type to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_type, i32 %type_int)\n";
-    ir_code_ << "  %result = icmp eq i8 %type, 4\n";
-    // ir_code_ << "  ; Debug: Print result\n";
-    // // ir_code_ << "  %debug_result = getelementptr [18 x i8], [18 x i8]* @.str_debug_result, i32 0, i32 0\n";
-    ir_code_ << "  %result_int = zext i1 %result to i32\n";
-    // ir_code_ << "  call i32 (i8*, ...) @printf(i8* %debug_result, i32 %result_int)\n";
-    ir_code_ << "  ret i1 %result\n";
-    ir_code_ << "}\n\n";
-    
-    // Simple arithmetic operations (simplified for now)
-    ir_code_ << "define %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fadd double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedSubtract(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fsub double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedMultiply(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fmul double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedDivide(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fdiv double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = frem double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedPower(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = call double @pow(double %left_num, double %right_num)\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    // Comparison operations
-    ir_code_ << "define %struct.BoxedValue* @boxedEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp ueq double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedNotEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp une double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedLessThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp ult double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedGreaterThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp ugt double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedLessEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp ule double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedGreaterEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = fcmp uge double %left_num, %right_num\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    // Logical operations
-    ir_code_ << "define %struct.BoxedValue* @boxedLogicalAnd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_bool = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_bool = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = and i1 %left_bool, %right_bool\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedLogicalOr(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %left_bool = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %right_bool = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %result = or i1 %left_bool, %right_bool\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedLogicalNot(%struct.BoxedValue* %operand) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %operand)\n";
-    ir_code_ << "  %result = xor i1 %bool_val, true\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    // String operations
-    ir_code_ << "define i8* @boxedConcatenate(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  ; Check for null operands\n";
-    ir_code_ << "  %left_null = icmp eq %struct.BoxedValue* %left, null\n";
-    ir_code_ << "  %right_null = icmp eq %struct.BoxedValue* %right, null\n";
-    ir_code_ << "  %any_null = or i1 %left_null, %right_null\n";
-    ir_code_ << "  br i1 %any_null, label %handle_null, label %process_operands\n";
-    ir_code_ << "handle_null:\n";
-    ir_code_ << "  ; Return null if any operand is null\n";
-    ir_code_ << "  ret i8* null\n";
-    ir_code_ << "process_operands:\n";
-    ir_code_ << "  ; Check left operand type and convert to string if needed\n";
-    ir_code_ << "  %left_is_string = call i1 @isString(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_string, label %left_is_str, label %left_check_number\n";
-    ir_code_ << "left_is_str:\n";
-    ir_code_ << "  %left_str_1 = call i8* @unboxString(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_check_number:\n";
-    ir_code_ << "  %left_is_number = call i1 @isNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_number, label %left_convert_number, label %left_check_bool\n";
-    ir_code_ << "left_convert_number:\n";
-    ir_code_ << "  %left_num_val = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_2 = call i8* @double_to_string(double %left_num_val)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_check_bool:\n";
-    ir_code_ << "  %left_is_bool = call i1 @isBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_bool, label %left_convert_bool, label %left_convert_object\n";
-    ir_code_ << "left_convert_bool:\n";
-    ir_code_ << "  %left_bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_3 = call i8* @bool_to_string(i1 %left_bool_val)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_convert_object:\n";
-    ir_code_ << "  %left_obj_val = call i8* @unboxObject(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_4 = call i8* @object_to_string(i8* %left_obj_val)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_done:\n";
-    ir_code_ << "  %left_str = phi i8* [ %left_str_1, %left_is_str ], [ %left_str_2, %left_convert_number ], [ %left_str_3, %left_convert_bool ], [ %left_str_4, %left_convert_object ]\n";
-    // ir_code_ << "  call double @print_string(i8* %left_str)\n"; // [DEBUGGING]
-    ir_code_ << "  ; Check right operand type and convert to string if needed\n";
-    ir_code_ << "  %right_is_string = call i1 @isString(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_string, label %right_is_str, label %right_check_number\n";
-    ir_code_ << "right_is_str:\n";
-    ir_code_ << "  %right_str_1 = call i8* @unboxString(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_check_number:\n";
-    ir_code_ << "  %right_is_number = call i1 @isNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_number, label %right_convert_number, label %right_check_bool\n";
-    ir_code_ << "right_convert_number:\n";
-    ir_code_ << "  %right_num_val = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_2 = call i8* @double_to_string(double %right_num_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_check_bool:\n";
-    ir_code_ << "  %right_is_bool = call i1 @isBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_bool, label %right_convert_bool, label %right_convert_object\n";
-    ir_code_ << "right_convert_bool:\n";
-    ir_code_ << "  %right_bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_3 = call i8* @bool_to_string(i1 %right_bool_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_convert_object:\n";
-    ir_code_ << "  %right_obj_val = call i8* @unboxObject(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_4 = call i8* @object_to_string(i8* %right_obj_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_done:\n";
-    ir_code_ << "  %right_str = phi i8* [ %right_str_1, %right_is_str ], [ %right_str_2, %right_convert_number ], [ %right_str_3, %right_convert_bool ], [ %right_str_4, %right_convert_object ]\n";
-    // ir_code_ << "  call double @print_string(i8* %right_str)\n"; // [DEBUGGING]
-    ir_code_ << "  ; Check for null strings after conversion\n";
-    ir_code_ << "  %left_str_null = icmp eq i8* %left_str, null\n";
-    ir_code_ << "  %right_str_null = icmp eq i8* %right_str, null\n";
-    ir_code_ << "  %any_str_null = or i1 %left_str_null, %right_str_null\n";
-    ir_code_ << "  br i1 %any_str_null, label %handle_str_null, label %concatenate\n";
-    ir_code_ << "handle_str_null:\n";
-    ir_code_ << "  ; If any string is null after conversion, return null\n";
-    ir_code_ << "  ret i8* null\n";
-    ir_code_ << "concatenate:\n";
-    ir_code_ << "  ; Concatenate both strings\n";
-    ir_code_ << "  %result = call i8* @concat_strings(i8* %left_str, i8* %right_str)\n";
-    // ir_code_ << "  call double @print_string(i8* %result)\n"; // [DEBUGGING]
-    ir_code_ << "  ; Check if concatenation failed\n";
-    ir_code_ << "  %concat_failed = icmp eq i8* %result, null\n";
-    ir_code_ << "  br i1 %concat_failed, label %handle_concat_failure, label %return_result\n";
-    ir_code_ << "handle_concat_failure:\n";
-    ir_code_ << "  ; Return null if concatenation failed\n";
-    ir_code_ << "  ret i8* null\n";
-    ir_code_ << "return_result:\n";
-    ir_code_ << "  ; Return the concatenated string directly\n";
-    ir_code_ << "  ret i8* %result\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @boxedConcatenateWithSpace(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  ; Check for null operands\n";
-    ir_code_ << "  %left_null = icmp eq %struct.BoxedValue* %left, null\n";
-    ir_code_ << "  %right_null = icmp eq %struct.BoxedValue* %right, null\n";
-    ir_code_ << "  %any_null = or i1 %left_null, %right_null\n";
-    ir_code_ << "  br i1 %any_null, label %handle_null, label %process_operands\n";
-    ir_code_ << "handle_null:\n";
-    ir_code_ << "  ; Return null if any operand is null\n";
-    ir_code_ << "  %null_result = call %struct.BoxedValue* @boxNull()\n";
-    ir_code_ << "  ret %struct.BoxedValue* %null_result\n";
-    ir_code_ << "process_operands:\n";
-    ir_code_ << "  ; Check left operand type and convert to string if needed\n";
-    ir_code_ << "  %left_is_string = call i1 @isString(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_string, label %left_is_str, label %left_check_number\n";
-    ir_code_ << "left_is_str:\n";
-    ir_code_ << "  %left_str_1 = call i8* @unboxString(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_check_number:\n";
-    ir_code_ << "  %left_is_number = call i1 @isNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_number, label %left_convert_number, label %left_check_bool\n";
-    ir_code_ << "left_convert_number:\n";
-    ir_code_ << "  %left_num_val = call double @unboxNumber(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_2 = call i8* @double_to_string(double %left_num_val)\n";
-    ir_code_ << "  call double @print_string(i8* %left_str_2)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_check_bool:\n";
-    ir_code_ << "  %left_is_bool = call i1 @isBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  br i1 %left_is_bool, label %left_convert_bool, label %left_convert_object\n";
-    ir_code_ << "left_convert_bool:\n";
-    ir_code_ << "  %left_bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_3 = call i8* @bool_to_string(i1 %left_bool_val)\n";
-    ir_code_ << "  call double @print_string(i8* %left_str_3)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_convert_object:\n";
-    ir_code_ << "  %left_obj_val = call i8* @unboxObject(%struct.BoxedValue* %left)\n";
-    ir_code_ << "  %left_str_4 = call i8* @object_to_string(i8* %left_obj_val)\n";
-    ir_code_ << "  br label %left_done\n";
-    ir_code_ << "left_done:\n";
-    ir_code_ << "  %left_str = phi i8* [ %left_str_1, %left_is_str ], [ %left_str_2, %left_convert_number ], [ %left_str_3, %left_convert_bool ], [ %left_str_4, %left_convert_object ]\n";
-    ir_code_ << "  ; Check right operand type and convert to string if needed\n";
-    ir_code_ << "  %right_is_string = call i1 @isString(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_string, label %right_is_str, label %right_check_number\n";
-    ir_code_ << "right_is_str:\n";
-    ir_code_ << "  %right_str_1 = call i8* @unboxString(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_check_number:\n";
-    ir_code_ << "  %right_is_number = call i1 @isNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_number, label %right_convert_number, label %right_check_bool\n";
-    ir_code_ << "right_convert_number:\n";
-    ir_code_ << "  %right_num_val = call double @unboxNumber(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_2 = call i8* @double_to_string(double %right_num_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_check_bool:\n";
-    ir_code_ << "  %right_is_bool = call i1 @isBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  br i1 %right_is_bool, label %right_convert_bool, label %right_convert_object\n";
-    ir_code_ << "right_convert_bool:\n";
-    ir_code_ << "  %right_bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_3 = call i8* @bool_to_string(i1 %right_bool_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_convert_object:\n";
-    ir_code_ << "  %right_obj_val = call i8* @unboxObject(%struct.BoxedValue* %right)\n";
-    ir_code_ << "  %right_str_4 = call i8* @object_to_string(i8* %right_obj_val)\n";
-    ir_code_ << "  br label %right_done\n";
-    ir_code_ << "right_done:\n";
-    ir_code_ << "  %right_str = phi i8* [ %right_str_1, %right_is_str ], [ %right_str_2, %right_convert_number ], [ %right_str_3, %right_convert_bool ], [ %right_str_4, %right_convert_object ]\n";
-    ir_code_ << "  ; Check for null strings after conversion\n";
-    ir_code_ << "  %left_str_null = icmp eq i8* %left_str, null\n";
-    ir_code_ << "  %right_str_null = icmp eq i8* %right_str, null\n";
-    ir_code_ << "  %any_str_null = or i1 %left_str_null, %right_str_null\n";
-    ir_code_ << "  br i1 %any_str_null, label %handle_str_null, label %concatenate\n";
-    ir_code_ << "handle_str_null:\n";
-    ir_code_ << "  ; If any string is null after conversion, return null\n";
-    ir_code_ << "  %null_str_result = call %struct.BoxedValue* @boxNull()\n";
-    ir_code_ << "  ret %struct.BoxedValue* %null_str_result\n";
-    ir_code_ << "concatenate:\n";
-    ir_code_ << "  ; Concatenate both strings with space\n";
-    ir_code_ << "  %result = call i8* @concat_strings_ws(i8* %left_str, i8* %right_str)\n";
-    ir_code_ << "  ; Check if concatenation failed\n";
-    ir_code_ << "  %concat_failed = icmp eq i8* %result, null\n";
-    ir_code_ << "  br i1 %concat_failed, label %handle_concat_failure, label %box_result\n";
-    ir_code_ << "handle_concat_failure:\n";
-    ir_code_ << "  ; Return null if concatenation failed\n";
-    ir_code_ << "  %failure_result = call %struct.BoxedValue* @boxNull()\n";
-    ir_code_ << "  ret %struct.BoxedValue* %failure_result\n";
-    ir_code_ << "box_result:\n";
-    ir_code_ << "  ; Box the result\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxString(i8* %result)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "}\n\n";
-    
-    // Memory management
-    ir_code_ << "define void @freeBoxedValue(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %box_ptr = bitcast %struct.BoxedValue* %box to i8*\n";
-    ir_code_ << "  call void @free(i8* %box_ptr)\n";
-    ir_code_ << "  ret void\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @copyBoxedValue(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box\n";
-    ir_code_ << "}\n\n";
-    
-    // Type conversion
-    ir_code_ << "define %struct.BoxedValue* @convertToString(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  ; Check if it's already a string\n";
-    ir_code_ << "  %is_string = call i1 @isString(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  br i1 %is_string, label %return_original, label %check_number\n";
-    ir_code_ << "return_original:\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box\n";
-    ir_code_ << "check_number:\n";
-    ir_code_ << "  %is_number = call i1 @isNumber(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  br i1 %is_number, label %convert_number, label %check_boolean\n";
-    ir_code_ << "convert_number:\n";
-    ir_code_ << "  %num = call double @unboxNumber(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  %str = call i8* @double_to_string(double %num)\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxString(i8* %str)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "check_boolean:\n";
-    ir_code_ << "  %is_boolean = call i1 @isBoolean(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  br i1 %is_boolean, label %convert_boolean, label %return_error\n";
-    ir_code_ << "convert_boolean:\n";
-    ir_code_ << "  %bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  %bool_str = call i8* @bool_to_string(i1 %bool_val)\n";
-    ir_code_ << "  %bool_boxed = call %struct.BoxedValue* @boxString(i8* %bool_str)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %bool_boxed\n";
-    ir_code_ << "return_error:\n";
-    ir_code_ << "  ; Return error string for unsupported types\n";
-    ir_code_ << "  %error_str = call i8* @malloc(i32 8)\n";
-    ir_code_ << "  %error_format = getelementptr [8 x i8], [8 x i8]* @.str_error, i32 0, i32 0\n";
-    ir_code_ << "  %error_result = call i32 (i8*, i8*, ...) @sprintf(i8* %error_str, i8* %error_format)\n";
-    ir_code_ << "  %error_boxed = call %struct.BoxedValue* @boxString(i8* %error_str)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %error_boxed\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @convertToNumber(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %is_string = call i1 @isString(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  br i1 %is_string, label %convert_string, label %return_original\n";
-    ir_code_ << "convert_string:\n";
-    ir_code_ << "  %str = call i8* @unboxString(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  %num = call double @strtod(i8* %str, i8** null)\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %num)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "return_original:\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box\n";
-    ir_code_ << "}\n\n";
-    
-    ir_code_ << "define %struct.BoxedValue* @convertToBoolean(%struct.BoxedValue* %box) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %is_number = call i1 @isNumber(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  br i1 %is_number, label %convert_number, label %return_original\n";
-    ir_code_ << "convert_number:\n";
-    ir_code_ << "  %num = call double @unboxNumber(%struct.BoxedValue* %box)\n";
-    ir_code_ << "  %bool = fcmp one double %num, 0.0\n";
-    ir_code_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %bool)\n";
-    ir_code_ << "  ret %struct.BoxedValue* %boxed\n";
-    ir_code_ << "return_original:\n";
-    ir_code_ << "  ret %struct.BoxedValue* %box\n";
-    ir_code_ << "}\n\n";
-
-    // Add print functions for different types
-    ir_code_ << "; Print functions for different types\n";
-
-    // Print double
-    ir_code_ << "define double @print_double(double %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %format = getelementptr [4 x i8], [4 x i8]* @.str_double, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, ...) @printf(i8* %format, double %value)\n";
-    ir_code_ << "  ret double %value\n";
-    ir_code_ << "}\n\n";
-
-    // Print boolean
-    ir_code_ << "define double @print_bool(i1 %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %format_true = getelementptr [6 x i8], [6 x i8]* @.str_bool_true, i32 0, i32 0\n";
-    ir_code_ << "  %format_false = getelementptr [7 x i8], [7 x i8]* @.str_bool_false, i32 0, i32 0\n";
-    ir_code_ << "  %format = select i1 %value, i8* %format_true, i8* %format_false\n";
-    ir_code_ << "  %result = call i32 (i8*, ...) @printf(i8* %format)\n";
-    ir_code_ << "  %value_double = uitofp i1 %value to double\n";
-    ir_code_ << "  ret double %value_double\n";
-    ir_code_ << "}\n\n";
-
-    // Print string
-    ir_code_ << "define double @print_string(i8* %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %format = getelementptr [4 x i8], [4 x i8]* @.str_string, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, ...) @printf(i8* %format, i8* %value)\n";
-    ir_code_ << "  ret double 0.0\n";
-    ir_code_ << "}\n\n";
-
-    // Print boxed value
-    ir_code_ << "define double @print_boxed(%struct.BoxedValue* %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %is_number = call i1 @isNumber(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  br i1 %is_number, label %print_number, label %check_string\n";
-    ir_code_ << "print_number:\n";
-    ir_code_ << "  %num_value = call double @unboxNumber(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  %result1 = call double @print_double(double %num_value)\n";
-    ir_code_ << "  ret double %result1\n";
-    ir_code_ << "check_string:\n";
-    ir_code_ << "  %is_string = call i1 @isString(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  br i1 %is_string, label %print_string, label %check_boolean\n";
-    ir_code_ << "print_string:\n";
-    ir_code_ << "  %str_value = call i8* @unboxString(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  %result2 = call double @print_string(i8* %str_value)\n";
-    ir_code_ << "  ret double %result2\n";
-    ir_code_ << "check_boolean:\n";
-    ir_code_ << "  %is_boolean = call i1 @isBoolean(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  br i1 %is_boolean, label %print_boolean, label %print_object\n";
-    ir_code_ << "print_boolean:\n";
-    ir_code_ << "  %bool_value = call i1 @unboxBoolean(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  %result3 = call double @print_bool(i1 %bool_value)\n";
-    ir_code_ << "  ret double %result3\n";
-    ir_code_ << "print_object:\n";
-    ir_code_ << "  %obj_value = call i8* @unboxObject(%struct.BoxedValue* %value)\n";
-    ir_code_ << "  %result4 = call double @print_string(i8* %obj_value)\n";
-    ir_code_ << "  ret double %result4\n";
-    ir_code_ << "}\n\n";
-
-    // Generic print function that dispatches based on type
-    ir_code_ << "define double @print(double %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %result = call double @print_double(double %value)\n";
-    ir_code_ << "  ret double %result\n";
-    ir_code_ << "}\n\n";
-
-    // String conversion functions
-    ir_code_ << "; String conversion functions\n";
-
-    // Convert double to string
-    ir_code_ << "define i8* @double_to_string(double %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %buffer = call i8* @malloc(i32 64)\n";
-    ir_code_ << "  %format = getelementptr [4 x i8], [4 x i8]* @.str_double_format, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %format, double %value)\n";
-    // ir_code_ << "  call double @print_string(i8* %buffer)\n"; // [DEBUGGING]
-    ir_code_ << "  ret i8* %buffer\n";
-    ir_code_ << "}\n\n";
-
-    // Convert boolean to string
-    ir_code_ << "define i8* @bool_to_string(i1 %value) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %buffer = call i8* @malloc(i32 8)\n";
-    ir_code_ << "  %true_str = getelementptr [5 x i8], [5 x i8]* @.str_true, i32 0, i32 0\n";
-    ir_code_ << "  %false_str = getelementptr [6 x i8], [6 x i8]* @.str_false, i32 0, i32 0\n";
-    ir_code_ << "  %str_to_copy = select i1 %value, i8* %true_str, i8* %false_str\n";
-    ir_code_ << "  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %str_to_copy)\n";
-    // ir_code_ << "  call double @print_string(i8* %buffer)\n"; // [DEBUGGING]
-    ir_code_ << "  ret i8* %buffer\n";
-    ir_code_ << "}\n\n";
-
-    // Convert object to string (simplified - just return a generic object string)
-    ir_code_ << "define i8* @object_to_string(i8* %obj) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %buffer = call i8* @malloc(i32 32)\n";
-    ir_code_ << "  %format = getelementptr [12 x i8], [12 x i8]* @.str_object_format, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %format, i8* %obj)\n";
-    ir_code_ << "  ret i8* %buffer\n";
-    ir_code_ << "}\n\n";
-
-    // String concatenation function
-    ir_code_ << "define i8* @concat_strings(i8* %str1, i8* %str2) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %buffer = call i8* @malloc(i32 256)\n";
-    ir_code_ << "  %format = getelementptr [7 x i8], [7 x i8]* @.str_concat_format, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %format, i8* %str1, i8* %str2)\n";
-    ir_code_ << "  ret i8* %buffer\n";
-    ir_code_ << "}\n\n";
-
-    // String concatenation with space function
-    ir_code_ << "define i8* @concat_strings_ws(i8* %str1, i8* %str2) {\n";
-    ir_code_ << "entry:\n";
-    ir_code_ << "  %buffer = call i8* @malloc(i32 256)\n";
-    ir_code_ << "  %format = getelementptr [10 x i8], [10 x i8]* @.str_concat_ws_format, i32 0, i32 0\n";
-    ir_code_ << "  %result = call i32 (i8*, i8*, ...) @sprintf(i8* %buffer, i8* %format, i8* %str1, i8* %str2)\n";
-    ir_code_ << "  ret i8* %buffer\n";
-    ir_code_ << "}\n\n";
-
-    // Add string constants for formatting
-    ir_code_ << "@.str_double = private unnamed_addr constant [4 x i8] c\"%f\\0A\\00\"\n";
-    ir_code_ << "@.str_bool_true = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"\n";
-    ir_code_ << "@.str_bool_false = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"\n";
-    ir_code_ << "@.str_string = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"\n";
-    ir_code_ << "@.str_double_format = private unnamed_addr constant [3 x i8] c\"%f\\00\"\n";
-    ir_code_ << "@.str_true = private unnamed_addr constant [5 x i8] c\"true\\00\"\n";
-    ir_code_ << "@.str_false = private unnamed_addr constant [6 x i8] c\"false\\00\"\n";
-    ir_code_ << "@.str_concat_format = private unnamed_addr constant [5 x i8] c\"%s%s\\00\"\n";
-    ir_code_ << "@.str_concat_ws_format = private unnamed_addr constant [6 x i8] c\"%s %s\\00\"\n";
-    ir_code_ << "@.str_null = private unnamed_addr constant [5 x i8] c\"null\\00\"\n";
-    ir_code_ << "@.str_object_format = private unnamed_addr constant [12 x i8] c\"Object: %s\\0A\\00\"\n";
-    ir_code_ << "@.str_error = private unnamed_addr constant [8 x i8] c\"[ERROR]\\00\"\n";
-    
-    // // Debug message constants for type checking functions
-    // // ir_code_ << "@.str_debug_is_number = private unnamed_addr constant [25 x i8] c\"[DEBUG] isNumber called\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_is_string = private unnamed_addr constant [25 x i8] c\"[DEBUG] isString called\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_is_boolean = private unnamed_addr constant [26 x i8] c\"[DEBUG] isBoolean called\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_is_object = private unnamed_addr constant [25 x i8] c\"[DEBUG] isObject called\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_is_null = private unnamed_addr constant [23 x i8] c\"[DEBUG] isNull called\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_type_value = private unnamed_addr constant [24 x i8] c\"[DEBUG] Type value: %d\\0A\\00\"\n";
-    // // ir_code_ << "@.str_debug_result = private unnamed_addr constant [20 x i8] c\"[DEBUG] Result: %d\\0A\\00\"\n";
-    ir_code_ << "\n";
-
-    builtins_registered_ = true;
-}
-
 std::string CodeGenerator::getLLVMType(const TypeInfo &type)
 {
     switch (type.getKind())
@@ -965,7 +168,7 @@ void CodeGenerator::visit(FunctionDecl *stmt)
     // Get return type
     std::string return_type = getLLVMType(*stmt->returnType);
 
-    // Get parameter types - use i8* for Unknown types, preserve known types
+    // Get parameter types - use %struct.BoxedValue* for Unknown types, preserve known types
     std::string param_types;
     for (size_t i = 0; i < stmt->paramTypes.size(); ++i)
     {
@@ -975,8 +178,8 @@ void CodeGenerator::visit(FunctionDecl *stmt)
         std::string param_type;
         if (stmt->paramTypes[i]->getKind() == TypeInfo::Kind::Unknown)
         {
-            // For unknown types, use i8* as a dynamic type that can hold any value
-            param_type = "i8*";
+            // For unknown types, use %struct.BoxedValue* as a dynamic type that can hold any value
+            param_type = "%struct.BoxedValue*";
         }
         else
         {
@@ -990,6 +193,14 @@ void CodeGenerator::visit(FunctionDecl *stmt)
     function_definitions_ << "define " << return_type << " @" << stmt->name << "(" << param_types << ") {\n";
     function_definitions_ << "entry:\n";
 
+    // Register function signature for future calls
+    std::vector<TypeInfo::Kind> signature;
+    for (const auto &paramType : stmt->paramTypes)
+    {
+        signature.push_back(paramType->getKind());
+    }
+    function_signatures_[stmt->name] = signature;
+
     current_function_ = stmt->name;
 
     // Set up parameters
@@ -999,7 +210,7 @@ void CodeGenerator::visit(FunctionDecl *stmt)
         std::string param_type;
         if (stmt->paramTypes[i]->getKind() == TypeInfo::Kind::Unknown)
         {
-            param_type = "i8*";
+            param_type = "%struct.BoxedValue*";
         }
         else
         {
@@ -1060,7 +271,7 @@ void CodeGenerator::visit(TypeDecl *stmt)
     // Write type declaration to global scope (before main function)
     global_constants_ << struct_name << " = type { ";
 
-    // Process attributes and determine their LLVM types
+    // Process attributes and determine their LLVM types using our hybrid strategy
     std::vector<std::string> attribute_types;
     std::unordered_map<std::string, std::string> type_attr_map;
     std::vector<std::string> param_to_attr_mapping;
@@ -1074,18 +285,23 @@ void CodeGenerator::visit(TypeDecl *stmt)
         std::string attr_name = stmt->attributes[i]->name;
         std::string param_name = (i < stmt->params.size()) ? stmt->params[i] : "";
 
-        std::string attr_type = "i8*"; // default to generic type
-
-        // Use the inferred type of the attribute if available
-        if (stmt->attributes[i]->inferredType)
+        std::string attr_type;
+        
+        // Check if we can determine the type at compile time
+        if (stmt->attributes[i]->inferredType && 
+            stmt->attributes[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
         {
+            // Type is known at compile time - use specific LLVM type
             attr_type = getLLVMType(*stmt->attributes[i]->inferredType);
-            std::cout << "[CodeGen] Attribute " << attr_name << " has type: " << stmt->attributes[i]->inferredType->toString()
+            std::cout << "[CodeGen] Attribute " << attr_name << " has known type: " 
+                      << stmt->attributes[i]->inferredType->toString()
                       << " -> LLVM type: " << attr_type << std::endl;
         }
         else
         {
-            std::cout << "[CodeGen] Warning: Attribute " << attr_name << " has no inferred type, using i8*" << std::endl;
+            // Type is unknown/dynamic - use BoxedValue
+            attr_type = "%struct.BoxedValue*";
+            std::cout << "[CodeGen] Attribute " << attr_name << " has unknown/dynamic type -> using BoxedValue" << std::endl;
         }
 
         attribute_types.push_back(attr_type);
@@ -1140,24 +356,35 @@ void CodeGenerator::visit(MethodDecl *stmt)
 {
     std::cout << "[CodeGen] Processing MethodDecl: " << stmt->name << std::endl;
 
-    // Get return type
-    std::string return_type = "double"; // default
-    if (stmt->inferredType)
+    // Get return type using our hybrid strategy
+    std::string return_type;
+    if (stmt->inferredType && stmt->inferredType->getKind() != TypeInfo::Kind::Unknown)
     {
+        // Return type is known at compile time - use specific LLVM type
         return_type = getLLVMType(*stmt->inferredType);
-        std::cout << "[CodeGen] Method " << stmt->name << " return type: " << stmt->inferredType->toString()
-                  << " -> LLVM type: " << return_type << std::endl;
+        std::cout << "[CodeGen] Method " << stmt->name << " has known return type: " 
+                  << stmt->inferredType->toString() << " -> LLVM type: " << return_type << std::endl;
+    }
+    else
+    {
+        // Return type is unknown/dynamic - use BoxedValue
+        return_type = "%struct.BoxedValue*";
+        std::cout << "[CodeGen] Method " << stmt->name << " has unknown/dynamic return type -> using BoxedValue" << std::endl;
     }
 
     // Build parameter list starting with self
     std::string type_name = current_type_;
     std::string param_list = "%struct." + type_name + "* %self";
 
-    // Add method parameters - for now assume all params are double
-    // In a more sophisticated implementation, we'd track parameter types
+    // Add method parameters - MethodDecl doesn't have paramTypes, so all parameters are treated as unknown
     for (size_t i = 0; i < stmt->params.size(); ++i)
     {
-        param_list += ", double %" + stmt->params[i];
+        // Method parameters are always treated as unknown types (BoxedValue)
+        // since MethodDecl doesn't store parameter type information
+        std::string param_type = "%struct.BoxedValue*";
+        std::cout << "[CodeGen] Parameter " << stmt->params[i] << " has unknown type -> using BoxedValue" << std::endl;
+        
+        param_list += ", " + param_type + " %" + stmt->params[i];
     }
 
     // Generate function definition
@@ -1168,12 +395,13 @@ void CodeGenerator::visit(MethodDecl *stmt)
     // Enter a new scope for the method
     enterScope();
 
-    // Register parameters in the current scope
+    // Register parameters in the current scope - all as BoxedValue
     for (size_t i = 0; i < stmt->params.size(); ++i)
     {
+        std::string param_type = "%struct.BoxedValue*";
         std::string param_var = generateUniqueName("param");
-        function_definitions_ << "  %" << param_var << " = alloca double\n";
-        function_definitions_ << "  store double %" << stmt->params[i] << ", double* %" << param_var << "\n";
+        function_definitions_ << "  %" << param_var << " = alloca " << param_type << "\n";
+        function_definitions_ << "  store " << param_type << " %" << stmt->params[i] << ", " << param_type << "* %" << param_var << "\n";
         current_scope_->variables[stmt->params[i]] = param_var;
     }
 
@@ -1213,6 +441,11 @@ void CodeGenerator::visit(MethodDecl *stmt)
             {
                 function_definitions_ << "  ret i1 false\n";
             }
+            else if (return_type == "%struct.BoxedValue*")
+            {
+                function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n";
+                function_definitions_ << "  ret %struct.BoxedValue* %null_box\n";
+            }
             else
             {
                 function_definitions_ << "  ret double 0.0\n";
@@ -1229,6 +462,11 @@ void CodeGenerator::visit(MethodDecl *stmt)
         else if (return_type == "i1")
         {
             function_definitions_ << "  ret i1 false\n";
+        }
+        else if (return_type == "%struct.BoxedValue*")
+        {
+            function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n";
+            function_definitions_ << "  ret %struct.BoxedValue* %null_box\n";
         }
         else
         {
@@ -1268,9 +506,10 @@ void CodeGenerator::visit(BooleanExpr *expr)
 {
     std::cout << "[CodeGen] Processing BooleanExpr: " << expr->value << std::endl;
 
-    // Always generate boolean values as doubles (1.0 or 0.0) for consistency
-    // since we always use double for numbers and comparisons
-    current_value_ = expr->value ? "1.0" : "0.0";
+    // Generate boolean values as i1 (true or false) for proper boolean operations
+    std::string bool_name = generateUniqueName("bool");
+    getCurrentStream() << "  %" << bool_name << " = add i1 0, " << (expr->value ? "1" : "0") << "\n";
+    current_value_ = "%" + bool_name;
 }
 
 void CodeGenerator::visit(UnaryExpr *expr)
@@ -1378,11 +617,20 @@ void CodeGenerator::visit(CallExpr *expr)
             {
             case TypeInfo::Kind::Boolean:
             {
-                // For boolean values, we need to convert from double to i1 first
-                std::string bool_value = generateUniqueName("bool_conv");
-                // Convert the double value to a proper boolean comparison
-                getCurrentStream() << "  %" << bool_value << " = fcmp one double " << arg_value << ", 0.0\n";
-                getCurrentStream() << "  %" << result_name << " = call double @print_bool(i1 %" << bool_value << ")\n";
+                // For boolean values, we need to handle i1 values correctly
+                if (arg_value.find("%") == 0) {
+                    // It's already a register (i1), use it directly
+                    getCurrentStream() << "  %" << result_name << " = call double @print_bool(i1 " << arg_value << ")\n";
+                } else {
+                    // It's a literal, convert to i1 first
+                    std::string bool_value = generateUniqueName("bool_conv");
+                    if (arg_value == "true" || arg_value == "1" || arg_value == "1.0") {
+                        getCurrentStream() << "  %" << bool_value << " = add i1 0, 1\n";
+                    } else {
+                        getCurrentStream() << "  %" << bool_value << " = add i1 0, 0\n";
+                    }
+                    getCurrentStream() << "  %" << result_name << " = call double @print_bool(i1 %" << bool_value << ")\n";
+                }
                 break;
             }
             case TypeInfo::Kind::String:
@@ -1399,7 +647,7 @@ void CodeGenerator::visit(CallExpr *expr)
             }
             default:
             {
-                getCurrentStream() << "  %" << result_name << " = call double @print_string(i8* " << arg_value << ")\n";
+                getCurrentStream() << "  %" << result_name << " = call double @print_boxed(%struct.BoxedValue* " << arg_value << ")\n";
                 break;
             }
             }
@@ -1419,44 +667,110 @@ void CodeGenerator::visit(CallExpr *expr)
     std::vector<std::string> args;
     std::vector<std::string> arg_types;
 
+    // Get the expected parameter types for this function
+    std::vector<TypeInfo::Kind> expected_param_types;
+    auto signature_it = function_signatures_.find(expr->callee);
+    if (signature_it != function_signatures_.end())
+    {
+        expected_param_types = signature_it->second;
+    }
+    else
+    {
+        // Function signature not found - assume all parameters are double
+        expected_param_types.resize(expr->args.size(), TypeInfo::Kind::Number);
+    }
+
+    // Ensure we have the right number of expected types
+    if (expected_param_types.size() != expr->args.size())
+    {
+        std::cerr << "[CodeGen] Warning: Function " << expr->callee << " expects " 
+                  << expected_param_types.size() << " parameters but got " << expr->args.size() << std::endl;
+        // Pad with Number types if needed
+        while (expected_param_types.size() < expr->args.size())
+        {
+            expected_param_types.push_back(TypeInfo::Kind::Number);
+        }
+    }
+
     for (size_t i = 0; i < expr->args.size(); ++i)
     {
         auto &arg = expr->args[i];
         arg->accept(this);
         std::string arg_value = current_value_;
 
-        // Determine argument type based on the inferred type of the argument
-        std::string arg_type = "double"; // default
+        // Get the actual type of the argument
+        TypeInfo::Kind arg_type_kind = TypeInfo::Kind::Number; // default
         if (arg->inferredType)
         {
-            if (arg->inferredType->getKind() == TypeInfo::Kind::String)
+            arg_type_kind = arg->inferredType->getKind();
+        }
+
+        // Get the expected type for this parameter
+        TypeInfo::Kind expected_type = expected_param_types[i];
+
+        // Determine if we need to convert the argument
+        std::string final_arg_value = arg_value;
+        std::string final_arg_type;
+
+        if (expected_type == TypeInfo::Kind::Unknown)
+        {
+            // Function expects BoxedValue - convert if needed
+            if (arg_type_kind != TypeInfo::Kind::Unknown)
             {
-                arg_type = "i8*";
+                // Convert specific type to BoxedValue
+                final_arg_value = generateBoxedValue(arg_value, *arg->inferredType);
+                final_arg_type = "%struct.BoxedValue*";
             }
-            else if (arg->inferredType->getKind() == TypeInfo::Kind::Boolean)
+            else
             {
-                // Booleans are always passed as doubles since we use double for everything
-                arg_type = "double";
-            }
-            else if (arg->inferredType->getKind() == TypeInfo::Kind::Number)
-            {
-                arg_type = "double";
-            }
-            else if (arg->inferredType->getKind() == TypeInfo::Kind::Unknown)
-            {
-                // For unknown types, use boxed values
-                arg_value = generateBoxedValue(arg_value, *arg->inferredType);
-                arg_type = "%struct.BoxedValue*";
+                // Already BoxedValue
+                final_arg_type = "%struct.BoxedValue*";
             }
         }
         else
         {
-            // If no type information, default to double
-            arg_type = "double";
+            // Function expects specific type
+            if (arg_type_kind == TypeInfo::Kind::Unknown)
+            {
+                // Convert BoxedValue to expected type
+                final_arg_value = generateUnboxedValue(arg_value, TypeInfo(expected_type));
+                final_arg_type = getLLVMType(TypeInfo(expected_type));
+            }
+            else if (arg_type_kind != expected_type)
+            {
+                // Type mismatch - convert if possible
+                if (expected_type == TypeInfo::Kind::Number && arg_type_kind == TypeInfo::Kind::Boolean)
+                {
+                    // Convert boolean to number
+                    std::string conv_name = generateUniqueName("bool_to_num");
+                    getCurrentStream() << "  %" << conv_name << " = uitofp i1 " << arg_value << " to double\n";
+                    final_arg_value = "%" + conv_name;
+                    final_arg_type = "double";
+                }
+                else if (expected_type == TypeInfo::Kind::Boolean && arg_type_kind == TypeInfo::Kind::Number)
+                {
+                    // Convert number to boolean
+                    std::string conv_name = generateUniqueName("num_to_bool");
+                    getCurrentStream() << "  %" << conv_name << " = fcmp one double " << arg_value << ", 0.0\n";
+                    final_arg_value = "%" + conv_name;
+                    final_arg_type = "i1";
+                }
+                else
+                {
+                    // Incompatible types - use BoxedValue as fallback
+                    final_arg_value = generateBoxedValue(arg_value, *arg->inferredType);
+                    final_arg_type = "%struct.BoxedValue*";
+                }
+            }
+            else
+            {
+                // Types match
+                final_arg_type = getLLVMType(*arg->inferredType);
+            }
         }
 
-        args.push_back(arg_value);
-        arg_types.push_back(arg_type);
+        args.push_back(final_arg_value);
+        arg_types.push_back(final_arg_type);
     }
 
     std::string result_name = generateUniqueName("call");
@@ -1469,18 +783,15 @@ void CodeGenerator::visit(CallExpr *expr)
     }
 
     // Check the inferred return type of this call expression
-    if (expr->inferredType && expr->inferredType->getKind() == TypeInfo::Kind::String)
+    std::string return_type = "double"; // default
+    if (expr->inferredType)
     {
-        // This function returns a string, so we need to call it as i8*
-        getCurrentStream() << "  %" << result_name << " = call i8* @" << expr->callee << "(" << arg_list << ")\n";
-        current_value_ = "%" + result_name;
+        return_type = getLLVMType(*expr->inferredType);
     }
-    else
-    {
-        // This function returns a number or other type
-        getCurrentStream() << "  %" << result_name << " = call double @" << expr->callee << "(" << arg_list << ")\n";
-        current_value_ = "%" + result_name;
-    }
+    
+    // Generate the function call with the correct return type
+    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << expr->callee << "(" << arg_list << ")\n";
+    current_value_ = "%" + result_name;
 }
 
 void CodeGenerator::visit(VariableExpr *expr)
@@ -1837,6 +1148,13 @@ void CodeGenerator::visit(NewExpr *expr)
 
         std::cout << "[CodeGen] Initializing object with " << expr->args.size() << " constructor arguments" << std::endl;
 
+        // Validate number of arguments
+        if (expr->args.size() != type_decl->params.size())
+        {
+            std::cerr << "[CodeGen] Warning: Type " << expr->typeName << " expects " 
+                      << type_decl->params.size() << " parameters but got " << expr->args.size() << std::endl;
+        }
+
         // Enter a new scope for constructor parameters
         enterScope();
 
@@ -1851,7 +1169,28 @@ void CodeGenerator::visit(NewExpr *expr)
             std::string param_var = generateUniqueName("param");
 
             // Get the parameter type from the type system
-            std::string param_type = getLLVMType(*expr->args[i]->inferredType);
+            std::string param_type;
+            if (expr->args[i]->inferredType && 
+                expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
+            {
+                // Parameter has a known type
+                param_type = getLLVMType(*expr->args[i]->inferredType);
+                std::cout << "[CodeGen] Parameter " << i << " has known type: " 
+                          << expr->args[i]->inferredType->toString() << " -> " << param_type << std::endl;
+            }
+            else
+            {
+                // Parameter has unknown type - use BoxedValue
+                param_type = "%struct.BoxedValue*";
+                std::cout << "[CodeGen] Parameter " << i << " has unknown type -> using BoxedValue" << std::endl;
+                
+                // Convert the argument to BoxedValue if it's not already
+                if (expr->args[i]->inferredType && 
+                    expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
+                {
+                    arg_value = generateBoxedValue(arg_value, *expr->args[i]->inferredType);
+                }
+            }
 
             getCurrentStream() << "  %" << param_var << " = alloca " << param_type << "\n";
             getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "\n";
@@ -1870,20 +1209,66 @@ void CodeGenerator::visit(NewExpr *expr)
         {
             const auto &attr = type_decl->attributes[attr_index];
             std::string attr_name = attr->name;
-            std::string store_type = attr_types.at(attr_name);
+            std::string store_type = attr_types.at(attr_name); // The LLVM type of the struct field
 
             // Get the field pointer
             std::string field_ptr = generateUniqueName("field_ptr");
             getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << attr_index << "\n";
 
-            // Evaluate the attribute initializer
-            // This will use the parameters we just registered in the scope
+            // Step 1: Evaluate the initializer expression (e.g., the 'x' in 'x = x')
             attr->initializer->accept(this);
-            std::string init_value = current_value_;
+            std::string init_value = current_value_; // This is the resulting value (e.g., a double like 3.0)
 
-            std::cout << "[CodeGen] Initializing attribute " << attr_name << " at index " << attr_index
-                      << " with value " << init_value << " (LLVM type: " << store_type << ")" << std::endl;
+            // Step 2: Determine the LLVM type of the value we just got from the initializer
+            std::string init_type;
+            if (attr->initializer->inferredType && attr->initializer->inferredType->getKind() != TypeInfo::Kind::Unknown) {
+                init_type = getLLVMType(*attr->initializer->inferredType);
+                std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
+            } else {
+                init_type = "%struct.BoxedValue*";
+                std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
+            }
 
+            std::cout << "[CodeGen] Initializing attribute '" << attr_name << "'. Field type: " << store_type << ", Initializer type: " << init_type << std::endl;
+
+            // Step 3: Check if the initializer's type matches the field's type. If not, convert.
+            // This is the key logic to handle boxing and unboxing.
+            if (store_type != init_type)
+            {
+                // Case A: The field expects a BoxedValue, but the initializer provided a specific type (e.g., double, i1, i8*).
+                // This is the exact case for `new Point(3,2)`. The field is BoxedValue, the initializer is double.
+                // We MUST box the specific type.
+                if (store_type == "%struct.BoxedValue*")
+                {
+                    std::cout << "[CodeGen] BOXING required for attribute '" << attr_name << "'. Converting " << init_type << " to BoxedValue." << std::endl;
+                    init_value = generateBoxedValue(init_value, *attr->initializer->inferredType);
+                }
+                // Case B: The field expects a specific type, but the initializer provided a BoxedValue.
+                // We MUST unbox the value.
+                else if (init_type == "%struct.BoxedValue*")
+                {
+                    std::cout << "[CodeGen] UNBOXING required for attribute '" << attr_name << "'. Converting BoxedValue to " << store_type << "." << std::endl;
+                    TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
+                    if (store_type == "i1") target_kind = TypeInfo::Kind::Boolean;
+                    else if (store_type == "i8*") target_kind = TypeInfo::Kind::String;
+                    else if (store_type.find("%struct.") == 0) target_kind = TypeInfo::Kind::Object;
+                    init_value = generateUnboxedValue(init_value, TypeInfo(target_kind));
+                }
+                // Case C: Mismatch between two different specific types. This is rare but we can handle it by boxing then unboxing.
+                else
+                {
+                    std::cout << "[CodeGen] CONVERTING between specific types for attribute '" << attr_name << "' (" << init_type << " -> " << store_type << ")." << std::endl;
+                    std::string temp_boxed = generateBoxedValue(init_value, *attr->initializer->inferredType);
+                    TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
+                    if (store_type == "i1") target_kind = TypeInfo::Kind::Boolean;
+                    else if (store_type == "i8*") target_kind = TypeInfo::Kind::String;
+                    init_value = generateUnboxedValue(temp_boxed, TypeInfo(target_kind));
+                }
+            } else {
+                std::cout << "[CodeGen] No conversion needed for attribute '" << attr_name << "'." << std::endl;
+            }
+
+            // Step 4: Store the (potentially converted) value into the struct field.
             getCurrentStream() << "  store " << store_type << " " << init_value << ", " << store_type << "* %" << field_ptr << "\n";
         }
 
@@ -1949,12 +1334,39 @@ void CodeGenerator::visit(GetAttrExpr *expr)
     }
 
     std::string field_ptr = generateUniqueName("field_ptr");
+
+
     getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* " << object_ptr << ", i32 0, i32 " << attr_index << "\n";
 
     std::cout << "[CodeGen] Loading attribute " << expr->attrName << " at index " << attr_index
               << " with LLVM type: " << load_type << std::endl;
 
     getCurrentStream() << "  %" << result_name << " = load " << load_type << ", " << load_type << "* %" << field_ptr << "\n";
+
+    // If the expected return type is different from the loaded type, we may need to convert
+    if (expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    {
+        std::string expected_type = getLLVMType(*expr->inferredType);
+        if (expected_type != load_type)
+        {
+            std::cout << "[CodeGen] Converting attribute " << expr->attrName << " from " << load_type << " to " << expected_type << std::endl;
+            
+            if (load_type == "%struct.BoxedValue*" && expected_type != "%struct.BoxedValue*")
+            {
+                // Convert from BoxedValue to specific type
+                std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
+                current_value_ = converted;
+                return;
+            }
+            else if (load_type != "%struct.BoxedValue*" && expected_type == "%struct.BoxedValue*")
+            {
+                // Convert from specific type to BoxedValue
+                std::string converted = generateBoxedValue("%" + result_name, *expr->inferredType);
+                current_value_ = converted;
+                return;
+            }
+        }
+    }
 
     current_value_ = "%" + result_name;
 }
@@ -2018,6 +1430,27 @@ void CodeGenerator::visit(SetAttrExpr *expr)
     std::cout << "[CodeGen] Setting attribute " << expr->attrName << " at index " << attr_index
               << " with LLVM type: " << store_type << std::endl;
 
+    // Check if we need to convert the value to match the expected type
+    if (expr->value->inferredType && expr->value->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    {
+        std::string value_type = getLLVMType(*expr->value->inferredType);
+        if (value_type != store_type)
+        {
+            std::cout << "[CodeGen] Converting value from " << value_type << " to " << store_type << " for attribute " << expr->attrName << std::endl;
+            
+            if (store_type == "%struct.BoxedValue*" && value_type != "%struct.BoxedValue*")
+            {
+                // Convert from specific type to BoxedValue
+                value = generateBoxedValue(value, *expr->value->inferredType);
+            }
+            else if (store_type != "%struct.BoxedValue*" && value_type == "%struct.BoxedValue*")
+            {
+                // Convert from BoxedValue to specific type
+                value = generateUnboxedValue(value, TypeInfo(TypeInfo::Kind::Number)); // Default to number
+            }
+        }
+    }
+
     getCurrentStream() << "  store " << store_type << " " << value << ", " << store_type << "* %" << field_ptr << "\n";
 
     current_value_ = value;
@@ -2031,6 +1464,13 @@ void CodeGenerator::visit(MethodCallExpr *expr)
     expr->object->accept(this);
     std::string object_ptr = current_value_;
 
+    // Get the object type name
+    std::string object_type_name = "Object"; // default
+    if (expr->object->inferredType && !expr->object->inferredType->getTypeName().empty())
+    {
+        object_type_name = expr->object->inferredType->getTypeName();
+    }
+
     // For now, we'll generate a simple function call
     // In a more complete implementation, we'd need to handle method dispatch properly
     std::string result_name = generateUniqueName("method_call");
@@ -2041,18 +1481,22 @@ void CodeGenerator::visit(MethodCallExpr *expr)
 
     // Add the object as the first argument (self)
     args.push_back(object_ptr);
-    arg_types.push_back("%struct." + expr->object->inferredType->getTypeName() + "*");
+    arg_types.push_back("%struct." + object_type_name + "*");
 
     // Add method arguments
     for (auto &arg : expr->args)
     {
         arg->accept(this);
         std::string arg_value = current_value_;
-        std::string arg_type = "double"; // default
+        std::string arg_type = "%struct.BoxedValue*"; // default to BoxedValue for method parameters
 
-        if (arg->inferredType)
+        if (arg->inferredType && arg->inferredType->getKind() != TypeInfo::Kind::Unknown)
         {
-            arg_type = getLLVMType(*arg->inferredType);
+            // Convert specific types to BoxedValue for method parameters
+            arg_type = "%struct.BoxedValue*";
+            arg_value = generateBoxedValue(arg_value, *arg->inferredType);
+            std::cout << "[CodeGen] Converting method argument to BoxedValue: " 
+                      << arg->inferredType->toString() << std::endl;
         }
 
         args.push_back(arg_value);
@@ -2068,16 +1512,31 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         arg_list += arg_types[i] + " " + args[i];
     }
 
-    // Generate the method call
-    // For now, we'll assume the method returns double
-    std::string return_type = "double";
-    if (expr->inferredType)
+    // Check the inferred return type of this call expression
+    std::string return_type = "%struct.BoxedValue*"; // default to BoxedValue for method returns
+    if (expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
     {
         return_type = getLLVMType(*expr->inferredType);
     }
-
-    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << expr->object->inferredType->getTypeName() << "_" << expr->methodName << "(" << arg_list << ")\n";
-
+    
+    // Generate the function call with the correct return type
+    std::string function_name = object_type_name + "_" + expr->methodName;
+    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
+    
+    // If the method returns a BoxedValue but we expect a specific type, convert it
+    if (return_type == "%struct.BoxedValue*" && 
+        expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    {
+        std::string expected_type = getLLVMType(*expr->inferredType);
+        if (expected_type != "%struct.BoxedValue*")
+        {
+            std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
+            std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
+            current_value_ = converted;
+            return;
+        }
+    }
+    
     current_value_ = "%" + result_name;
 }
 
@@ -2141,11 +1600,19 @@ std::string CodeGenerator::generateBoxedValue(const std::string &value, const Ty
         getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxString(i8* " << value << ")\n";
         break;
     case TypeInfo::Kind::Boolean:
-        // Convert string representation to proper boolean value
-        if (value == "1.0" || value == "1") {
-            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 true)\n";
+        // Handle boolean values that are already i1
+        if (value.find("%") == 0) {
+            // It's already a register, use it directly
+            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 " << value << ")\n";
+        } else if (value == "true" || value == "1" || value == "1.0") {
+            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 1)\n";
+        } else if (value == "false" || value == "0" || value == "0.0") {
+            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 0)\n";
         } else {
-            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 false)\n";
+            // Convert double to boolean
+            std::string bool_conv = generateUniqueName("bool_conv");
+            getCurrentStream() << "  %" << bool_conv << " = fcmp one double " << value << ", 0.0\n";
+            getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxBoolean(i1 %" << bool_conv << ")\n";
         }
         break;
     case TypeInfo::Kind::Object:
@@ -2269,10 +1736,60 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
                 getCurrentStream() << "  %" << result_name << " = fcmp ugt double " << left << ", " << right << "\n";
                 return "%" + result_name;
             } else if (operation == "and" && left_type.getKind() == TypeInfo::Kind::Boolean) {
-                getCurrentStream() << "  %" << result_name << " = and i1 " << left << ", " << right << "\n";
+                // Handle boolean operations - check if operands are already i1 or need conversion
+                std::string left_bool, right_bool;
+                
+                // Check if left operand is already i1 (starts with % and is a register)
+                if (left.find("%") == 0) {
+                    // Assume it's already i1 if it's a register
+                    left_bool = left;
+                } else {
+                    // Convert double to i1
+                    left_bool = generateUniqueName("left_bool");
+                    getCurrentStream() << "  %" << left_bool << " = fcmp one double " << left << ", 0.0\n";
+                    left_bool = "%" + left_bool;
+                }
+                
+                // Check if right operand is already i1
+                if (right.find("%") == 0) {
+                    // Assume it's already i1 if it's a register
+                    right_bool = right;
+                } else {
+                    // Convert double to i1
+                    right_bool = generateUniqueName("right_bool");
+                    getCurrentStream() << "  %" << right_bool << " = fcmp one double " << right << ", 0.0\n";
+                    right_bool = "%" + right_bool;
+                }
+                
+                getCurrentStream() << "  %" << result_name << " = and i1 " << left_bool << ", " << right_bool << "\n";
                 return "%" + result_name;
             } else if (operation == "or" && left_type.getKind() == TypeInfo::Kind::Boolean) {
-                getCurrentStream() << "  %" << result_name << " = or i1 " << left << ", " << right << "\n";
+                // Handle boolean operations - check if operands are already i1 or need conversion
+                std::string left_bool, right_bool;
+                
+                // Check if left operand is already i1 (starts with % and is a register)
+                if (left.find("%") == 0) {
+                    // Assume it's already i1 if it's a register
+                    left_bool = left;
+                } else {
+                    // Convert double to i1
+                    left_bool = generateUniqueName("left_bool");
+                    getCurrentStream() << "  %" << left_bool << " = fcmp one double " << left << ", 0.0\n";
+                    left_bool = "%" + left_bool;
+                }
+                
+                // Check if right operand is already i1
+                if (right.find("%") == 0) {
+                    // Assume it's already i1 if it's a register
+                    right_bool = right;
+                } else {
+                    // Convert double to i1
+                    right_bool = generateUniqueName("right_bool");
+                    getCurrentStream() << "  %" << right_bool << " = fcmp one double " << right << ", 0.0\n";
+                    right_bool = "%" + right_bool;
+                }
+                
+                getCurrentStream() << "  %" << result_name << " = or i1 " << left_bool << ", " << right_bool << "\n";
                 return "%" + result_name;
             } else if ((operation == "concat" || operation == "concat_ws") && 
                        left_type.getKind() == TypeInfo::Kind::String && 
