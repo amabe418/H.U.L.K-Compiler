@@ -31,7 +31,7 @@ struct ExprBlock;
 struct WhileExpr;
 struct ForExpr;
 struct BaseCallExpr;
-// struct IsExpr;
+struct IsExpr;
 
 struct TypeDecl;
 struct AttributeDecl;
@@ -618,18 +618,12 @@ struct BaseCallExpr : Expr
     }
 };
 
-// struct IsExpr : Expr
-// {
-//     ExprPtr object;
-//     std::string typeName;
-
-//     IsExpr(ExprPtr obj, std::string type) : object(std::move(obj)), typeName(std::move(type)) {}
-
-//     void
-//     accept(ExprVisitor *v) override
-//     {
-//         v->visit(this);
-//     }
-// };
+struct IsExpr : Expr
+{
+    ExprPtr expr;         // expresión a la izquierda
+    std::string typeName; // nombre del tipo a la derecha
+    IsExpr(ExprPtr e, const std::string &t) : expr(std::move(e)), typeName(t) {}
+    void accept(ExprVisitor *v) override { v->visit(this); }
+};
 
 #endif // AST_HPP

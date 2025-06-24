@@ -1880,3 +1880,26 @@ bool SemanticAnalyzer::validateInheritanceChain(const std::string &typeName, std
     }
     return validateInheritanceChain(baseTypeDecl->baseType, visited);
 }
+
+void SemanticAnalyzer::visit(IsExpr *expr)
+{
+    // Chequear el tipo de la expresión a la izquierda
+    expr->expr->accept(this);
+    TypeInfo leftType = current_type_;
+
+    // Buscar el tipo a la derecha en la tabla de símbolos
+    auto typeDecl = symbol_table_.getTypeDeclaration(expr->typeName);
+    if (!typeDecl)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Tipo no definido en el operador 'is': " + expr->typeName,
+                    expr);
+        current_type_ = TypeInfo(TypeInfo::Kind::Boolean); // igual es booleana
+    }
+    else
+    {
+        // El resultado de 'is' siempre es booleano
+        current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
+    }
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+}

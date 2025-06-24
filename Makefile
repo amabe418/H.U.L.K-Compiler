@@ -25,6 +25,7 @@ OTHER_SRCS = $(wildcard $(SRC_DIR)/AST/*.cpp) \
              $(wildcard $(SRC_DIR)/SymbolTable/*.cpp) \
              $(wildcard $(SRC_DIR)/Types/*.cpp) \
              $(wildcard $(SRC_DIR)/SemanticCheck/*.cpp) \
+             $(wildcard $(SRC_DIR)/Codegen/*.cpp) \
              $(SRC_DIR)/Parser/parser_globals.cpp \
              $(SRC_DIR)/main.cpp
 

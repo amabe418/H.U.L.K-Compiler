@@ -35,6 +35,10 @@ int main(int argc, char **argv)
 
     yylineno = 1;
     yyin = input;
+
+    // Debug: verificar el valor inicial de yylineno
+    printf("DEBUG: yylineno después de inicializar = %d\n", yylineno);
+
     // extern int yydebug;
     // yydebug = 1;
 

@@ -127,6 +127,7 @@ public:
     void visit(MethodCallExpr *expr) override;
     void visit(SelfExpr *expr) override;
     void visit(BaseCallExpr *expr) override;
+    void visit(IsExpr *expr) override;
 };
 
 #endif // CODEGEN_HPP

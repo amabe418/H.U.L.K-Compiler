@@ -27,7 +27,7 @@ struct FunctionDecl;
 struct TypeDecl;
 struct MethodDecl;
 struct AttributeDecl;
-// struct IsExpr;
+struct IsExpr;
 
 struct ExprVisitor
 {
@@ -51,7 +51,7 @@ public:
     virtual void visit(MethodCallExpr *expr) = 0;
     virtual void visit(SelfExpr *expr) = 0;
     virtual void visit(BaseCallExpr *expr) = 0;
-    // virtual void visit(IsExpr *expr) = 0;
+    virtual void visit(IsExpr *expr) = 0;
     virtual ~ExprVisitor() = default;
 };
 

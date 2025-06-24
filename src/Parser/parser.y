@@ -23,19 +23,9 @@
 
   /* 1) Función interna que maneja ubicación detallada */
   static void yyerror_loc(YYLTYPE *locp, const char *msg) {
-      // Asegurarnos de que la línea no sea mayor que el número real de líneas
-      int line = locp->first_line;
-      if (line < 1) line = 1;
-      
-      // Obtener el número de línea actual del lexer
-      extern int yylineno;
-      if (line > yylineno) {
-          line = yylineno;
-      }
-      
       std::fprintf(stderr,
           "Error de parseo en línea %d, columna %d: %s\n",
-          line,
+          locp->first_line,
           locp->first_column,
           msg);
       
@@ -494,7 +484,10 @@ expr:
         $$ = new AssignExpr(std::string($1), ExprPtr($3));
         free($1);
     }
-  
+  | expr IS IDENT {
+      $$ = new IsExpr(ExprPtr($1), std::string($3));
+      free($3);
+  }
 ;
 
 
@@ -502,6 +495,18 @@ expr:
 if_expr:
     IF LPAREN expr RPAREN expr ELSE expr {
         $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr($7));
+    }
+    | IF LPAREN expr RPAREN expr ELIF LPAREN expr RPAREN expr ELSE expr {
+        // Transformar: if (cond1) expr1 elif (cond2) expr2 else expr3
+        // A: if (cond1) expr1 else if (cond2) expr2 else expr3
+        auto nestedIf = new IfExpr(ExprPtr($8), ExprPtr($10), ExprPtr($12));
+        $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
+    }
+    | IF LPAREN expr RPAREN expr ELIF LPAREN expr RPAREN expr {
+        // Transformar: if (cond1) expr1 elif (cond2) expr2
+        // A: if (cond1) expr1 else if (cond2) expr2
+        auto nestedIf = new IfExpr(ExprPtr($8), ExprPtr($10), nullptr);
+        $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
     }
     | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELSE LBRACE stmt_list RBRACE { 
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
@@ -514,6 +519,30 @@ if_expr:
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
       $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), nullptr); 
       delete $6;
+  }
+  | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELIF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELSE LBRACE stmt_list RBRACE {
+      // Transformar: if (cond1) { body1 } elif (cond2) { body2 } else { body3 }
+      // A: if (cond1) { body1 } else if (cond2) { body2 } else { body3 }
+      auto elifBlock = ExprPtr(new ExprBlock(std::move(*$13)));
+      auto elseBlock = ExprPtr(new ExprBlock(std::move(*$17)));
+      auto nestedIf = new IfExpr(ExprPtr($10), std::move(elifBlock), std::move(elseBlock));
+      
+      auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
+      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      delete $6;
+      delete $13;
+      delete $17;
+  }
+  | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELIF LPAREN expr RPAREN LBRACE stmt_list RBRACE {
+      // Transformar: if (cond1) { body1 } elif (cond2) { body2 }
+      // A: if (cond1) { body1 } else if (cond2) { body2 }
+      auto elifBlock = ExprPtr(new ExprBlock(std::move(*$13)));
+      auto nestedIf = new IfExpr(ExprPtr($10), std::move(elifBlock), nullptr);
+      
+      auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
+      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      delete $6;
+      delete $13;
   }
 ;
 

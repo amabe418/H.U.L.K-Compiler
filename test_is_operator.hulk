@@ -1,0 +1,69 @@
+type Bird {
+    // ...
+}
+
+type Plane {
+    // ...
+}
+
+type Superman {
+    // ...
+}
+
+let x = new Superman() in
+    print(
+        if (x is Bird) "It's bird!"
+        elif (x is Plane) "It's a plane!"
+        else "No, it's Superman!"
+    );
+
+// Pruebas adicionales para verificar conformidad por herencia
+type Animal {
+    // ...
+}
+
+type Dog inherits Animal {
+    // ...
+}
+
+type Cat inherits Animal {
+    // ...
+}
+
+let dog = new Dog() in
+    print(
+        if (dog is Animal) "Dog is an Animal ✓"
+        else "Dog is not an Animal ✗"
+    );
+
+let cat = new Cat() in
+    print(
+        if (cat is Animal) "Cat is an Animal ✓"
+        else "Cat is not an Animal ✗"
+    );
+
+// Pruebas con tipos primitivos
+let num = 42 in
+    print(
+        if (num is Number) "42 is a Number ✓"
+        else "42 is not a Number ✗"
+    );
+
+let str = "hello" in
+    print(
+        if (str is String) "hello is a String ✓"
+        else "hello is not a String ✗"
+    );
+
+let bool_val = true in
+    print(
+        if (bool_val is Boolean) "true is a Boolean ✓"
+        else "true is not a Boolean ✗"
+    );
+
+// Pruebas con expresiones complejas
+let obj = new Bird() in
+    print(
+        if ((new Dog()) is Animal) "new Dog() is an Animal ✓"
+        else "new Dog() is not an Animal ✗"
+    ); 

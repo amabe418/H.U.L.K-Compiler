@@ -361,6 +361,15 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         indentLevel--;
     }
 
+    void visit(IsExpr *expr) override
+    {
+        printIndent();
+        std::cout << "|_ IsExpr: " << expr->typeName << " " << getTypeString(expr->inferredType) << "\n";
+        indentLevel++;
+        expr->expr->accept(this);
+        indentLevel--;
+    }
+
 private:
     std::string
     opToString(BinaryExpr::Op op)

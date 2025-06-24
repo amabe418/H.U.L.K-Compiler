@@ -91,6 +91,7 @@ public:
     void visit(BaseCallExpr *expr) override;
     void visit(SetAttrExpr *expr) override;
     void visit(MethodCallExpr *expr) override;
+    void visit(IsExpr *expr) override;
 
     // Visitor pattern implementation - StmtVisitor
     void visit(Program *prog) override;

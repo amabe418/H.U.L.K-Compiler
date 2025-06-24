@@ -921,12 +921,81 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 
         lastValue = result;
     }
+
     void visit(AttributeDecl *attr) override
     {
         // Evaluar el inicializador del atributo
         attr->initializer->accept(this);
         // El valor del atributo será el valor del inicializador
         // No necesitamos hacer nada más aquí ya que los atributos se manejan en NewExpr
+    }
+
+    void visit(IsExpr *expr) override
+    {
+        // Evaluar la expresión a la izquierda del 'is'
+        expr->expr->accept(this);
+        Value leftValue = lastValue;
+
+        // Si no es una instancia, solo puede ser true si el tipo es exactamente el mismo
+        if (!leftValue.isInstance())
+        {
+            // Para tipos primitivos, verificar si coinciden exactamente
+            if (expr->typeName == "Number" && leftValue.isNumber())
+            {
+                lastValue = Value(true);
+            }
+            else if (expr->typeName == "String" && leftValue.isString())
+            {
+                lastValue = Value(true);
+            }
+            else if (expr->typeName == "Boolean" && leftValue.isBool())
+            {
+                lastValue = Value(true);
+            }
+            else
+            {
+                lastValue = Value(false);
+            }
+            return;
+        }
+
+        // Para instancias, verificar conformidad por herencia
+        auto instance = leftValue.asInstance();
+        if (!instance || !instance->typeDef)
+        {
+            lastValue = Value(false);
+            return;
+        }
+
+        // Verificar si el tipo dinámico conforma al tipo especificado
+        bool conforms = checkTypeConformance(instance->typeDef, expr->typeName);
+        lastValue = Value(conforms);
+    }
+
+private:
+    // Función auxiliar para verificar conformidad de tipos por herencia
+    bool checkTypeConformance(TypeDecl *dynamicType, const std::string &staticTypeName)
+    {
+        if (!dynamicType)
+            return false;
+
+        // Verificar si el tipo dinámico es exactamente el tipo especificado
+        if (dynamicType->name == staticTypeName)
+        {
+            return true;
+        }
+
+        // Verificar en la cadena de herencia
+        if (dynamicType->baseType != "Object")
+        {
+            auto it = types.find(dynamicType->baseType);
+            if (it != types.end())
+            {
+                return checkTypeConformance(it->second, staticTypeName);
+            }
+        }
+
+        return false;
     }
 };
 #endif

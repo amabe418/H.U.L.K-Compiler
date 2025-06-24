@@ -1552,3 +1552,22 @@ std::stringstream &CodeGenerator::getCurrentStream()
         return function_definitions_;
     }
 }
+
+void CodeGenerator::visit(IsExpr *expr)
+{
+    std::cout << "[CodeGen] Processing IsExpr: " << expr->typeName << std::endl;
+
+    // Visit the expression to get its value
+    expr->expr->accept(this);
+    std::string expr_value = current_value_;
+
+    // For now, we'll generate a simple boolean comparison
+    // In a more complete implementation, we'd need to handle type checking properly
+    std::string result_name = generateUniqueName("is_check");
+
+    // Generate a simple boolean result (placeholder implementation)
+    // This would need to be enhanced to actually check type conformance
+    getCurrentStream() << "  %" << result_name << " = icmp eq i32 1, 1\n"; // Always true for now
+
+    current_value_ = "%" + result_name;
+}

@@ -16,6 +16,12 @@
 extern int yylineno;
 
 int yycolumn = 1;                   /* columna actual */
+
+// Debug: imprimir el valor inicial de yylineno
+void debug_yylineno() {
+    printf("DEBUG: yylineno inicial = %d\n", yylineno);
+}
+
 /* Antes de cada token, actualizamos:
    - yylloc (para Bison)
    - yycolumn (aumenta por la longitud del token) */
@@ -28,8 +34,8 @@ int yycolumn = 1;                   /* columna actual */
 
 // Función para imprimir información del token
 void print_token(const char* token_name, const char* token_value) {
-    printf("Token: %-15s Value: %-20s Line: %d, Column: %d\n", 
-           token_name, token_value, yylineno, yycolumn - yyleng);
+    printf("Token: %-15s Value: %-20s Line: %d, Column: %d (yylineno=%d)\n", 
+           token_name, token_value, yylineno, yycolumn, yylineno);
 }
 
 // Necesario para evitar conflictos con strdup (definido en <string.h>)
@@ -41,9 +47,9 @@ void print_token(const char* token_name, const char* token_value) {
 %%
 
 <<EOF>>                     { return 0; }
-\n                          { yylineno++; yycolumn = 1; }
-\r\n                        { yylineno++; yycolumn = 1; }
-\r                          { yylineno++; yycolumn = 1; }
+\n                          {  }
+\r\n                        {  }
+\r                          {  }
 [ \t]+                      { /* skip whitespace */ }
 "//"[^\n]*                 { /* skip comments */ }                     
 
