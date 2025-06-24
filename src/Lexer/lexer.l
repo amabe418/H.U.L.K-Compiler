@@ -47,11 +47,11 @@ void print_token(const char* token_name, const char* token_value) {
 %%
 
 <<EOF>>                     { return 0; }
-\n                          {  }
-\r\n                        {  }
-\r                          {  }
-[ \t]+                      { /* skip whitespace */ }
-"//"[^\n]*                 { /* skip comments */ }                     
+\n                          { yycolumn = 1; }
+\r\n                        { yycolumn = 1; }
+\r                          { yycolumn = 1; }
+[ \t]+                      { yycolumn += yyleng; /* skip whitespace */ }
+"//"[^\n]*                 { yycolumn += yyleng; /* skip comments */ }
 
 [0-9]+(\.[0-9]+)?           {
                               yylval.expr = new NumberExpr(atof(yytext));

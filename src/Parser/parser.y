@@ -64,6 +64,25 @@
   std::shared_ptr<TypeInfo> defaultTypeInfo() {
       return std::make_shared<TypeInfo>(TypeInfo::Void());
   }
+
+  // Helper function to set location information for AST nodes
+  template<typename T>
+  void setLocation(T* node, const YYLTYPE& loc) {
+      if (node) {
+          node->line_number = loc.first_line;
+          node->column_number = loc.first_column;
+      }
+  }
+
+  // Helper function to set location information for expressions
+  void setExprLocation(Expr* expr, const YYLTYPE& loc) {
+      setLocation(expr, loc);
+  }
+
+  // Helper function to set location information for statements
+  void setStmtLocation(Stmt* stmt, const YYLTYPE& loc) {
+      setLocation(stmt, loc);
+  }
 %}
 
 
@@ -151,12 +170,16 @@ program:
     /* vacío */      { $$ = new Program(); }
   | program stmt SEMICOLON
     {
+      setStmtLocation($2, @2);
       $1->stmts.emplace_back( StmtPtr($2) );
       $$ = $1;
     }
   | program expr SEMICOLON
     {
-      $1->stmts.emplace_back( StmtPtr(new ExprStmt(ExprPtr($2))) );
+      auto exprStmt = new ExprStmt(ExprPtr($2));
+      setStmtLocation(exprStmt, @2);
+      setExprLocation($2, @2);
+      $1->stmts.emplace_back( StmtPtr(exprStmt) );
       $$ = $1;
     }
 ;    
@@ -194,115 +217,67 @@ binding:
 
 stmt:
     expr  {
-        (yyval.stmt) = (new ExprStmt(ExprPtr((yyvsp[(1) - (1)].expr))));
+        auto exprStmt = new ExprStmt(ExprPtr((yyvsp[(1) - (1)].expr)));
+        setStmtLocation(exprStmt, @1);
+        (yyval.stmt) = exprStmt;
     }
     | FUNCTION IDENT LPAREN param_list RPAREN COLON type LBRACE stmt_list RBRACE {
-        std::vector<std::string> params;
+        std::vector<std::string> args;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
-        
         for (const auto& param : *$4) {
-            params.push_back(param.first);
+            args.push_back(param.first);
             param_types.push_back(param.second);
         }
         
-        auto block = std::make_unique<Program>();
-        block->stmts = std::move(*$9);
-        delete $9;
+        // Crear un bloque de expresiones y envolverlo en un ExprStmt
+        auto exprBlock = new ExprBlock(std::move(*$9));
+        auto exprStmt = new ExprStmt(ExprPtr(exprBlock));
         
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
-            std::string($2), 
-            std::move(params), 
-            std::move(block), 
+        auto funcDecl = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2),
+            std::move(args),
+            StmtPtr(exprStmt),
             std::move(param_types),
             *$7
         ));
-        delete $4;
-        delete $7;
-        free($2);
-    }
-    | FUNCTION IDENT LPAREN param_list RPAREN LBRACE stmt_list RBRACE {
-        std::vector<std::string> params;
-        std::vector<std::shared_ptr<TypeInfo>> param_types;
-        
-        for (const auto& param : *$4) {
-            params.push_back(param.first);
-            param_types.push_back(param.second);
-        }
-        
-        auto block = std::make_unique<Program>();
-        block->stmts = std::move(*$7);
-        delete $7;
-        
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
-            std::string($2), 
-            std::move(params), 
-            std::move(block), 
-            std::move(param_types)
-        ));
-        delete $4;
-        free($2);
-    }
-    | FUNCTION IDENT LPAREN param_list RPAREN ARROW expr {
-        std::vector<std::string> params;
-        std::vector<std::shared_ptr<TypeInfo>> param_types;
-        
-        for (const auto& param : *$4) {
-            params.push_back(param.first);
-            param_types.push_back(param.second);
-        }
-        
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
-            std::string($2), 
-            std::move(params), 
-            std::make_unique<ExprStmt>(ExprPtr($7)), 
-            std::move(param_types)
-        ));
-        delete $4;
+        setStmtLocation(funcDecl, @2);
+        (yyval.stmt) = funcDecl;
+        delete $4; delete $7; delete $9;
         free($2);
     }
     | FUNCTION IDENT LPAREN param_list RPAREN COLON type ARROW expr {
-        std::vector<std::string> params;
+        std::vector<std::string> args;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
-        
         for (const auto& param : *$4) {
-            params.push_back(param.first);
+            args.push_back(param.first);
             param_types.push_back(param.second);
         }
         
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+        auto funcDecl = static_cast<Stmt*>(new FunctionDecl(
             std::string($2), 
-            std::move(params), 
+            std::move(args), 
             std::make_unique<ExprStmt>(ExprPtr($9)), 
             std::move(param_types),
             *$7
         ));
-        delete $4;
-        delete $7;
-        free($2);
-    }
-    | FUNCTION IDENT LPAREN RPAREN ARROW expr {
-        std::vector<std::string> params;
-        std::vector<std::shared_ptr<TypeInfo>> param_types;
-        
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
-            std::string($2), 
-            std::move(params), 
-            std::make_unique<ExprStmt>(ExprPtr($6)), 
-            std::move(param_types)
-        ));
+        setStmtLocation(funcDecl, @2);
+        (yyval.stmt) = funcDecl;
+        delete $4; delete $7;
         free($2);
     }
     | FUNCTION IDENT LPAREN RPAREN COLON type ARROW expr {
         std::vector<std::string> params;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
         
-        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+        auto funcDecl = static_cast<Stmt*>(new FunctionDecl(
             std::string($2), 
             std::move(params), 
             std::make_unique<ExprStmt>(ExprPtr($8)), 
             std::move(param_types),
             *$6
         ));
+        setStmtLocation(funcDecl, @2);
+        (yyval.stmt) = funcDecl;
         delete $6;
         free($2);
     }
@@ -330,49 +305,143 @@ ident_list:
 ;
 
 expr:
-    NUMBER { std::cout << "Evaluated expression statement" << std::endl; $$ = $1; }
+    NUMBER { 
+        setExprLocation($1, @1);
+        std::cout << "Evaluated expression statement" << std::endl; 
+        $$ = $1; 
+    }
   | STRING { $$ = $1; }
-  | TRUE { $$ = $1; }
-  | FALSE { $$ = $1; }
-  | IDENT { $$ = new VariableExpr($1); free($1); }
-  | expr PLUS expr { $$ = new BinaryExpr(BinaryExpr::OP_ADD, ExprPtr($1), ExprPtr($3)); }
-  | expr MINUS expr { $$ = new BinaryExpr(BinaryExpr::OP_SUB, ExprPtr($1), ExprPtr($3)); }
-  | expr MULT expr { $$ = new BinaryExpr(BinaryExpr::OP_MUL, ExprPtr($1), ExprPtr($3)); }
-  | expr DIV expr { $$ = new BinaryExpr(BinaryExpr::OP_DIV, ExprPtr($1), ExprPtr($3)); }
-  | expr MOD expr { $$ = new BinaryExpr(BinaryExpr::OP_MOD, ExprPtr($1), ExprPtr($3)); }
-  | expr POW expr { $$ = new BinaryExpr(BinaryExpr::OP_POW, ExprPtr($1), ExprPtr($3)); }
-  | expr CONCAT expr { $$ = new BinaryExpr(BinaryExpr::OP_CONCAT, ExprPtr($1), ExprPtr($3)); }
-  | expr CONCAT_WS expr { $$ = new BinaryExpr(BinaryExpr::OP_CONCAT_WS, ExprPtr($1), ExprPtr($3)); }
-  | expr LESS_THAN expr { $$ = new BinaryExpr(BinaryExpr::OP_LT, ExprPtr($1), ExprPtr($3)); }
-  | expr GREATER_THAN expr { $$ = new BinaryExpr(BinaryExpr::OP_GT, ExprPtr($1), ExprPtr($3)); }
-  | expr LE expr { $$ = new BinaryExpr(BinaryExpr::OP_LE, ExprPtr($1), ExprPtr($3)); }
-  | expr GE expr { $$ = new BinaryExpr(BinaryExpr::OP_GE, ExprPtr($1), ExprPtr($3)); }
-  | expr EQ expr { $$ = new BinaryExpr(BinaryExpr::OP_EQ, ExprPtr($1), ExprPtr($3)); }
-  | expr NEQ expr { $$ = new BinaryExpr(BinaryExpr::OP_NEQ, ExprPtr($1), ExprPtr($3)); }
-  | expr AND expr { $$ = new BinaryExpr(BinaryExpr::OP_AND, ExprPtr($1), ExprPtr($3)); }
-  | expr OR expr { $$ = new BinaryExpr(BinaryExpr::OP_OR, ExprPtr($1), ExprPtr($3)); }
-  | MINUS expr %prec UMINUS { $$ = new UnaryExpr(UnaryExpr::OP_NEG, ExprPtr($2)); }
+  | TRUE { 
+        setExprLocation($1, @1);
+        $$ = $1; 
+    }
+  | FALSE { 
+        setExprLocation($1, @1);
+        $$ = $1; 
+    }
+  | IDENT { 
+        auto varExpr = new VariableExpr($1);
+        setExprLocation(varExpr, @1);
+        $$ = varExpr; 
+        free($1); 
+    }
+  | expr PLUS expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_ADD, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr MINUS expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_SUB, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr MULT expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_MUL, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr DIV expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_DIV, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr MOD expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_MOD, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr POW expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_POW, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr CONCAT expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_CONCAT, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr CONCAT_WS expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_CONCAT_WS, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr LESS_THAN expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_LT, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr GREATER_THAN expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_GT, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr LE expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_LE, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr GE expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_GE, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr EQ expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_EQ, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr NEQ expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_NEQ, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr AND expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_AND, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | expr OR expr { 
+        auto binExpr = new BinaryExpr(BinaryExpr::OP_OR, ExprPtr($1), ExprPtr($3));
+        setExprLocation(binExpr, @2);
+        $$ = binExpr; 
+    }
+  | MINUS expr %prec UMINUS { 
+        auto unaryExpr = new UnaryExpr(UnaryExpr::OP_NEG, ExprPtr($2));
+        setExprLocation(unaryExpr, @1);
+        $$ = unaryExpr; 
+    }
   | IDENT LPAREN argument_list RPAREN { 
       std::vector<ExprPtr> args;
       for (auto& arg : *$3) {
           args.push_back(std::move(arg));
       }
-      $$ = new CallExpr($1, std::move(args)); 
+      auto callExpr = new CallExpr($1, std::move(args));
+      setExprLocation(callExpr, @1);
+      $$ = callExpr; 
       free($1); 
       delete $3; 
   }
-  | IDENT LPAREN RPAREN { $$ = new CallExpr($1, std::vector<ExprPtr>()); free($1); }
+  | IDENT LPAREN RPAREN { 
+      auto callExpr = new CallExpr($1, std::vector<ExprPtr>());
+      setExprLocation(callExpr, @1);
+      $$ = callExpr; 
+      free($1); 
+  }
   | NEW IDENT LPAREN argument_list RPAREN {
       std::vector<ExprPtr> args;
       for (auto& arg : *$4) {
           args.push_back(std::move(arg));
       }
-      $$ = new NewExpr($2, std::move(args));
+      auto newExpr = new NewExpr($2, std::move(args));
+      setExprLocation(newExpr, @2);
+      $$ = newExpr;
       free($2);
       delete $4;
   }
   | NEW IDENT LPAREN RPAREN {
-      $$ = new NewExpr($2, std::vector<ExprPtr>());
+      auto newExpr = new NewExpr($2, std::vector<ExprPtr>());
+      setExprLocation(newExpr, @2);
+      $$ = newExpr;
       free($2);
   }
   | expr DOT IDENT LPAREN argument_list RPAREN {
@@ -380,12 +449,16 @@ expr:
       for (auto& arg : *$5) {
           args.push_back(std::move(arg));
       }
-      $$ = new MethodCallExpr(ExprPtr($1), $3, std::move(args));
+      auto methodCall = new MethodCallExpr(ExprPtr($1), $3, std::move(args));
+      setExprLocation(methodCall, @3);
+      $$ = methodCall;
       free($3);
       delete $5;
   }
   | expr DOT IDENT LPAREN RPAREN {
-      $$ = new MethodCallExpr(ExprPtr($1), $3, std::vector<ExprPtr>());
+      auto methodCall = new MethodCallExpr(ExprPtr($1), $3, std::vector<ExprPtr>());
+      setExprLocation(methodCall, @3);
+      $$ = methodCall;
       free($3);
   }
   | BASE LPAREN argument_list RPAREN {
@@ -393,11 +466,15 @@ expr:
       for (auto& arg : *$3) {
           args.push_back(std::move(arg));
       }
-      $$ = new BaseCallExpr(std::move(args));
+      auto baseCall = new BaseCallExpr(std::move(args));
+      setExprLocation(baseCall, @1);
+      $$ = baseCall;
       delete $3;
   }
   | BASE LPAREN RPAREN {
-      $$ = new BaseCallExpr({});
+      auto baseCall = new BaseCallExpr({});
+      setExprLocation(baseCall, @1);
+      $$ = baseCall;
   }
   | LET binding_list IN expr { 
       // Desugar multiple bindings into nested LetExpr
@@ -422,74 +499,108 @@ expr:
           }
       }
       
+      setExprLocation(result, @1);
       $$ = result;
       delete $2; 
   }
   | LET IDENT COLON type ASSIGN expr IN expr {
-      $$ = new LetExpr(std::string($2), ExprPtr($6), 
+      auto letExpr = new LetExpr(std::string($2), ExprPtr($6), 
                       std::make_unique<ExprStmt>(ExprPtr($8)), *$4);
+      setExprLocation(letExpr, @1);
+      $$ = letExpr;
       delete $4;
       free($2);
   }
   | LET IDENT ASSIGN expr IN expr {
-      $$ = new LetExpr(std::string($2), ExprPtr($4), 
+      auto letExpr = new LetExpr(std::string($2), ExprPtr($4), 
                       std::make_unique<ExprStmt>(ExprPtr($6)));
+      setExprLocation(letExpr, @1);
+      $$ = letExpr;
       free($2);
   }
   | if_expr
   
   | WHILE expr LBRACE stmt_list RBRACE { 
       auto block = ExprPtr(new ExprBlock(std::move(*$4)));
-      $$ = new WhileExpr(ExprPtr($2), std::move(block)); 
+      auto whileExpr = new WhileExpr(ExprPtr($2), std::move(block));
+      setExprLocation(whileExpr, @1);
+      $$ = whileExpr; 
       delete $4;
   }
   | FOR LPAREN IDENT IN expr RPAREN expr {
-      $$ = new ForExpr(std::string($3), ExprPtr($5), ExprPtr($7));
+      auto forExpr = new ForExpr(std::string($3), ExprPtr($5), ExprPtr($7));
+      setExprLocation(forExpr, @1);
+      $$ = forExpr;
       free($3);
   }
   | FOR LPAREN IDENT IN expr RPAREN LBRACE stmt_list RBRACE {
       auto block = ExprPtr(new ExprBlock(std::move(*$8)));
-      $$ = new ForExpr(std::string($3), ExprPtr($5), std::move(block));
+      auto forExpr = new ForExpr(std::string($3), ExprPtr($5), std::move(block));
+      setExprLocation(forExpr, @1);
+      $$ = forExpr;
       free($3);
       delete $8;
   }
   | LBRACE stmt_list RBRACE { 
-      $$ = new ExprBlock(std::move(*$2)); 
+      auto block = new ExprBlock(std::move(*$2));
+      setExprLocation(block, @1);
+      $$ = block; 
       delete $2;
   }
-  | LPAREN expr RPAREN { $$ = $2; }
+  | LPAREN expr RPAREN { 
+      setExprLocation($2, @2);
+      $$ = $2; 
+  }
     | expr DOT IDENT {
-        $$ = new GetAttrExpr(ExprPtr($1), $3);
+        auto getAttr = new GetAttrExpr(ExprPtr($1), $3);
+        setExprLocation(getAttr, @2);
+        $$ = getAttr;
         free($3);
     }
   | expr DOT IDENT ASSIGN_DESTRUCT expr {
-        $$ = new SetAttrExpr(ExprPtr($1), $3, ExprPtr($5));
+        auto setAttr = new SetAttrExpr(ExprPtr($1), $3, ExprPtr($5));
+        setExprLocation(setAttr, @2);
+        $$ = setAttr;
         free($3);
     }
   | expr DOT IDENT LPAREN argument_list RPAREN {
-        $$ = new MethodCallExpr(ExprPtr($1), $3, std::move(*$5));
+        auto methodCall = new MethodCallExpr(ExprPtr($1), $3, std::move(*$5));
+        setExprLocation(methodCall, @2);
+        $$ = methodCall;
         delete $5;
         free($3);
     }
   | SELF {
-        $$ = new SelfExpr();
+        auto selfExpr = new SelfExpr();
+        setExprLocation(selfExpr, @1);
+        $$ = selfExpr;
     }  
   | SELF ASSIGN_DESTRUCT expr {
-        $$ = new AssignExpr("self", ExprPtr($3));
+        auto assignExpr = new AssignExpr("self", ExprPtr($3));
+        setExprLocation(assignExpr, @1);
+        $$ = assignExpr;
     }
   | BASE LPAREN RPAREN {
-        $$ = new BaseCallExpr({});
+        auto baseCall = new BaseCallExpr({});
+        setExprLocation(baseCall, @1);
+        $$ = baseCall;
     }  
   | IDENT ASSIGN_DESTRUCT expr {
-        $$ = new AssignExpr(std::string($1), ExprPtr($3));
+        auto assignExpr = new AssignExpr(std::string($1), ExprPtr($3));
+        setExprLocation(assignExpr, @1);
+        $$ = assignExpr;
         free($1);
     }
   | expr IS IDENT {
-      $$ = new IsExpr(ExprPtr($1), std::string($3));
+      auto isExpr = new IsExpr(ExprPtr($1), std::string($3));
+      setExprLocation(isExpr, @2);
+      $$ = isExpr;
       free($3);
   }
   | expr AS IDENT {
-      $$ = new AsExpr(ExprPtr($1), std::string($3));
+      auto asExpr = new AsExpr(ExprPtr($1), std::string($3));
+      setExprLocation(asExpr, @2);
+      $$ = asExpr;
       free($3);
   }
 ;
@@ -498,30 +609,40 @@ expr:
 
 if_expr:
     IF LPAREN expr RPAREN expr ELSE expr {
-        $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr($7));
+        auto ifExpr = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr($7));
+        setExprLocation(ifExpr, @1);
+        $$ = ifExpr;
     }
     | IF LPAREN expr RPAREN expr ELIF LPAREN expr RPAREN expr ELSE expr {
         // Transformar: if (cond1) expr1 elif (cond2) expr2 else expr3
         // A: if (cond1) expr1 else if (cond2) expr2 else expr3
         auto nestedIf = new IfExpr(ExprPtr($8), ExprPtr($10), ExprPtr($12));
-        $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
+        auto ifExpr = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
+        setExprLocation(ifExpr, @1);
+        $$ = ifExpr;
     }
     | IF LPAREN expr RPAREN expr ELIF LPAREN expr RPAREN expr {
         // Transformar: if (cond1) expr1 elif (cond2) expr2
         // A: if (cond1) expr1 else if (cond2) expr2
         auto nestedIf = new IfExpr(ExprPtr($8), ExprPtr($10), nullptr);
-        $$ = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
+        auto ifExpr = new IfExpr(ExprPtr($3), ExprPtr($5), ExprPtr(nestedIf));
+        setExprLocation(ifExpr, @1);
+        $$ = ifExpr;
     }
     | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELSE LBRACE stmt_list RBRACE { 
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
       auto elseBlock = ExprPtr(new ExprBlock(std::move(*$10)));
-      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), std::move(elseBlock)); 
+      auto ifExpr = new IfExpr(ExprPtr($3), std::move(ifBlock), std::move(elseBlock));
+      setExprLocation(ifExpr, @1);
+      $$ = ifExpr; 
       delete $6;
       delete $10;
   }
   | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE { 
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
-      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), nullptr); 
+      auto ifExpr = new IfExpr(ExprPtr($3), std::move(ifBlock), nullptr);
+      setExprLocation(ifExpr, @1);
+      $$ = ifExpr; 
       delete $6;
   }
   | IF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELIF LPAREN expr RPAREN LBRACE stmt_list RBRACE ELSE LBRACE stmt_list RBRACE {
@@ -532,7 +653,9 @@ if_expr:
       auto nestedIf = new IfExpr(ExprPtr($10), std::move(elifBlock), std::move(elseBlock));
       
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
-      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      auto ifExpr = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      setExprLocation(ifExpr, @1);
+      $$ = ifExpr;
       delete $6;
       delete $13;
       delete $17;
@@ -544,7 +667,9 @@ if_expr:
       auto nestedIf = new IfExpr(ExprPtr($10), std::move(elifBlock), nullptr);
       
       auto ifBlock = ExprPtr(new ExprBlock(std::move(*$6)));
-      $$ = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      auto ifExpr = new IfExpr(ExprPtr($3), std::move(ifBlock), ExprPtr(nestedIf));
+      setExprLocation(ifExpr, @1);
+      $$ = ifExpr;
       delete $6;
       delete $13;
   }
@@ -573,7 +698,7 @@ type_decl:
             params.push_back(param.first);
             param_types.push_back(param.second);
         }
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             std::move(params),
             std::move(param_types),
@@ -582,11 +707,13 @@ type_decl:
             std::string($7),
             std::move(*$9)
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $4; delete $9; delete $12;
         free($2); free($7);
     }
   | TYPE IDENT INHERITS IDENT LPAREN argument_list RPAREN LBRACE member_list RBRACE {
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             {},
             {},
@@ -595,11 +722,13 @@ type_decl:
             std::string($4),
             std::move(*$6)
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $6; delete $9;
         free($2); free($4);
     }
 | TYPE IDENT INHERITS IDENT LBRACE member_list RBRACE {
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             {}, // sin parámetros propios
             {},
@@ -608,6 +737,8 @@ type_decl:
             std::string($4), // tipo base
             {} // sin baseArgs explícitos: herencia implícita
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $6;
         free($2); free($4);
     }
@@ -618,13 +749,15 @@ type_decl:
             params.push_back(param.first);
             param_types.push_back(param.second);
         }
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             std::move(params),
             std::move(param_types),
             std::move($7->first),
             std::move($7->second)
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $4; delete $7;
         free($2);
     }
@@ -635,7 +768,7 @@ type_decl:
             params.push_back(param.first);
             param_types.push_back(param.second);
         }
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             std::move(params),
             std::move(param_types),
@@ -644,17 +777,21 @@ type_decl:
             std::string($7),
             {} // sin baseArgs
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $4; delete $9;
         free($2); free($7);
     }
   | TYPE IDENT LBRACE member_list RBRACE {
-        (yyval.stmt) = static_cast<Stmt*>(new TypeDecl(
+        auto typeDecl = static_cast<Stmt*>(new TypeDecl(
             std::string($2),
             {},
             {},
             std::move($4->first),
             std::move($4->second)
         ));
+        setStmtLocation(typeDecl, @1);
+        (yyval.stmt) = typeDecl;
         delete $4; free($2);
     }
 ;
@@ -693,11 +830,15 @@ member:
 
 attribute:
     IDENT ASSIGN expr {
-        (yyval.attribute_decl) = static_cast<AttributeDecl*>(new AttributeDecl($1, ExprPtr($3)));
+        auto attrDecl = static_cast<AttributeDecl*>(new AttributeDecl($1, ExprPtr($3)));
+        setStmtLocation(attrDecl, @1);
+        (yyval.attribute_decl) = attrDecl;
         free($1);
     }
     | IDENT COLON type ASSIGN expr {
-        (yyval.attribute_decl) = static_cast<AttributeDecl*>(new AttributeDecl($1, ExprPtr($5), *$3));
+        auto attrDecl = static_cast<AttributeDecl*>(new AttributeDecl($1, ExprPtr($5), *$3));
+        setStmtLocation(attrDecl, @1);
+        (yyval.attribute_decl) = attrDecl;
         free($1);
         delete $3;
     }
@@ -707,7 +848,9 @@ method:
     IDENT LPAREN ident_list RPAREN ARROW expr {
         std::vector<std::string> args = $3 ? std::move(*$3) : std::vector<std::string>();
         delete $3;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6)))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6)))));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN param_list RPAREN ARROW expr {
@@ -717,7 +860,9 @@ method:
             args.push_back(param.first);
             param_types.push_back(param.second);
         }
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6))), std::move(param_types)));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6))), std::move(param_types)));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $3;
         free($1);
     }
@@ -728,7 +873,9 @@ method:
             args.push_back(param.first);
             param_types.push_back(param.second);
         }
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($8))), std::move(param_types), *$6));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($8))), std::move(param_types), *$6));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $3;
         delete $6;
         free($1);
@@ -739,7 +886,9 @@ method:
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$6);
         delete $6;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN param_list RPAREN LBRACE stmt_list RBRACE {
@@ -752,7 +901,9 @@ method:
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$6);
         delete $6;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types)));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types)));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $3;
         free($1);
     }
@@ -766,19 +917,25 @@ method:
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$8);
         delete $8;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types), *$6));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types), *$6));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $3;
         delete $6;
         free($1);
     }
     | IDENT LPAREN RPAREN ARROW expr {
         std::vector<std::string> args;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($5)))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($5)))));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN RPAREN COLON type ARROW expr {
         std::vector<std::string> args;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($7))), {}, *$5));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($7))), {}, *$5));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $5;
         free($1);
     }
@@ -787,7 +944,9 @@ method:
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$5);
         delete $5;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN RPAREN COLON type LBRACE stmt_list RBRACE {
@@ -795,7 +954,9 @@ method:
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$7);
         delete $7;
-        (yyval.method_decl) = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), {}, *$5));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), {}, *$5));
+        setStmtLocation(methodDecl, @1);
+        (yyval.method_decl) = methodDecl;
         delete $5;
         free($1);
     }

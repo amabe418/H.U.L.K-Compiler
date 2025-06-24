@@ -42,7 +42,7 @@
 //function subtract(x: Number, y: Number) => x - y;
 
 // Function with wrong return type - should give error
-//function wrongReturn(x: Number) : String => x + 1;
+function wrongReturn(x: Number) : String => x + 1;
 
 // Function with compatible return type - should work
 //function compatibleReturn(x: Number) : Number => x * 2;
@@ -257,26 +257,26 @@
 //    );
 
 
-type A {
-    // ...
-};
-
-type B inherits A {
-    // ...
-};
-
-type C inherits A {
-    // ...
-};
-
-let x : A = if (rand() < 0.5) new B() else new C() in
-    if (x is B)
-        let y : B = x as B in {
-           print("se pudo");
-        }
-    else {
-        print("no se pudo");
-    };
+//type A {
+//    // ...
+//};
+//
+//type B inherits A {
+//    // ...
+//};
+//
+//type C inherits A {
+//    // ...
+//};
+//
+//let x : A = if (rand() < 0.5) new B() else new C() in
+//    if (x is B)
+//        let y : B = x as B in {
+//           print("se pudo");
+//        }
+//    else {
+//        print("no se pudo");
+//    };
 //====================================================
 //========== IF ELSE =============
 //====================================================
