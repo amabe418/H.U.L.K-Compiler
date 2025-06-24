@@ -1571,3 +1571,30 @@ void CodeGenerator::visit(IsExpr *expr)
 
     current_value_ = "%" + result_name;
 }
+
+void CodeGenerator::visit(AsExpr *expr)
+{
+    std::cout << "[CodeGen] Processing AsExpr: " << expr->typeName << std::endl;
+
+    // Visit the expression to get its value
+    expr->expr->accept(this);
+    std::string expr_value = current_value_;
+
+    // For downcasting, we need to generate runtime type checking
+    // This is a simplified implementation - in a full implementation,
+    // we'd need to check the actual type at runtime
+
+    std::string result_name = generateUniqueName("as_cast");
+
+    // Generate a call to a runtime function that performs the downcast
+    // For now, we'll just return the same value (assuming the cast is valid)
+    // In a real implementation, this would include proper type checking
+
+    getCurrentStream() << "  %" << result_name << " = call i8* @hulk_downcast("
+                       << expr_value << ", i8* getelementptr inbounds (["
+                       << expr->typeName.length() + 1 << " x i8], ["
+                       << expr->typeName.length() + 1 << " x i8]* @.str."
+                       << generateUniqueName("type_name") << ", i32 0, i32 0))\n";
+
+    current_value_ = "%" + result_name;
+}

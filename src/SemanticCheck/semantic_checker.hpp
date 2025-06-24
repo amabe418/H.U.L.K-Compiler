@@ -92,6 +92,7 @@ public:
     void visit(SetAttrExpr *expr) override;
     void visit(MethodCallExpr *expr) override;
     void visit(IsExpr *expr) override;
+    void visit(AsExpr *expr) override;
 
     // Visitor pattern implementation - StmtVisitor
     void visit(Program *prog) override;
@@ -149,4 +150,9 @@ private:
      * @brief Validate inheritance chain and detect cycles
      */
     bool validateInheritanceChain(const std::string &typeName, std::set<std::string> &visited);
+
+    /**
+     * @brief Convert TypeInfo to string representation
+     */
+    std::string typeToString(const TypeInfo &type);
 };

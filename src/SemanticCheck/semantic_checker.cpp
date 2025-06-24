@@ -1903,3 +1903,75 @@ void SemanticAnalyzer::visit(IsExpr *expr)
     }
     expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
+
+void SemanticAnalyzer::visit(AsExpr *expr)
+{
+    // Chequear el tipo de la expresión a la izquierda
+    expr->expr->accept(this);
+    TypeInfo leftType = current_type_;
+
+    // Buscar el tipo destino en la tabla de símbolos
+    auto targetTypeDecl = symbol_table_.getTypeDeclaration(expr->typeName);
+    if (!targetTypeDecl)
+    {
+        reportError(ErrorType::UNDEFINED_TYPE,
+                    "Tipo no definido en el operador 'as': " + expr->typeName,
+                    expr);
+        current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+    }
+    else
+    {
+        // Verificar que el downcasting sea válido
+        // Solo se permite downcasting si el tipo origen es compatible con el tipo destino
+        if (leftType.getKind() == TypeInfo::Kind::Object || leftType.getKind() == TypeInfo::Kind::Unknown)
+        {
+            // Para objetos, permitir downcasting (la verificación real será en runtime)
+            current_type_ = TypeInfo(TypeInfo::Kind::Object, expr->typeName);
+        }
+        else
+        {
+            // Para tipos primitivos, solo permitir si son el mismo tipo
+            if (leftType.getKind() == TypeInfo::Kind::Number && expr->typeName == "Number")
+            {
+                current_type_ = TypeInfo(TypeInfo::Kind::Number);
+            }
+            else if (leftType.getKind() == TypeInfo::Kind::String && expr->typeName == "String")
+            {
+                current_type_ = TypeInfo(TypeInfo::Kind::String);
+            }
+            else if (leftType.getKind() == TypeInfo::Kind::Boolean && expr->typeName == "Boolean")
+            {
+                current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
+            }
+            else
+            {
+                reportError(ErrorType::TYPE_ERROR,
+                            "Downcasting inválido: no se puede convertir de " +
+                                typeToString(leftType) + " a " + expr->typeName,
+                            expr);
+                current_type_ = TypeInfo(TypeInfo::Kind::Unknown);
+            }
+        }
+    }
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
+}
+
+std::string SemanticAnalyzer::typeToString(const TypeInfo &type)
+{
+    switch (type.getKind())
+    {
+    case TypeInfo::Kind::Number:
+        return "Number";
+    case TypeInfo::Kind::String:
+        return "String";
+    case TypeInfo::Kind::Boolean:
+        return "Boolean";
+    case TypeInfo::Kind::Object:
+        return type.getTypeName().empty() ? "Object" : type.getTypeName();
+    case TypeInfo::Kind::Void:
+        return "Void";
+    case TypeInfo::Kind::Unknown:
+    default:
+        return "Unknown";
+    }
+}

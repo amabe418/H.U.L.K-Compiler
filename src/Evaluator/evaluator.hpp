@@ -13,17 +13,8 @@
 #include "../Value/enumerable.hpp"
 #include "../Value/iterable.hpp"
 #include "../Value/value.hpp"
+#include "../Value/instance.hpp"
 #include "env_frame.hpp"
-struct Instance;
-
-struct Instance
-{
-    std::shared_ptr<EnvFrame> attrs;
-    TypeDecl *typeDef;
-    std::shared_ptr<Instance> self; // Referencia a sí mismo
-
-    Instance() : attrs(std::make_shared<EnvFrame>(nullptr)), typeDef(nullptr), self(nullptr) {}
-};
 
 struct EvaluatorVisitor : StmtVisitor, ExprVisitor
 {
@@ -970,6 +961,55 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // Verificar si el tipo dinámico conforma al tipo especificado
         bool conforms = checkTypeConformance(instance->typeDef, expr->typeName);
         lastValue = Value(conforms);
+    }
+
+    void visit(AsExpr *expr) override
+    {
+        // Evaluar la expresión a la izquierda del 'as'
+        expr->expr->accept(this);
+        Value leftValue = lastValue;
+
+        // Para tipos primitivos, verificar que coincidan exactamente
+        if (!leftValue.isInstance())
+        {
+            if (expr->typeName == "Number" && leftValue.isNumber())
+            {
+                lastValue = leftValue; // No change needed
+            }
+            else if (expr->typeName == "String" && leftValue.isString())
+            {
+                lastValue = leftValue; // No change needed
+            }
+            else if (expr->typeName == "Boolean" && leftValue.isBool())
+            {
+                lastValue = leftValue; // No change needed
+            }
+            else
+            {
+                // Runtime error: downcasting inválido
+                throw std::runtime_error("Runtime error: Cannot downcast from " +
+                                         leftValue.getTypeName() + " to " + expr->typeName);
+            }
+            return;
+        }
+
+        // Para instancias, verificar conformidad por herencia
+        auto instance = leftValue.asInstance();
+        if (!instance || !instance->typeDef)
+        {
+            throw std::runtime_error("Runtime error: Cannot downcast null instance to " + expr->typeName);
+        }
+
+        // Verificar si el tipo dinámico conforma al tipo especificado
+        bool conforms = checkTypeConformance(instance->typeDef, expr->typeName);
+        if (!conforms)
+        {
+            throw std::runtime_error("Runtime error: Cannot downcast from " +
+                                     instance->typeDef->name + " to " + expr->typeName);
+        }
+
+        // Si la verificación pasa, retornar la misma instancia
+        lastValue = leftValue;
     }
 
 private:

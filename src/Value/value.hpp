@@ -14,8 +14,8 @@ class RangeValue;
 class RangeIterator;
 struct Instance;
 
-// Incluir la definición de Instance desde evaluator.hpp
-#include "../Evaluator/evaluator.hpp"
+// Include instance definition
+#include "instance.hpp"
 
 class Value
 {
@@ -130,6 +130,36 @@ public:
             return "<instance>";
         }
         return "<unknown>";
+    }
+
+    std::string
+    getTypeName() const
+    {
+        if (isString())
+        {
+            return "String";
+        }
+        if (isNumber())
+        {
+            return "Number";
+        }
+        if (isBool())
+        {
+            return "Boolean";
+        }
+        if (isRange())
+        {
+            return "Range";
+        }
+        if (isIterable())
+        {
+            return "Iterator";
+        }
+        if (isInstance())
+        {
+            return "Instance";
+        }
+        return "Unknown";
     }
 
 private:

@@ -1,9 +1,8 @@
-%struct.Bird = type { i8 }
-%struct.Plane = type { i8 }
-%struct.Superman = type { i8 }
-@.str.11491927587467200873 = private unnamed_addr constant [11 x i8] c"It's bird!\00"
-@.str.16495786210110340079 = private unnamed_addr constant [14 x i8] c"It's a plane!\00"
-@.str.8675640368891811931 = private unnamed_addr constant [19 x i8] c"No, it's Superman!\00"
+%struct.A = type { i8 }
+%struct.B = type { i8 }
+%struct.C = type { i8 }
+@.str.11514100687449187254 = private unnamed_addr constant [8 x i8] c"se pudo\00"
+@.str.13097573105356038884 = private unnamed_addr constant [11 x i8] c"no se pudo\00"
 ; Built-in function declarations
 declare double @sqrt(double)
 declare double @pow(double, double)
@@ -99,36 +98,44 @@ entry:
 
 define i32 @main() {
 entry:
-  %size_1 = ptrtoint %struct.Superman* null to i64
-  %new_obj_0 = call i8* @malloc(i64 %size_1)
-  %new_obj_0_cast = bitcast i8* %new_obj_0 to %struct.Superman*
-  %x_2 = alloca %struct.Superman*
-  store %struct.Superman* %new_obj_0_cast, %struct.Superman** %x_2
-  %load_3 = load %struct.Superman*, %struct.Superman** %x_2
-  %is_check_4 = icmp eq i32 1, 1
-  br i1 %is_check_4, label %then_5, label %else_6
+  %call_0 = call double @rand()
+  %binary_1 = fcmp ult double %call_0, 0.500000
+  br i1 %binary_1, label %then_2, label %else_3
 
-then_5:
-  br label %ifcont_7
+then_2:
+  %size_6 = ptrtoint %struct.B* null to i64
+  %new_obj_5 = call i8* @malloc(i64 %size_6)
+  %new_obj_5_cast = bitcast i8* %new_obj_5 to %struct.B*
+  br label %ifcont_4
 
-else_6:
-  %load_8 = load %struct.Superman*, %struct.Superman** %x_2
-  %is_check_9 = icmp eq i32 1, 1
-  br i1 %is_check_9, label %then_10, label %else_11
+else_3:
+  %size_8 = ptrtoint %struct.C* null to i64
+  %new_obj_7 = call i8* @malloc(i64 %size_8)
+  %new_obj_7_cast = bitcast i8* %new_obj_7 to %struct.C*
+  br label %ifcont_4
 
-then_10:
-  br label %ifcont_12
+ifcont_4:
+  %iftmp_9 = phi double [ %new_obj_5_cast, %then_2 ], [ %new_obj_7_cast, %else_3 ]
+  %x_10 = alloca double
+  store double %iftmp_9, double* %x_10
+  %load_11 = load %struct.A*, %struct.A** %x_10
+  %is_check_12 = icmp eq i32 1, 1
+  br i1 %is_check_12, label %then_13, label %else_14
 
-else_11:
-  br label %ifcont_12
+then_13:
+  %load_16 = load %struct.A*, %struct.A** %x_10
+  %as_cast_17 = call i8* @hulk_downcast(%load_16, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str.type_name_18, i32 0, i32 0))
+  %y_19 = alloca %struct.B*
+  store %struct.B* %as_cast_17, %struct.B** %y_19
+  %call_20 = call double @print_string(i8* @.str.11514100687449187254)
+  br label %ifcont_15
 
-ifcont_12:
-  %iftmp_13 = phi double [ @.str.16495786210110340079, %then_10 ], [ @.str.8675640368891811931, %else_11 ]
-  br label %ifcont_7
+else_14:
+  %call_21 = call double @print_string(i8* @.str.13097573105356038884)
+  br label %ifcont_15
 
-ifcont_7:
-  %iftmp_14 = phi double [ @.str.11491927587467200873, %then_5 ], [ %iftmp_13, %else_6 ]
-  %call_15 = call double @print_string(i8* %iftmp_14)
+ifcont_15:
+  %iftmp_22 = phi double [ %call_20, %then_13 ], [ %call_21, %else_14 ]
   ret i32 0
 }
 

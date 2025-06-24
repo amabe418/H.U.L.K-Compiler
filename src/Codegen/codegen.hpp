@@ -128,6 +128,7 @@ public:
     void visit(SelfExpr *expr) override;
     void visit(BaseCallExpr *expr) override;
     void visit(IsExpr *expr) override;
+    void visit(AsExpr *expr) override;
 };
 
 #endif // CODEGEN_HPP
