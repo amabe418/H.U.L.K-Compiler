@@ -1,3 +1,4 @@
+# Existing variables
 SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = hulk
@@ -26,6 +27,7 @@ OTHER_SRCS = $(wildcard $(SRC_DIR)/AST/*.cpp) \
              $(wildcard $(SRC_DIR)/Types/*.cpp) \
              $(wildcard $(SRC_DIR)/SemanticCheck/*.cpp) \
              $(wildcard $(SRC_DIR)/Codegen/*.cpp) \
+             $(wildcard $(SRC_DIR)/Runtime/*.cpp) \
              $(SRC_DIR)/Parser/parser_globals.cpp \
              $(SRC_DIR)/main.cpp
 
@@ -36,7 +38,7 @@ SRCS = $(PARSER_CPP) $(LEXER_CPP) $(OTHER_SRCS)
 OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -g -I$(SRC_DIR) -DYYDEBUG=1
+CXXFLAGS = -std=c++17 -Wall -g -I$(SRC_DIR) -DYYDEBUG=1 -fexceptions
 
 TARGET = $(BIN_DIR)/hulk_executable
 INPUT_FILE ?= script.hulk
@@ -67,4 +69,6 @@ debug: compile
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR) \
 	       $(PARSER_CPP) $(PARSER_HPP) \
-	       $(LEXER_CPP)
+	       $(LEXER_CPP) \
+		   script.hulk.ll
+

@@ -1,5 +1,4 @@
-#ifndef CODEGEN_HPP
-#define CODEGEN_HPP
+#pragma once
 
 #include <memory>
 #include <string>
@@ -12,6 +11,10 @@
 
 #include "../AST/ast.hpp"
 #include "../Types/type_info.hpp"
+#include "../Types/boxed_value.hpp"
+
+// Forward declaration
+class Scope;
 
 class CodeGenerator : public StmtVisitor, public ExprVisitor
 {
@@ -26,6 +29,9 @@ private:
 
     // Function declarations
     std::unordered_map<std::string, std::string> functions_;
+
+    // Function signatures - store parameter types for each function
+    std::unordered_map<std::string, std::vector<TypeInfo::Kind>> function_signatures_;
 
     // Type declarations
     std::unordered_map<std::string, std::string> types_;
@@ -52,12 +58,6 @@ private:
     std::string current_value_;
 
     // Scope management for variables
-    struct Scope
-    {
-        std::unordered_map<std::string, std::string> variables;
-        Scope *parent;
-        Scope(Scope *p = nullptr) : parent(p) {}
-    };
     Scope *current_scope_;
     std::vector<std::unique_ptr<Scope>> scopes_;
 
@@ -66,6 +66,9 @@ private:
 
     // Track if built-in functions have been registered
     bool builtins_registered_ = false;
+
+    // Boxed value management
+    std::unordered_map<std::string, std::string> boxed_value_types_; // variable name -> boxed type info
 
     // Built-in functions
     void registerBuiltinFunctions();
@@ -127,8 +130,25 @@ public:
     void visit(MethodCallExpr *expr) override;
     void visit(SelfExpr *expr) override;
     void visit(BaseCallExpr *expr) override;
-    void visit(IsExpr *expr) override;
-    void visit(AsExpr *expr) override;
+
+    // Boxed value support
+    std::string generateBoxedValue(const std::string &value, const TypeInfo &type);
+    std::string generateUnboxedValue(const std::string &boxed_value, const TypeInfo &target_type);
+    std::string generateBoxedValueType(const TypeInfo &type);
+    std::string generateBoxedValueAlloca(const std::string &var_name);
+    std::string generateBoxedValueStore(const std::string &var_name, const std::string &value, const TypeInfo &type);
+    std::string generateBoxedValueLoad(const std::string &var_name);
+    std::string generateBoxedValueOperation(const std::string &left, const std::string &right, const std::string &operation, const TypeInfo &left_type, const TypeInfo &right_type);
 };
 
-#endif // CODEGEN_HPP
+// Scope structure for variable management
+class Scope
+{
+public:
+    std::unordered_map<std::string, std::string> variables;       // variable name -> alloca name
+    std::unordered_map<std::string, std::string> boxed_variables; // variable name -> boxed alloca name
+    std::unordered_map<std::string, TypeInfo> variable_types;     // variable name -> type info
+    Scope *parent;
+
+    Scope(Scope *p = nullptr) : parent(p) {}
+};

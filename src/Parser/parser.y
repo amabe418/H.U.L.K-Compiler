@@ -591,18 +591,7 @@ expr:
         $$ = assignExpr;
         free($1);
     }
-  | expr IS IDENT {
-      auto isExpr = new IsExpr(ExprPtr($1), std::string($3));
-      setExprLocation(isExpr, @2);
-      $$ = isExpr;
-      free($3);
-  }
-  | expr AS IDENT {
-      auto asExpr = new AsExpr(ExprPtr($1), std::string($3));
-      setExprLocation(asExpr, @2);
-      $$ = asExpr;
-      free($3);
-  }
+  
 ;
 
 

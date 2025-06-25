@@ -29,6 +29,7 @@ struct FunctionDecl;
 struct TypeDecl;
 struct MethodDecl;
 struct AttributeDecl;
+// struct IsExpr;
 
 struct ExprVisitor
 {
