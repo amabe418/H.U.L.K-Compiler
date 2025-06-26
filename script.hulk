@@ -357,11 +357,16 @@
 //
 //print("Probando tipos");
 //
-//type Car(wheels,brand){
-//    wheels = wheels;
-//    brand = brand;
-//    getBrand() => self.brand;
-//    getWheels() => self.wheels;
-//};
-//let a = new Car(4,"mercedes") in print(2);
+type Vector(x,y){
+    x = x;
+    y = y;
+    getX() => self.x;
+    getY() => self.y;
+//    norm() => (self.x^2 + self.y^2)^(1/2);
+};
+let a = new Vector("a",true) in {
+    print(a.getX());
+    print(a.getY());
+
+};
 //let a = 42, b = true in print(a@b);
