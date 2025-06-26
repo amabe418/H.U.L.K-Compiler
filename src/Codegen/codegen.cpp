@@ -36,7 +36,7 @@ std::string CodeGenerator::getLLVMType(const TypeInfo &type)
     case TypeInfo::Kind::Boolean:
         return "i1";
     case TypeInfo::Kind::Void:
-        return "double"; // Don't use void for variables
+        return "void"; // Use void for void types
     case TypeInfo::Kind::Object:
         // Check if we have a registered type for this object
         if (!type.getTypeName().empty() && types_.find(type.getTypeName()) != types_.end())
@@ -167,6 +167,7 @@ void CodeGenerator::visit(FunctionDecl *stmt)
 
     // Get return type
     std::string return_type = getLLVMType(*stmt->returnType);
+    std::cout << "Tipo de retorno: " << return_type << std::endl;
 
     // Get parameter types - use %struct.BoxedValue* for Unknown types, preserve known types
     std::string param_types;
@@ -411,12 +412,24 @@ void CodeGenerator::visit(MethodDecl *stmt)
         // Add return statement based on the last value
         if (!current_value_.empty())
         {
-            function_definitions_ << "  ret " << return_type << " " << current_value_ << "\n";
+            // Check if return type is void
+            if (return_type == "void")
+            {
+                function_definitions_ << "  ret void\n";
+            }
+            else
+            {
+                function_definitions_ << "  ret " << return_type << " " << current_value_ << "\n";
+            }
         }
         else
         {
             // Default return value based on return type
-            if (return_type == "i8*")
+            if (return_type == "void")
+            {
+                function_definitions_ << "  ret void\n";
+            }
+            else if (return_type == "i8*")
             {
                 function_definitions_ << "  ret i8* null\n";
             }
@@ -438,7 +451,11 @@ void CodeGenerator::visit(MethodDecl *stmt)
     else
     {
         // Default return value based on return type
-        if (return_type == "i8*")
+        if (return_type == "void")
+        {
+            function_definitions_ << "  ret void\n";
+        }
+        else if (return_type == "i8*")
         {
             function_definitions_ << "  ret i8* null\n";
         }
@@ -1621,10 +1638,6 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         object_type_name = expr->object->inferredType->getTypeName();
     }
 
-    // For now, we'll generate a simple function call
-    // In a more complete implementation, we'd need to handle method dispatch properly
-    std::string result_name = generateUniqueName("method_call");
-
     // Prepare arguments
     std::vector<std::string> args;
     std::vector<std::string> arg_types;
@@ -1669,25 +1682,37 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         return_type = getLLVMType(*expr->inferredType);
     }
 
-    // Generate the function call with the correct return type
+    // Generate the function call
     std::string function_name = object_type_name + "_" + expr->methodName;
-    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
 
-    // If the method returns a BoxedValue but we expect a specific type, convert it
-    if (return_type == "%struct.BoxedValue*" &&
-        expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    if (return_type == "void")
     {
-        std::string expected_type = getLLVMType(*expr->inferredType);
-        if (expected_type != "%struct.BoxedValue*")
-        {
-            std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
-            std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
-            current_value_ = converted;
-            return;
-        }
+        // For void methods, don't generate a result variable
+        getCurrentStream() << "  call void @" << function_name << "(" << arg_list << ")\n";
+        current_value_ = ""; // No value for void methods
     }
+    else
+    {
+        // For non-void methods, generate a result variable
+        std::string result_name = generateUniqueName("method_call");
+        getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
 
-    current_value_ = "%" + result_name;
+        // If the method returns a BoxedValue but we expect a specific type, convert it
+        if (return_type == "%struct.BoxedValue*" &&
+            expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
+        {
+            std::string expected_type = getLLVMType(*expr->inferredType);
+            if (expected_type != "%struct.BoxedValue*")
+            {
+                std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
+                std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
+                current_value_ = converted;
+                return;
+            }
+        }
+
+        current_value_ = "%" + result_name;
+    }
 }
 
 void CodeGenerator::visit(SelfExpr *expr)

@@ -162,79 +162,79 @@
 //let pt = new Pointa(3,4) in
 //    print("x: " @ pt.getX() @ "; y: " @ pt.getY());
 
-// Type with typed parameters
-type Point(x: Number, y: Number) {
-    // Attributes with explicit types
-    x: Number = x;
-    y: Number = y;
-    
-    // Method with typed parameters and return type
-    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
-    
-    // Method with typed parameters but inferred return type
-    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
-    
-    // Method with no parameters and explicit return type
-    magnitude() : Number => sqrt(self.x^2 + self.y^2);
-    
-    // Method with no parameters and inferred return type
-    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
-};
-
-// Type with inheritance and typed parameters
-type Circle(center: Point, radius: Number) inherits Object {
-    // Attributes with explicit types
-    center: Point = center;
-    radius: Number = radius;
-    
-    // Method with typed parameters and return type
-    area() : Number => PI * self.radius^2;
-    
-    // Method with typed parameters but inferred return type
-    contains(point: Point) => (point.x - self.center.x)^2 + (point.y - self.center.y)^2 <= self.radius^2;
-    
-    // Method with no parameters and explicit return type
-    circumference() : Number => 2 * PI * self.radius;
-};
-
-// Type with no parameters
-type Counter {
-    // Attribute with explicit type
-    count: Number = 0;
-    
-    // Method with typed parameters and return type
-    increment(amount: Number) : Number {
-        self.count := self.count + amount;
-        self.count;
-    };
-    
-    // Method with no parameters and explicit return type
-    getCount() : Number => self.count;
-    
-    // Method with no parameters and inferred return type
-    reset() => self.count := 0;
-};
-
-// Test function with typed parameters and return type
-function createPoint(x: Number, y: Number) : Point => new Point(x, y);
-
-// Test function with typed parameters but inferred return type
-function distance(p1: Point, p2: Point) => p1.distance(p2);
-
-// Test calls
-let p1 = createPoint(3, 4) in
-let p2 = createPoint(6, 8) in
-let c = new Circle(p1, 5) in
-let counter = new Counter() in
-{
-    print("Distance: " @ distance(p1, p2));
-    print("Circle area: " @ c.area());
-    print("Point magnitude: " @ p1.magnitude());
-    print("Counter count: " @ counter.getCount());
-    counter.increment(10);
-    print("After increment: " @ counter.getCount());
-};
-
+//// Type with typed parameters
+//type Point(x: Number, y: Number) {
+//    // Attributes with explicit types
+//    x: Number = x;
+//    y: Number = y;
+//    
+//    // Method with typed parameters and return type
+//    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
+//    
+//    // Method with typed parameters but inferred return type
+//    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
+//    
+//    // Method with no parameters and explicit return type
+//    magnitude() : Number => sqrt(self.x^2 + self.y^2);
+//    
+//    // Method with no parameters and inferred return type
+//    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
+//};
+//
+//// Type with inheritance and typed parameters
+//type Circle(center: Point, radius: Number) inherits Object {
+//    // Attributes with explicit types
+//    center: Point = center;
+//    radius: Number = radius;
+//    
+//    // Method with typed parameters and return type
+//    area() : Number => PI * self.radius^2;
+//    
+//    // Method with typed parameters but inferred return type
+//    contains(point: Point) => (point.x - self.center.x)^2 + (point.y - self.center.y)^2 <= self.radius^2;
+//    
+//    // Method with no parameters and explicit return type
+//    circumference() : Number => 2 * PI * self.radius;
+//};
+//
+//// Type with no parameters
+//type Counter {
+//    // Attribute with explicit type
+//    count: Number = 0;
+//    
+//    // Method with typed parameters and return type
+//    increment(amount: Number) : Number {
+//        self.count := self.count + amount;
+//        self.count;
+//    };
+//    
+//    // Method with no parameters and explicit return type
+//    getCount() : Number => self.count;
+//    
+//    // Method with no parameters and inferred return type
+//    reset() => self.count := 0;
+//};
+//
+//// Test function with typed parameters and return type
+//function createPoint(x: Number, y: Number) : Point => new Point(x, y);
+//
+//// Test function with typed parameters but inferred return type
+//function distance(p1: Point, p2: Point) => p1.distance(p2);
+//
+//// Test calls
+//let p1 = createPoint(3, 4) in
+//let p2 = createPoint(6, 8) in
+//let c = new Circle(p1, 5) in
+//let counter = new Counter() in
+//{
+//    print("Distance: " @ distance(p1, p2));
+//    print("Circle area: " @ c.area());
+//    print("Point magnitude: " @ p1.magnitude());
+//    print("Counter count: " @ counter.getCount());
+//    counter.increment(10);
+//    print("After increment: " @ counter.getCount());
+//};
+//
 //type Bird {
 //    // ...
 //};
@@ -506,13 +506,16 @@ type Vector(x,y){
     getX() => self.x;
     getY() => self.y;
     norm() => (self.x^2 + self.y^2)^(1/2);
-    //setX() => self.x := 10;
-    //setY() => self.y := 11;
+    setX() => self.x := 10;
+    setY() => self.y := 10;
 };
 
 let a = new Vector(3,2) in {
     print(a.getX());
     print(a.getY());
+    print(a.norm());
+    a.setX();
+    a.setY();
     print(a.norm());
 };
 //let a = 42, b = true in print(a@b);

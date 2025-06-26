@@ -1458,8 +1458,9 @@ void SemanticAnalyzer::visit(SetAttrExpr *expr)
         }
     }
 
-    // Set attribute returns the type of the value
-    expr->inferredType = expr->value->inferredType;
+    // Set attribute returns void
+    current_type_ = TypeInfo(TypeInfo::Kind::Void);
+    expr->inferredType = std::make_shared<TypeInfo>(current_type_);
 }
 
 void SemanticAnalyzer::visit(MethodCallExpr *expr)
