@@ -36,7 +36,7 @@ std::string CodeGenerator::getLLVMType(const TypeInfo &type)
     case TypeInfo::Kind::Boolean:
         return "i1";
     case TypeInfo::Kind::Void:
-        return "void"; // Use void for void types
+        return "double"; // Don't use void for variables
     case TypeInfo::Kind::Object:
         // Check if we have a registered type for this object
         if (!type.getTypeName().empty() && types_.find(type.getTypeName()) != types_.end())
@@ -340,18 +340,22 @@ void CodeGenerator::visit(MethodDecl *stmt)
 {
     std::cout << "[CodeGen] Processing MethodDecl: " << stmt->name << std::endl;
 
-    // Get return type using our hybrid strategy
-    std::string return_type;
-    if (stmt->inferredType && stmt->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    // Determinar el tipo de retorno
+    std::string return_type = "%struct.BoxedValue*";
+    bool is_void = false;
+    if (stmt->inferredType && stmt->inferredType->getKind() == TypeInfo::Kind::Void)
     {
-        // Return type is known at compile time - use specific LLVM type
+        return_type = "void";
+        is_void = true;
+    }
+    else if (stmt->inferredType && stmt->inferredType->getKind() != TypeInfo::Kind::Unknown)
+    {
         return_type = getLLVMType(*stmt->inferredType);
         std::cout << "[CodeGen] Method " << stmt->name << " has known return type: "
                   << stmt->inferredType->toString() << " -> LLVM type: " << return_type << std::endl;
     }
     else
     {
-        // Return type is unknown/dynamic - use BoxedValue
         return_type = "%struct.BoxedValue*";
         std::cout << "[CodeGen] Method " << stmt->name << " has unknown/dynamic return type -> using BoxedValue" << std::endl;
     }
@@ -360,14 +364,10 @@ void CodeGenerator::visit(MethodDecl *stmt)
     std::string type_name = current_type_;
     std::string param_list = "%struct." + type_name + "* %self";
 
-    // Add method parameters - MethodDecl doesn't have paramTypes, so all parameters are treated as unknown
+    // Add method parameters - MethodDecl doesn't have paramTypes, so all parameters son BoxedValue
     for (size_t i = 0; i < stmt->params.size(); ++i)
     {
-        // Method parameters are always treated as unknown types (BoxedValue)
-        // since MethodDecl doesn't store parameter type information
         std::string param_type = "%struct.BoxedValue*";
-        std::cout << "[CodeGen] Parameter " << stmt->params[i] << " has unknown type -> using BoxedValue" << std::endl;
-
         param_list += ", " + param_type + " %" + stmt->params[i];
     }
 
@@ -392,7 +392,6 @@ void CodeGenerator::visit(MethodDecl *stmt)
     // Process the method body
     if (stmt->body)
     {
-        // Switch to function_definitions_ stream for method body
         std::stringstream old_stream;
         old_stream << ir_code_.str();
         ir_code_.str("");
@@ -401,85 +400,52 @@ void CodeGenerator::visit(MethodDecl *stmt)
         stmt->body->accept(this);
         std::string body_code = ir_code_.str();
 
-        // Restore the main stream
         ir_code_.str("");
         ir_code_.clear();
         ir_code_ << old_stream.str();
 
-        // Add the body code to function_definitions_
         function_definitions_ << body_code;
 
-        // Add return statement based on the last value
-        if (!current_value_.empty())
+        if (is_void)
         {
-            // Check if return type is void
-            if (return_type == "void")
-            {
-                function_definitions_ << "  ret void\n";
-            }
-            else
-            {
-                function_definitions_ << "  ret " << return_type << " " << current_value_ << "\n";
-            }
+            function_definitions_ << "  ret void\n";
+        }
+        else if (!current_value_.empty())
+        {
+            function_definitions_ << "  ret " << return_type << " " << current_value_ << "\n";
         }
         else
         {
-            // Default return value based on return type
-            if (return_type == "void")
-            {
-                function_definitions_ << "  ret void\n";
-            }
-            else if (return_type == "i8*")
-            {
+            // Default return value según tipo
+            if (return_type == "i8*")
                 function_definitions_ << "  ret i8* null\n";
-            }
             else if (return_type == "i1")
-            {
                 function_definitions_ << "  ret i1 false\n";
-            }
             else if (return_type == "%struct.BoxedValue*")
-            {
-                function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n";
-                function_definitions_ << "  ret %struct.BoxedValue* %null_box\n";
-            }
+                function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n  ret %struct.BoxedValue* %null_box\n";
             else
-            {
                 function_definitions_ << "  ret double 0.0\n";
-            }
         }
     }
     else
     {
-        // Default return value based on return type
-        if (return_type == "void")
+        if (is_void)
         {
             function_definitions_ << "  ret void\n";
         }
         else if (return_type == "i8*")
-        {
             function_definitions_ << "  ret i8* null\n";
-        }
         else if (return_type == "i1")
-        {
             function_definitions_ << "  ret i1 false\n";
-        }
         else if (return_type == "%struct.BoxedValue*")
-        {
-            function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n";
-            function_definitions_ << "  ret %struct.BoxedValue* %null_box\n";
-        }
+            function_definitions_ << "  %null_box = call %struct.BoxedValue* @boxNull()\n  ret %struct.BoxedValue* %null_box\n";
         else
-        {
             function_definitions_ << "  ret double 0.0\n";
-        }
     }
 
     function_definitions_ << "}\n\n";
 
-    // Exit the method scope
     exitScope();
-
-    // Register the function for future use
     functions_[function_name] = return_type;
 }
 
@@ -675,6 +641,12 @@ void CodeGenerator::visit(BinaryExpr *expr)
         break;
     case BinaryExpr::OP_GT:
         operation = "gt";
+        break;
+    case BinaryExpr::OP_LE:
+        operation = "le";
+        break;
+    case BinaryExpr::OP_GE:
+        operation = "ge";
         break;
     case BinaryExpr::OP_EQ:
         operation = "eq";
@@ -1638,6 +1610,10 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         object_type_name = expr->object->inferredType->getTypeName();
     }
 
+    // For now, we'll generate a simple function call
+    // In a more complete implementation, we'd need to handle method dispatch properly
+    std::string result_name = generateUniqueName("method_call");
+
     // Prepare arguments
     std::vector<std::string> args;
     std::vector<std::string> arg_types;
@@ -1682,37 +1658,25 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         return_type = getLLVMType(*expr->inferredType);
     }
 
-    // Generate the function call
+    // Generate the function call with the correct return type
     std::string function_name = object_type_name + "_" + expr->methodName;
+    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
 
-    if (return_type == "void")
+    // If the method returns a BoxedValue but we expect a specific type, convert it
+    if (return_type == "%struct.BoxedValue*" &&
+        expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
     {
-        // For void methods, don't generate a result variable
-        getCurrentStream() << "  call void @" << function_name << "(" << arg_list << ")\n";
-        current_value_ = ""; // No value for void methods
-    }
-    else
-    {
-        // For non-void methods, generate a result variable
-        std::string result_name = generateUniqueName("method_call");
-        getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
-
-        // If the method returns a BoxedValue but we expect a specific type, convert it
-        if (return_type == "%struct.BoxedValue*" &&
-            expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
+        std::string expected_type = getLLVMType(*expr->inferredType);
+        if (expected_type != "%struct.BoxedValue*")
         {
-            std::string expected_type = getLLVMType(*expr->inferredType);
-            if (expected_type != "%struct.BoxedValue*")
-            {
-                std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
-                std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
-                current_value_ = converted;
-                return;
-            }
+            std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
+            std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
+            current_value_ = converted;
+            return;
         }
-
-        current_value_ = "%" + result_name;
     }
+
+    current_value_ = "%" + result_name;
 }
 
 void CodeGenerator::visit(SelfExpr *expr)
@@ -2060,6 +2024,57 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
                 }
                 return "%" + result_name;
             }
+            else if (operation == "gt" && left_type.getKind() == TypeInfo::Kind::Number)
+            {
+                getCurrentStream() << "  %" << result_name << " = fcmp ugt double " << left << ", " << right << "\n";
+                return "%" + result_name;
+            }
+            else if (operation == "le" && left_type.getKind() == TypeInfo::Kind::Number)
+            {
+                getCurrentStream() << "  %" << result_name << " = fcmp ule double " << left << ", " << right << "\n";
+                return "%" + result_name;
+            }
+            else if (operation == "ge" && left_type.getKind() == TypeInfo::Kind::Number)
+            {
+                getCurrentStream() << "  %" << result_name << " = fcmp uge double " << left << ", " << right << "\n";
+                return "%" + result_name;
+            }
+            else if (operation == "and" && left_type.getKind() == TypeInfo::Kind::Boolean)
+            {
+                // Handle boolean operations - check if operands are already i1 or need conversion
+                std::string left_bool, right_bool;
+
+                // Check if left operand is already i1 (starts with % and is a register)
+                if (left.find("%") == 0)
+                {
+                    // Assume it's already i1 if it's a register
+                    left_bool = left;
+                }
+                else
+                {
+                    // Convert double to i1
+                    left_bool = generateUniqueName("left_bool");
+                    getCurrentStream() << "  %" << left_bool << " = fcmp one double " << left << ", 0.0\n";
+                    left_bool = "%" + left_bool;
+                }
+
+                // Check if right operand is already i1
+                if (right.find("%") == 0)
+                {
+                    // Assume it's already i1 if it's a register
+                    right_bool = right;
+                }
+                else
+                {
+                    // Convert double to i1
+                    right_bool = generateUniqueName("right_bool");
+                    getCurrentStream() << "  %" << right_bool << " = fcmp one double " << right << ", 0.0\n";
+                    right_bool = "%" + right_bool;
+                }
+
+                getCurrentStream() << "  %" << result_name << " = and i1 " << left_bool << ", " << right_bool << "\n";
+                return "%" + result_name;
+            }
         }
     }
 
@@ -2133,6 +2148,14 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
     else if (operation == "concat_ws")
     {
         getCurrentStream() << "  %" << result_name << " = call i8* @boxedConcatenateWithSpace(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    }
+    else if (operation == "le")
+    {
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLessEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    }
+    else if (operation == "ge")
+    {
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedGreaterEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else
     {
