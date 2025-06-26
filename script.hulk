@@ -479,6 +479,7 @@ let counter = new Counter() in
 //
 //print("Probando otra funcion recursiva, suma recursiva hasta n");
 //function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
+//let b = sum_to(2) in let a = b in print(a);
 //print(sum_to(100));
 //
 //print("Probando for loops");
@@ -499,16 +500,19 @@ let counter = new Counter() in
 //
 //print("Probando tipos");
 //
-//type Vector(x,y){
-//    x = x;
-//    y = y;
-//    getX() => self.x;
-//    getY() => self.y;
-//    norm() => (self.x^2 + self.y^2)^(1/2);
-//};
-//
-//let a = new Vector(3,2) in {
-//    print(a.getX());
-//    print(a.getY());
-//    print(a.norm());
-//};
+type Vector(x,y){
+    x = x;
+    y = y;
+    getX() => self.x;
+    getY() => self.y;
+    norm() => (self.x^2 + self.y^2)^(1/2);
+    //setX() => self.x := 10;
+    //setY() => self.y := 11;
+};
+
+let a = new Vector(3,2) in {
+    print(a.getX());
+    print(a.getY());
+    print(a.norm());
+};
+//let a = 42, b = true in print(a@b);

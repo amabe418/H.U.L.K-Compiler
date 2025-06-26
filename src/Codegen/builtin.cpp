@@ -378,12 +378,11 @@ void CodeGenerator::registerBuiltinFunctions()
     global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
 
-    global_constants_ << "define %struct.BoxedValue* @boxedLogicalNot(%struct.BoxedValue* %operand) {\n";
+    global_constants_ << "define i1 @boxedLogicalNot(%struct.BoxedValue* %operand) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %operand)\n";
     global_constants_ << "  %result = xor i1 %bool_val, true\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
 
     // String operations

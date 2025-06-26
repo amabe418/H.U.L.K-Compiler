@@ -57,6 +57,12 @@ private:
     // Current type being generated
     std::string current_type_;
 
+    // Context variables for attribute initialization in constructors
+    std::string current_object_ptr_;
+    std::string current_struct_type_;
+    int current_attr_index_;
+    bool in_constructor_context_ = false;
+
     // Current return value for expressions
     std::string current_value_;
 
@@ -84,8 +90,8 @@ private:
     void enterScope();
     void exitScope();
     std::string registerStringConstant(const std::string &value);
-    std::stringstream &getCurrentStream(); // Get current output stream
-    void generateConstructorFunction(TypeDecl *typeDecl); // Generate constructor function for types
+    std::stringstream &getCurrentStream();                                        // Get current output stream
+    void generateConstructorFunction(TypeDecl *typeDecl);                         // Generate constructor function for types
     std::vector<std::string> getInheritedAttributes(const std::string &typeName); // Get all attributes including inherited ones
 
 public:
