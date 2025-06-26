@@ -1,0 +1,13 @@
+type Point(x, y) {
+    x = x
+    y = y
+    
+    setX(x) => self.x := x;
+    setY(y) => self.y := y;
+}
+
+let p = new Point(3, 4)
+p.setX(5)
+p.setY(6)
+print(p.x)
+print(p.y) 

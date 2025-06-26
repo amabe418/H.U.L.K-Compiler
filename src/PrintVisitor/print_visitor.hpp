@@ -415,6 +415,9 @@ private:
             return "&&";
         case BinaryExpr::OP_CONCAT:
             return "@";
+        case BinaryExpr::OP_CONCAT_WS:
+            return "@@";
+
         default:
             return "?";
         }

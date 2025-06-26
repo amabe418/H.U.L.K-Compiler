@@ -221,7 +221,7 @@ stmt:
         setStmtLocation(exprStmt, @1);
         (yyval.stmt) = exprStmt;
     }
-    | FUNCTION IDENT LPAREN param_list RPAREN COLON type LBRACE stmt_list RBRACE {
+    | FUNCTION IDENT LPAREN param_list RPAREN COLON type LBRACE stmt_list RBRACE { 
         std::vector<std::string> args;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
         for (const auto& param : *$4) {
@@ -245,6 +245,29 @@ stmt:
         delete $4; delete $7; delete $9;
         free($2);
     }
+    | FUNCTION IDENT LPAREN param_list RPAREN LBRACE stmt_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
+        auto block = std::make_unique<Program>();
+        block->stmts = std::move(*$7);
+        delete $7;
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::move(block), 
+            std::move(param_types)
+        ));
+        delete $4;
+        free($2);
+    }
+
     | FUNCTION IDENT LPAREN param_list RPAREN COLON type ARROW expr {
         std::vector<std::string> args;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
@@ -265,6 +288,25 @@ stmt:
         delete $4; delete $7;
         free($2);
     }
+    | FUNCTION IDENT LPAREN param_list RPAREN ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($7)), 
+            std::move(param_types)
+        ));
+        delete $4;
+        free($2);
+    }
+
     | FUNCTION IDENT LPAREN RPAREN COLON type ARROW expr {
         std::vector<std::string> params;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
@@ -868,8 +910,13 @@ attribute:
 method:
     IDENT LPAREN ident_list RPAREN ARROW expr {
         std::vector<std::string> args = $3 ? std::move(*$3) : std::vector<std::string>();
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        // Create paramTypes with Unknown types for each parameter
+        for (const auto& param : args) {
+            param_types.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));
+        }
         delete $3;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6)))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($6))), std::move(param_types)));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         free($1);
@@ -903,11 +950,16 @@ method:
     }
     | IDENT LPAREN ident_list RPAREN LBRACE stmt_list RBRACE {
         std::vector<std::string> args = $3 ? std::move(*$3) : std::vector<std::string>();
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        // Create paramTypes with Unknown types for each parameter
+        for (const auto& param : args) {
+            param_types.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));
+        }
         delete $3;
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$6);
         delete $6;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types)));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         free($1);
@@ -947,14 +999,16 @@ method:
     }
     | IDENT LPAREN RPAREN ARROW expr {
         std::vector<std::string> args;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($5)))));
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($5))), std::move(param_types)));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN RPAREN COLON type ARROW expr {
         std::vector<std::string> args;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($7))), {}, *$5));
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(new ExprStmt(ExprPtr($7))), std::move(param_types), *$5));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         delete $5;
@@ -962,20 +1016,22 @@ method:
     }
     | IDENT LPAREN RPAREN LBRACE stmt_list RBRACE {
         std::vector<std::string> args;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$5);
         delete $5;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block))));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types)));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         free($1);
     }
     | IDENT LPAREN RPAREN COLON type LBRACE stmt_list RBRACE {
         std::vector<std::string> args;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
         auto block = std::make_unique<Program>();
         block->stmts = std::move(*$7);
         delete $7;
-        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), {}, *$5));
+        auto methodDecl = static_cast<MethodDecl*>(new MethodDecl($1, std::move(args), StmtPtr(std::move(block)), std::move(param_types), *$5));
         setStmtLocation(methodDecl, @1);
         (yyval.method_decl) = methodDecl;
         delete $5;

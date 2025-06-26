@@ -1221,6 +1221,30 @@ void SemanticAnalyzer::visit(TypeDecl *stmt)
         // Add method to the type (polymorphic override is allowed)
         if (!methodExists)
         {
+            // DEBUG: Print method information before adding to symbol table
+            std::cout << "[DEBUG] ===== METHOD DEBUG INFO =====" << std::endl;
+            std::cout << "[DEBUG] Method name: " << method->name << std::endl;
+            std::cout << "[DEBUG] Method parameters count: " << method->params.size() << std::endl;
+            std::cout << "[DEBUG] Method parameters: ";
+            for (size_t i = 0; i < method->params.size(); ++i)
+            {
+                std::cout << method->params[i];
+                if (i < method->params.size() - 1)
+                    std::cout << ", ";
+            }
+            std::cout << std::endl;
+            std::cout << "[DEBUG] Parameter types count: " << paramTypes.size() << std::endl;
+            std::cout << "[DEBUG] Parameter types: ";
+            for (size_t i = 0; i < paramTypes.size(); ++i)
+            {
+                std::cout << paramTypes[i].toString();
+                if (i < paramTypes.size() - 1)
+                    std::cout << ", ";
+            }
+            std::cout << std::endl;
+            std::cout << "[DEBUG] Return type: " << returnType.toString() << std::endl;
+            std::cout << "[DEBUG] ================================" << std::endl;
+
             if (!symbol_table_.addTypeMethod(stmt->name, method->name, paramTypes, returnType, method->line_number))
             {
                 // Only report error if it's not a polymorphic override
