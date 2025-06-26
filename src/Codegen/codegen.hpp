@@ -57,6 +57,12 @@ private:
     // Current type being generated
     std::string current_type_;
 
+    // Context variables for attribute initialization in constructors
+    std::string current_object_ptr_;
+    std::string current_struct_type_;
+    int current_attr_index_;
+    bool in_constructor_context_ = false;
+
     // Current return value for expressions
     std::string current_value_;
 
@@ -84,8 +90,8 @@ private:
     void enterScope();
     void exitScope();
     std::string registerStringConstant(const std::string &value);
-    std::stringstream &getCurrentStream(); // Get current output stream
-    void generateConstructorFunction(TypeDecl *typeDecl); // Generate constructor function for types
+    std::stringstream &getCurrentStream();                                        // Get current output stream
+    void generateConstructorFunction(TypeDecl *typeDecl);                         // Generate constructor function for types
     std::vector<std::string> getInheritedAttributes(const std::string &typeName); // Get all attributes including inherited ones
 
 public:
@@ -150,9 +156,9 @@ public:
 class Scope
 {
 public:
-    std::unordered_map<std::string, std::string> variables; // variable name -> alloca name
+    std::unordered_map<std::string, std::string> variables;       // variable name -> alloca name
     std::unordered_map<std::string, std::string> boxed_variables; // variable name -> boxed alloca name
-    std::unordered_map<std::string, TypeInfo> variable_types; // variable name -> type info
+    std::unordered_map<std::string, TypeInfo> variable_types;     // variable name -> type info
     Scope *parent;
 
     Scope(Scope *p = nullptr) : parent(p) {}
