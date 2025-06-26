@@ -264,140 +264,125 @@ void CodeGenerator::registerBuiltinFunctions()
     global_constants_ << "}\n\n";
     
     // Simple arithmetic operations (simplified for now)
-    global_constants_ << "define %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedAdd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fadd double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedSubtract(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedSubtract(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fsub double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedMultiply(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedMultiply(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fmul double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedDivide(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedDivide(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fdiv double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedModulo(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = frem double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedPower(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define double @boxedPower(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = call double @pow(double %left_num, double %right_num)\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxNumber(double %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret double %result\n";
     global_constants_ << "}\n\n";
     
     // Comparison operations
-    global_constants_ << "define %struct.BoxedValue* @boxedEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp ueq double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedNotEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedNotEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp une double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedLessThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedLessThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp ult double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedGreaterThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedGreaterThan(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp ugt double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedLessEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedLessEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp ule double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedGreaterEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedGreaterEqual(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_num = call double @unboxNumber(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_num = call double @unboxNumber(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = fcmp uge double %left_num, %right_num\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
     // Logical operations
-    global_constants_ << "define %struct.BoxedValue* @boxedLogicalAnd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedLogicalAnd(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_bool = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_bool = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = and i1 %left_bool, %right_bool\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedLogicalOr(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
+    global_constants_ << "define i1 @boxedLogicalOr(%struct.BoxedValue* %left, %struct.BoxedValue* %right) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %left_bool = call i1 @unboxBoolean(%struct.BoxedValue* %left)\n";
     global_constants_ << "  %right_bool = call i1 @unboxBoolean(%struct.BoxedValue* %right)\n";
     global_constants_ << "  %result = or i1 %left_bool, %right_bool\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
-    global_constants_ << "define %struct.BoxedValue* @boxedLogicalNot(%struct.BoxedValue* %operand) {\n";
+    global_constants_ << "define i1 @boxedLogicalNot(%struct.BoxedValue* %operand) {\n";
     global_constants_ << "entry:\n";
     global_constants_ << "  %bool_val = call i1 @unboxBoolean(%struct.BoxedValue* %operand)\n";
     global_constants_ << "  %result = xor i1 %bool_val, true\n";
-    global_constants_ << "  %boxed = call %struct.BoxedValue* @boxBoolean(i1 %result)\n";
-    global_constants_ << "  ret %struct.BoxedValue* %boxed\n";
+    global_constants_ << "  ret i1 %result\n";
     global_constants_ << "}\n\n";
     
     // String operations

@@ -277,9 +277,6 @@ void CodeGenerator::visit(TypeDecl *stmt)
     std::vector<std::string> param_to_attr_mapping;
     std::unordered_map<std::string, int> attr_index_map;
 
-    // Create mapping from parameters to attributes
-    // In H.U.L.K, parameters are assigned to attributes in the same order
-    // e.g., type Point(x,y) { x = x; y = y; }
     for (size_t i = 0; i < stmt->attributes.size(); ++i)
     {
         std::string attr_name = stmt->attributes[i]->name;
@@ -2029,27 +2026,27 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
     // Call the appropriate boxed operation function
     if (operation == "add")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "sub")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedSubtract(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedSubtract(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "mul")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedMultiply(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedMultiply(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "div")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedDivide(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedDivide(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "mod")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedModulo(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "pow")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedPower(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedPower(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "eq")
     {
@@ -2061,32 +2058,32 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
     }
     else if (operation == "lt")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLessThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLessThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "gt")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedGreaterThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedGreaterThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "and")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLogicalAnd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLogicalAnd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "or")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLogicalOr(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLogicalOr(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "concat")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedConcatenate(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i8* @boxedConcatenate(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "concat_ws")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedConcatenateWithSpace(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i8* @boxedConcatenateWithSpace(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else
     {
         // Default to addition for unknown operations
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
 
     return "%" + result_name;
