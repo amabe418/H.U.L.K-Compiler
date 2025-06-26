@@ -48,6 +48,9 @@ private:
     // Type declarations for accessing attribute initializers
     std::unordered_map<std::string, TypeDecl *> type_declarations_;
 
+    // Inheritance relationships (child -> parent)
+    std::unordered_map<std::string, std::string> type_inheritance_;
+
     // Current function being generated
     std::string current_function_;
 
@@ -82,6 +85,8 @@ private:
     void exitScope();
     std::string registerStringConstant(const std::string &value);
     std::stringstream &getCurrentStream(); // Get current output stream
+    void generateConstructorFunction(TypeDecl *typeDecl); // Generate constructor function for types
+    std::vector<std::string> getInheritedAttributes(const std::string &typeName); // Get all attributes including inherited ones
 
 public:
     CodeGenerator();
