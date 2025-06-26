@@ -1227,8 +1227,9 @@ void CodeGenerator::visit(NewExpr *expr)
                     }
                 }
 
-                getCurrentStream() << "  %" << param_var << " = alloca " << param_type << "\n";
-                getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "\n";
+                getCurrentStream() << "  %" << param_var << " = call i8* @malloc(i32 8)\n";
+                getCurrentStream() << "  %" << param_var << "_cast = bitcast i8* %" << param_var << " to " << param_type << "*\n";
+                getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "_cast\n";
 
                 // Register parameter in current scope
                 if (i < type_decl->params.size())
@@ -1944,64 +1945,72 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
     // Call the appropriate boxed operation function
     if (operation == "add")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "sub")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedSubtract(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedSubtract(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "mul")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedMultiply(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedMultiply(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "div")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedDivide(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedDivide(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "mod")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedModulo(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedModulo(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "pow")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedPower(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedPower(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "eq")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "neq")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedNotEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedNotEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "lt")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLessThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLessThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "gt")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedGreaterThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedGreaterThan(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    }
+    else if (operation == "le")
+    {
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLessEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+    }
+    else if (operation == "ge")
+    {
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedGreaterEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "and")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLogicalAnd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLogicalAnd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "or")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedLogicalOr(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedLogicalOr(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "concat")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedConcatenate(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i8* @boxedConcatenate(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "concat_ws")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedConcatenateWithSpace(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i8* @boxedConcatenateWithSpace(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else
     {
         // Default to addition for unknown operations
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call double @boxedAdd(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
 
     return "%" + result_name;
