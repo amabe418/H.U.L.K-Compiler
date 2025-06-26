@@ -281,6 +281,38 @@ stmt:
         delete $6;
         free($2);
     }
+    | FUNCTION IDENT LPAREN param_list RPAREN ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        for (const auto& param : *$4) {
+            params.push_back(param.first);
+            param_types.push_back(param.second);
+        }
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($7)), 
+            std::move(param_types)
+        ));
+        delete $4;
+        free($2);
+    }
+    | FUNCTION IDENT LPAREN RPAREN ARROW expr {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::make_unique<ExprStmt>(ExprPtr($6)), 
+            std::move(param_types)
+        ));
+        free($2);
+    }
+
+
     | type_decl
 ;    
 

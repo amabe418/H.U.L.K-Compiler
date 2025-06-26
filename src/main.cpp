@@ -78,11 +78,6 @@ int main(int argc, char **argv)
     std::cout << "\n=== End of Semantic Analysis ===\n"
               << std::endl;
 
-    std::cout << "\n=== Print AST ===\n"
-              << std::endl;
-    PrintVisitor printer;
-    rootAST->accept(&printer);
-
     // Generate LLVM IR code
     std::cout << "\n=== LLVM Code Generation ===\n"
               << std::endl;
@@ -110,5 +105,9 @@ int main(int argc, char **argv)
     std::cout << "\n=== End of Program Evaluation ===\n"
               << std::endl;
 
+    std::cout << "\n=== Print AST ===\n"
+              << std::endl;
+    PrintVisitor printer;
+    rootAST->accept(&printer);
     return 0;
 }

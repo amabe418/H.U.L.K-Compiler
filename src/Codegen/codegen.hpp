@@ -130,6 +130,8 @@ public:
     void visit(MethodCallExpr *expr) override;
     void visit(SelfExpr *expr) override;
     void visit(BaseCallExpr *expr) override;
+    void visit(IsExpr *expr) override;
+    void visit(AsExpr *expr) override;
 
     // Boxed value support
     std::string generateBoxedValue(const std::string &value, const TypeInfo &type);

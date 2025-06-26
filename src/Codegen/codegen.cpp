@@ -1573,6 +1573,34 @@ void CodeGenerator::visit(BaseCallExpr *expr)
     current_value_ = "null";
 }
 
+void CodeGenerator::visit(IsExpr *expr)
+{
+    std::cout << "[CodeGen] Processing IsExpr" << std::endl;
+
+    // Evaluate the expression
+    expr->expr->accept(this);
+    std::string expr_value = current_value_;
+
+    // For now, we'll return a placeholder boolean value
+    // In a real implementation, we'd need to check the type at runtime
+    std::string result_name = generateUniqueName("is_check");
+    getCurrentStream() << "  %" << result_name << " = add i1 0, 1\n"; // Default to true
+    current_value_ = "%" + result_name;
+}
+
+void CodeGenerator::visit(AsExpr *expr)
+{
+    std::cout << "[CodeGen] Processing AsExpr" << std::endl;
+
+    // Evaluate the expression
+    expr->expr->accept(this);
+    std::string expr_value = current_value_;
+
+    // For now, we'll return the expression value as is
+    // In a real implementation, we'd need to perform type casting
+    current_value_ = expr_value;
+}
+
 std::string CodeGenerator::registerStringConstant(const std::string &value)
 {
     // Check if this string constant has already been generated

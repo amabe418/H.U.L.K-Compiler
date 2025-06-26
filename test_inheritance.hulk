@@ -1,0 +1,72 @@
+// Test de herencia en H.U.L.K
+// Definimos una clase base Animal
+type Animal(name) {
+    name = name;
+    
+    method speak() {
+        print("Some animal sound");
+    }
+    
+    method getName() {
+        return name;
+    }
+}
+
+// Definimos una clase derivada Dog que hereda de Animal
+type Dog(name, breed) {
+    // Llamada al constructor base
+    base(name);
+    
+    // Atributo específico de Dog
+    breed = breed;
+    
+    // Sobrescribir el método speak
+    method speak() {
+        print("Woof! I am " + name + " the " + breed);
+    }
+    
+    // Método específico de Dog
+    method fetch() {
+        print(name + " fetches the ball");
+    }
+}
+
+// Definimos otra clase derivada Cat
+type Cat(name, color) {
+    base(name);
+    color = color;
+    
+    method speak() {
+        print("Meow! I am " + name + " the " + color + " cat");
+    }
+    
+    method purr() {
+        print(name + " purrs softly");
+    }
+}
+
+// Función principal para probar la herencia
+function testInheritance() {
+    // Crear instancias
+    let animal = new Animal("Generic Animal");
+    let dog = new Dog("Buddy", "Golden Retriever");
+    let cat = new Cat("Whiskers", "Orange");
+    
+    // Probar métodos heredados
+    print("=== Testing Animal ===");
+    animal.speak();
+    print("Name: " + animal.getName());
+    
+    print("\n=== Testing Dog ===");
+    dog.speak();  // Debería imprimir "Woof! I am Buddy the Golden Retriever"
+    print("Name: " + dog.getName());  // Método heredado
+    dog.fetch();  // Método específico de Dog
+    
+    print("\n=== Testing Cat ===");
+    cat.speak();  // Debería imprimir "Meow! I am Whiskers the Orange cat"
+    print("Name: " + cat.getName());  // Método heredado
+    cat.purr();   // Método específico de Cat
+}
+
+// Ejecutar la prueba
+testInheritance(); 

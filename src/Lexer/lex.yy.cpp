@@ -1,6 +1,6 @@
-#line 2 "src/Lexer/lex.yy.cpp"
+#line 1 "src/Lexer/lex.yy.cpp"
 
-#line 4 "src/Lexer/lex.yy.cpp"
+#line 3 "src/Lexer/lex.yy.cpp"
 
 #define  YY_INT_ALIGNED short int
 
@@ -47,6 +47,7 @@ typedef int16_t flex_int16_t;
 typedef uint16_t flex_uint16_t;
 typedef int32_t flex_int32_t;
 typedef uint32_t flex_uint32_t;
+typedef uint64_t flex_uint64_t;
 #else
 typedef signed char flex_int8_t;
 typedef short int flex_int16_t;
@@ -155,7 +156,7 @@ typedef struct yy_buffer_state *YY_BUFFER_STATE;
 typedef size_t yy_size_t;
 #endif
 
-extern int yyleng;
+extern yy_size_t yyleng;
 
 extern FILE *yyin, *yyout;
 
@@ -172,7 +173,7 @@ extern FILE *yyin, *yyout;
      */
     #define  YY_LESS_LINENO(n) \
             do { \
-                int yyl;\
+                yy_size_t yyl;\
                 for ( yyl = n; yyl < yyleng; ++yyl )\
                     if ( yytext[yyl] == '\n' )\
                         --yylineno;\
@@ -217,7 +218,7 @@ struct yy_buffer_state
 	/* Number of characters read into yy_ch_buf, not including EOB
 	 * characters.
 	 */
-	int yy_n_chars;
+	yy_size_t yy_n_chars;
 
 	/* Whether we "own" the buffer - i.e., we know we created it,
 	 * and can realloc() it to grow it, and should free() it to
@@ -286,8 +287,8 @@ static YY_BUFFER_STATE * yy_buffer_stack = NULL; /**< Stack as an array. */
 
 /* yy_hold_char holds the character lost when yytext is formed. */
 static char yy_hold_char;
-static int yy_n_chars;		/* number of characters read into yy_ch_buf */
-int yyleng;
+static yy_size_t yy_n_chars;		/* number of characters read into yy_ch_buf */
+yy_size_t yyleng;
 
 /* Points to current character in buffer. */
 static char *yy_c_buf_p = NULL;
@@ -314,7 +315,7 @@ static void yy_init_buffer ( YY_BUFFER_STATE b, FILE *file  );
 
 YY_BUFFER_STATE yy_scan_buffer ( char *base, yy_size_t size  );
 YY_BUFFER_STATE yy_scan_string ( const char *yy_str  );
-YY_BUFFER_STATE yy_scan_bytes ( const char *bytes, int len  );
+YY_BUFFER_STATE yy_scan_bytes ( const char *bytes, yy_size_t len  );
 
 void *yyalloc ( yy_size_t  );
 void *yyrealloc ( void *, yy_size_t  );
@@ -370,7 +371,7 @@ static void yynoreturn yy_fatal_error ( const char* msg  );
  */
 #define YY_DO_BEFORE_ACTION \
 	(yytext_ptr) = yy_bp; \
-	yyleng = (int) (yy_cp - yy_bp); \
+	yyleng = (yy_size_t) (yy_cp - yy_bp); \
 	(yy_hold_char) = *yy_cp; \
 	*yy_cp = '\0'; \
 	(yy_c_buf_p) = yy_cp;
@@ -518,6 +519,12 @@ char *yytext;
 extern int yylineno;
 
 int yycolumn = 1;                   /* columna actual */
+
+// Debug: imprimir el valor inicial de yylineno
+void debug_yylineno() {
+    printf("DEBUG: yylineno inicial = %d\n", yylineno);
+}
+
 /* Antes de cada token, actualizamos:
    - yylloc (para Bison)
    - yycolumn (aumenta por la longitud del token) */
@@ -530,16 +537,16 @@ int yycolumn = 1;                   /* columna actual */
 
 // Función para imprimir información del token
 void print_token(const char* token_name, const char* token_value) {
-    printf("Token: %-15s Value: %-20s Line: %d, Column: %d\n", 
-           token_name, token_value, yylineno, yycolumn - yyleng);
+    printf("Token: %-15s Value: %-20s Line: %d, Column: %d (yylineno=%d)\n", 
+           token_name, token_value, yylineno, yycolumn, yylineno);
 }
 
 // Necesario para evitar conflictos con strdup (definido en <string.h>)
 #ifdef strdup
 #undef strdup
 #endif
-#line 542 "src/Lexer/lex.yy.cpp"
-#line 543 "src/Lexer/lex.yy.cpp"
+#line 548 "src/Lexer/lex.yy.cpp"
+#line 549 "src/Lexer/lex.yy.cpp"
 
 #define INITIAL 0
 
@@ -578,7 +585,7 @@ FILE *yyget_out ( void );
 
 void yyset_out  ( FILE * _out_str  );
 
-			int yyget_leng ( void );
+			yy_size_t yyget_leng ( void );
 
 char *yyget_text ( void );
 
@@ -645,7 +652,7 @@ static int input ( void );
 	if ( YY_CURRENT_BUFFER_LVALUE->yy_is_interactive ) \
 		{ \
 		int c = '*'; \
-		int n; \
+		yy_size_t n; \
 		for ( n = 0; n < max_size && \
 			     (c = getc( yyin )) != EOF && c != '\n'; ++n ) \
 			buf[n] = (char) c; \
@@ -754,10 +761,10 @@ YY_DECL
 		}
 
 	{
-#line 41 "src/Lexer/lexer.l"
+#line 47 "src/Lexer/lexer.l"
 
 
-#line 761 "src/Lexer/lex.yy.cpp"
+#line 767 "src/Lexer/lex.yy.cpp"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -805,7 +812,7 @@ yy_find_action:
 
 		if ( yy_act != YY_END_OF_BUFFER && yy_rule_can_match_eol[yy_act] )
 			{
-			int yyl;
+			yy_size_t yyl;
 			for ( yyl = 0; yyl < yyleng; ++yyl )
 				if ( yytext[yyl] == '\n' )
 					
@@ -825,39 +832,39 @@ do_action:	/* This label is used only to access EOF actions. */
 			goto yy_find_action;
 
 case YY_STATE_EOF(INITIAL):
-#line 43 "src/Lexer/lexer.l"
+#line 49 "src/Lexer/lexer.l"
 { return 0; }
 	YY_BREAK
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 44 "src/Lexer/lexer.l"
-{ yylineno++; yycolumn = 1; }
+#line 50 "src/Lexer/lexer.l"
+{ yycolumn = 1; }
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 45 "src/Lexer/lexer.l"
-{ yylineno++; yycolumn = 1; }
+#line 51 "src/Lexer/lexer.l"
+{ yycolumn = 1; }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 46 "src/Lexer/lexer.l"
-{ yylineno++; yycolumn = 1; }
+#line 52 "src/Lexer/lexer.l"
+{ yycolumn = 1; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 47 "src/Lexer/lexer.l"
-{ /* skip whitespace */ }
+#line 53 "src/Lexer/lexer.l"
+{ yycolumn += yyleng; /* skip whitespace */ }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 48 "src/Lexer/lexer.l"
-{ /* skip comments */ }                     
+#line 54 "src/Lexer/lexer.l"
+{ yycolumn += yyleng; /* skip comments */ }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 50 "src/Lexer/lexer.l"
+#line 56 "src/Lexer/lexer.l"
 {
                               yylval.expr = new NumberExpr(atof(yytext));
                               print_token("NUMBER", yytext);
@@ -867,7 +874,7 @@ YY_RULE_SETUP
 case 7:
 /* rule 7 can match eol */
 YY_RULE_SETUP
-#line 56 "src/Lexer/lexer.l"
+#line 62 "src/Lexer/lexer.l"
 {
                               std::string raw = yytext;
                               // Eliminar comillas del principio y final
@@ -879,7 +886,7 @@ YY_RULE_SETUP
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 65 "src/Lexer/lexer.l"
+#line 71 "src/Lexer/lexer.l"
 {
     if (strcmp(yytext, "if") == 0)       { print_token("IF", yytext); return IF; }
     if (strcmp(yytext, "else") == 0)     { print_token("ELSE", yytext); return ELSE; }
@@ -905,6 +912,7 @@ YY_RULE_SETUP
     }
     if (strcmp(yytext,"function") == 0)  { print_token("FUNCTION", yytext); return FUNCTION; }
     if (strcmp(yytext, "is") == 0)       { print_token("IS", yytext); return IS; }
+    if (strcmp(yytext, "as") == 0)       { print_token("AS", yytext); return AS; }
 
     // Si no es ninguna palabra reservada, entonces es IDENT
     yylval.str = strdup(yytext);
@@ -914,157 +922,157 @@ YY_RULE_SETUP
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 98 "src/Lexer/lexer.l"
+#line 105 "src/Lexer/lexer.l"
 { print_token("COMMA", ","); return COMMA; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 99 "src/Lexer/lexer.l"
+#line 106 "src/Lexer/lexer.l"
 { print_token("PLUS", "+"); return PLUS; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 100 "src/Lexer/lexer.l"
+#line 107 "src/Lexer/lexer.l"
 { print_token("MINUS", "-"); return MINUS; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 101 "src/Lexer/lexer.l"
+#line 108 "src/Lexer/lexer.l"
 { print_token("MULT", "*"); return MULT; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 102 "src/Lexer/lexer.l"
+#line 109 "src/Lexer/lexer.l"
 { print_token("DIV", "/"); return DIV; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 103 "src/Lexer/lexer.l"
+#line 110 "src/Lexer/lexer.l"
 { print_token("POW", "**"); return POW; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 104 "src/Lexer/lexer.l"
+#line 111 "src/Lexer/lexer.l"
 { print_token("LPAREN", "("); return LPAREN; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 105 "src/Lexer/lexer.l"
+#line 112 "src/Lexer/lexer.l"
 { print_token("RPAREN", ")"); return RPAREN; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 106 "src/Lexer/lexer.l"
+#line 113 "src/Lexer/lexer.l"
 { print_token("SEMICOLON", ";"); return SEMICOLON; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 107 "src/Lexer/lexer.l"
+#line 114 "src/Lexer/lexer.l"
 { print_token("MOD", "%"); return MOD; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 108 "src/Lexer/lexer.l"
+#line 115 "src/Lexer/lexer.l"
 { print_token("LE", "<="); return LE; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 109 "src/Lexer/lexer.l"
+#line 116 "src/Lexer/lexer.l"
 { print_token("GE", ">="); return GE; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 110 "src/Lexer/lexer.l"
+#line 117 "src/Lexer/lexer.l"
 { print_token("EQ", "=="); return EQ; }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 111 "src/Lexer/lexer.l"
+#line 118 "src/Lexer/lexer.l"
 { print_token("NEQ", "!="); return NEQ; }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 112 "src/Lexer/lexer.l"
+#line 119 "src/Lexer/lexer.l"
 { print_token("LESS_THAN", "<"); return LESS_THAN; }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 113 "src/Lexer/lexer.l"
+#line 120 "src/Lexer/lexer.l"
 { print_token("GREATER_THAN", ">"); return GREATER_THAN; }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 114 "src/Lexer/lexer.l"
+#line 121 "src/Lexer/lexer.l"
 { print_token("OR", "||"); return OR; }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 115 "src/Lexer/lexer.l"
+#line 122 "src/Lexer/lexer.l"
 { print_token("AND", "&&"); return AND; }  
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 116 "src/Lexer/lexer.l"
+#line 123 "src/Lexer/lexer.l"
 { print_token("ASSIGN", "="); return ASSIGN; }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 117 "src/Lexer/lexer.l"
+#line 124 "src/Lexer/lexer.l"
 { print_token("LBRACE", "{"); return LBRACE; }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 118 "src/Lexer/lexer.l"
+#line 125 "src/Lexer/lexer.l"
 { print_token("RBRACE", "}"); return RBRACE; }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 119 "src/Lexer/lexer.l"
+#line 126 "src/Lexer/lexer.l"
 { print_token("ASSIGN_DESTRUCT", ":="); return ASSIGN_DESTRUCT; }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 120 "src/Lexer/lexer.l"
+#line 127 "src/Lexer/lexer.l"
 { print_token("ARROW", "=>"); return ARROW; }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 121 "src/Lexer/lexer.l"
+#line 128 "src/Lexer/lexer.l"
 { print_token("CONCAT", "@"); return CONCAT; }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 122 "src/Lexer/lexer.l"
+#line 129 "src/Lexer/lexer.l"
 { print_token("CONCAT_WS", "@@"); return CONCAT_WS; }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 123 "src/Lexer/lexer.l"
+#line 130 "src/Lexer/lexer.l"
 { print_token("DOT", "."); return DOT; }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 124 "src/Lexer/lexer.l"
+#line 131 "src/Lexer/lexer.l"
 { print_token("COLON", ":"); return COLON; }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 125 "src/Lexer/lexer.l"
+#line 132 "src/Lexer/lexer.l"
 { print_token("POW", "^"); return POW; }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 126 "src/Lexer/lexer.l"
+#line 133 "src/Lexer/lexer.l"
 {
                               fprintf(stderr, "Caracter no reconocido: %s en la línea %d\n", yytext, yylineno);
                            }
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 130 "src/Lexer/lexer.l"
+#line 137 "src/Lexer/lexer.l"
 ECHO;
 	YY_BREAK
-#line 1068 "src/Lexer/lex.yy.cpp"
+#line 1075 "src/Lexer/lex.yy.cpp"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -1249,7 +1257,7 @@ static int yy_get_next_buffer (void)
 
 	else
 		{
-			int num_to_read =
+			yy_size_t num_to_read =
 			YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
 		while ( num_to_read <= 0 )
@@ -1263,7 +1271,7 @@ static int yy_get_next_buffer (void)
 
 			if ( b->yy_is_our_buffer )
 				{
-				int new_size = b->yy_buf_size * 2;
+				yy_size_t new_size = b->yy_buf_size * 2;
 
 				if ( new_size <= 0 )
 					b->yy_buf_size += b->yy_buf_size / 8;
@@ -1321,7 +1329,7 @@ static int yy_get_next_buffer (void)
 
 	if (((yy_n_chars) + number_to_move) > YY_CURRENT_BUFFER_LVALUE->yy_buf_size) {
 		/* Extend the array by 50%, plus the number we really need. */
-		int new_size = (yy_n_chars) + number_to_move + ((yy_n_chars) >> 1);
+		yy_size_t new_size = (yy_n_chars) + number_to_move + ((yy_n_chars) >> 1);
 		YY_CURRENT_BUFFER_LVALUE->yy_ch_buf = (char *) yyrealloc(
 			(void *) YY_CURRENT_BUFFER_LVALUE->yy_ch_buf, (yy_size_t) new_size  );
 		if ( ! YY_CURRENT_BUFFER_LVALUE->yy_ch_buf )
@@ -1424,7 +1432,7 @@ static int yy_get_next_buffer (void)
 
 		else
 			{ /* need more input */
-			int offset = (int) ((yy_c_buf_p) - (yytext_ptr));
+			yy_size_t offset = (yy_c_buf_p) - (yytext_ptr);
 			++(yy_c_buf_p);
 
 			switch ( yy_get_next_buffer(  ) )
@@ -1798,12 +1806,12 @@ YY_BUFFER_STATE yy_scan_string (const char * yystr )
  * 
  * @return the newly allocated buffer state object.
  */
-YY_BUFFER_STATE yy_scan_bytes  (const char * yybytes, int  _yybytes_len )
+YY_BUFFER_STATE yy_scan_bytes  (const char * yybytes, yy_size_t  _yybytes_len )
 {
 	YY_BUFFER_STATE b;
 	char *buf;
 	yy_size_t n;
-	int i;
+	yy_size_t i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
 	n = (yy_size_t) (_yybytes_len + 2);
@@ -1845,7 +1853,7 @@ static void yynoreturn yy_fatal_error (const char* msg )
 	do \
 		{ \
 		/* Undo effects of setting up yytext. */ \
-        int yyless_macro_arg = (n); \
+        yy_size_t yyless_macro_arg = (n); \
         YY_LESS_LINENO(yyless_macro_arg);\
 		yytext[yyleng] = (yy_hold_char); \
 		(yy_c_buf_p) = yytext + yyless_macro_arg; \
@@ -1885,7 +1893,7 @@ FILE *yyget_out  (void)
 /** Get the length of the current token.
  * 
  */
-int yyget_leng  (void)
+yy_size_t yyget_leng  (void)
 {
         return yyleng;
 }
@@ -2038,6 +2046,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 130 "src/Lexer/lexer.l"
+#line 137 "src/Lexer/lexer.l"
 
 
