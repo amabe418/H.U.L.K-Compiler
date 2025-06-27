@@ -2119,11 +2119,11 @@ std::string CodeGenerator::generateBoxedValueOperation(const std::string &left, 
     }
     else if (operation == "eq")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "neq")
     {
-        getCurrentStream() << "  %" << result_name << " = call %struct.BoxedValue* @boxedNotEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
+        getCurrentStream() << "  %" << result_name << " = call i1 @boxedNotEqual(%struct.BoxedValue* " << left_boxed << ", %struct.BoxedValue* " << right_boxed << ")\n";
     }
     else if (operation == "lt")
     {
