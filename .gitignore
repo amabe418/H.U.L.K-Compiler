@@ -1,2 +1,6 @@
 .DS_Store
+<<<<<<< HEAD
 script.hulk
+=======
+test_simple.hulk
+>>>>>>> main

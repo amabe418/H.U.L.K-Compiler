@@ -933,6 +933,20 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
         {
             stmt->paramTypes[i] = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);
         }
+
+        // If the parameter type is a user-defined type, verify it exists
+        if (stmt->paramTypes[i]->getKind() == TypeInfo::Kind::Object && !stmt->paramTypes[i]->getTypeName().empty())
+        {
+            std::string declaredTypeName = stmt->paramTypes[i]->getTypeName();
+            if (!symbol_table_.isTypeDeclared(declaredTypeName))
+            {
+                reportError(ErrorType::UNDEFINED_TYPE,
+                            "Parameter type '" + declaredTypeName + "' is not defined",
+                            stmt, "declaración de función");
+                return;
+            }
+        }
+
         std::cout << "DEBUG: Declaring parameter " << stmt->params[i] << " with type "
                   << stmt->paramTypes[i]->toString() << std::endl;
         symbol_table_.declareVariable(stmt->params[i], *stmt->paramTypes[i]);
@@ -968,12 +982,29 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
     }
 
     // Check return type
-    if (stmt->returnType->getKind() != TypeInfo::Kind::Unknown && !current_type_.isCompatibleWith(*stmt->returnType))
+    if (stmt->returnType->getKind() != TypeInfo::Kind::Unknown)
     {
-        reportError(ErrorType::TYPE_ERROR,
-                    "Function '" + stmt->name + "' returns type " + current_type_.toString() +
-                        " but declared return type is " + stmt->returnType->toString(),
-                    stmt);
+        // If the declared return type is a user-defined type, verify it exists
+        if (stmt->returnType->getKind() == TypeInfo::Kind::Object && !stmt->returnType->getTypeName().empty())
+        {
+            std::string declaredTypeName = stmt->returnType->getTypeName();
+            if (!symbol_table_.isTypeDeclared(declaredTypeName))
+            {
+                reportError(ErrorType::UNDEFINED_TYPE,
+                            "Return type '" + declaredTypeName + "' is not defined",
+                            stmt, "declaración de función");
+                return;
+            }
+        }
+
+        // Check type compatibility using conforming relationship
+        if (!current_type_.conformsTo(*stmt->returnType))
+        {
+            reportError(ErrorType::TYPE_ERROR,
+                        "Function '" + stmt->name + "' returns type " + current_type_.toString() +
+                            " but declared return type is " + stmt->returnType->toString(),
+                        stmt);
+        }
     }
     else if (stmt->returnType->getKind() == TypeInfo::Kind::Unknown)
     {
@@ -1706,6 +1737,9 @@ bool SemanticAnalyzer::isReservedWord(const std::string &word)
 void SemanticAnalyzer::analyze(Program *program)
 {
     std::cout << "DEBUG: Starting semantic analysis" << std::endl;
+
+    // Configure TypeInfo to access the symbol table for type checking
+    TypeInfo::setSymbolTable(&symbol_table_);
 
     // First pass: collect all function declarations (but don't declare them yet)
     collectFunctions(program);
