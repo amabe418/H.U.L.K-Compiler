@@ -1095,9 +1095,47 @@ void CodeGenerator::visit(IfExpr *expr)
         llvm_type = getLLVMType(*expr->inferredType);
     }
 
+    // Check if both values are of the same type, if not, convert them
+    std::string final_then_value = then_value;
+    std::string final_else_value = else_value;
+    
+    // If the expected type is different from what we have, convert the values
+    if (llvm_type == "double" && (then_value.find("%struct.") == 0 || else_value.find("%struct.") == 0))
+    {
+        // Convert struct pointers to double (object addresses)
+        if (then_value.find("%struct.") == 0)
+        {
+            std::string conv_then = generateUniqueName("conv_then");
+            getCurrentStream() << "  %" << conv_then << " = ptrtoint " << then_value << " to double\n";
+            final_then_value = "%" + conv_then;
+        }
+        if (else_value.find("%struct.") == 0)
+        {
+            std::string conv_else = generateUniqueName("conv_else");
+            getCurrentStream() << "  %" << conv_else << " = ptrtoint " << else_value << " to double\n";
+            final_else_value = "%" + conv_else;
+        }
+    }
+    else if (llvm_type.find("%struct.") == 0 && (then_value.find("%") == 0 && then_value.find("%struct.") != 0))
+    {
+        // Convert non-struct values to struct pointers
+        if (then_value.find("%struct.") != 0)
+        {
+            std::string conv_then = generateUniqueName("conv_then");
+            getCurrentStream() << "  %" << conv_then << " = inttoptr double " << then_value << " to " << llvm_type << "\n";
+            final_then_value = "%" + conv_then;
+        }
+        if (else_value.find("%struct.") != 0)
+        {
+            std::string conv_else = generateUniqueName("conv_else");
+            getCurrentStream() << "  %" << conv_else << " = inttoptr double " << else_value << " to " << llvm_type << "\n";
+            final_else_value = "%" + conv_else;
+        }
+    }
+
     // Create phi node for result
     std::string phi_name = generateUniqueName("iftmp");
-    getCurrentStream() << "  %" << phi_name << " = phi " << llvm_type << " [ " << then_value << ", %" << then_label << " ], [ " << else_value << ", %" << else_label << " ]\n";
+    getCurrentStream() << "  %" << phi_name << " = phi " << llvm_type << " [ " << final_then_value << ", %" << then_label << " ], [ " << final_else_value << ", %" << else_label << " ]\n";
     current_value_ = "%" + phi_name;
 }
 
