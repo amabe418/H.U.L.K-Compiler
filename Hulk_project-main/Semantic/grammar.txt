@@ -1,0 +1,99 @@
+Terminals:kw_true_,kw_false_ ,op_LogicalOr, op_LogicalAnd, op_Not, op_Equal, op_NotEqual, op_Less, op_LessEqual, op_Greater,op_GreaterEqual, kw_type,kw_while,kw_for ,kw_if, kw_elif, kw_else, punc_Semicolon, punc_LeftParen, punc_RightParen, op_Plus, op_Minus, op_Multiply, op_Divide, op_Modulo, op_Exp, Identifier, Number, kw_let, kw_in, punc_Comma, punc_LeftBrace, punc_RightBrace, Assignment, arrow, kw_function
+
+
+NonTerminals: Program, StmtList, Statement, Expression, ExpAditiva, ExpAditivaPrime, ExpMultiplicativa, ExpMultiplicativaPrime, ExpExpon, ExpExponPrime, Primary, VarDeclaration, AssignmentList, AssignmentListTail, AssignmentDecl, Block, Expbody, ExpList, ExpListTail, , FuncDef,ParamList,ParamListTail,FuncTail,ifExp ,elif_list,While_loop,For_loop,TypeDef,memberList,memberTail,member,methodSignaturePrime,BooleanExpression, BooleanExpressionPrime, BooleanTerm, BooleanTermPrime, BooleanFactor, RelationalExpression, RelationalExpressionPrime,ArgType
+
+
+
+Productions:
+Program -> StmtList
+
+StmtList -> Statement StmtList
+StmtList -> ε
+
+Statement -> Expression punc_Semicolon
+Statement -> Block punc_Semicolon
+Statement -> FuncDef punc_Semicolon
+Statement -> TypeDef punc_Semicolon
+
+TypeDef -> kw_type Identifier ArgType   punc_LeftBrace  memberList punc_RightBrace
+
+
+ArgType -> punc_LeftParen ParamList punc_RightParen | ε
+
+memberList -> member memberList | ε
+member ->  Identifier memberTail punc_Semicolon 
+memberTail -> Assignment Expression  |methodSignaturePrime 
+
+FuncDef  -> kw_function Identifier methodSignaturePrime
+methodSignaturePrime ->  punc_LeftParen ParamList punc_RightParen FuncTail
+FuncTail  -> arrow Expression | Block
+ParamList    -> Identifier ParamListTail | ε
+ParamListTail  -> punc_Comma Identifier ParamListTail | ε
+
+
+Expression -> BooleanExpression
+Expression -> VarDeclaration
+Expression -> ifExp
+Expression ->  While_loop
+Expression ->  For_loop
+While_loop -> kw_while punc_LeftParen Expression punc_RightParen Expbody
+For_loop -> kw_for punc_LeftParen Identifier kw_in Expression punc_RightParen Expbody
+
+ifExp ->  kw_if punc_LeftParen Expression punc_RightParen Expbody elif_list kw_else Expbody
+
+elif_list -> kw_elif punc_LeftParen Expression punc_RightParen Expbody elif_list | ε
+
+VarDeclaration -> kw_let AssignmentList kw_in Expbody
+
+Expbody -> Expression
+Expbody -> Block
+AssignmentList -> AssignmentDecl AssignmentListTail
+AssignmentListTail -> punc_Comma AssignmentDecl AssignmentListTail
+AssignmentListTail -> ε
+AssignmentDecl -> Identifier Assignment Expression
+
+
+Block -> punc_LeftBrace ExpList punc_RightBrace
+
+ExpList -> Expression ExpListTail
+ExpListTail -> punc_Semicolon Expression punc_Semicolon ExpListTail
+ExpListTail -> ε
+
+
+
+BooleanExpression -> BooleanTerm BooleanExpressionPrime
+BooleanExpressionPrime -> op_LogicalOr BooleanTerm BooleanExpressionPrime | ε
+
+BooleanTerm -> BooleanFactor BooleanTermPrime
+BooleanTermPrime -> op_LogicalAnd BooleanFactor BooleanTermPrime | ε
+
+BooleanFactor -> op_Not BooleanFactor | RelationalExpression
+
+RelationalExpression -> ExpAditiva RelationalExpressionPrime
+
+RelationalExpressionPrime -> op_Equal ExpAditiva RelationalExpressionPrime | op_NotEqual ExpAditiva RelationalExpressionPrime | op_Less ExpAditiva RelationalExpressionPrime   | op_LessEqual ExpAditiva RelationalExpressionPrime  | op_Greater ExpAditiva RelationalExpressionPrime  | op_GreaterEqual ExpAditiva RelationalExpressionPrime   | ε
+
+
+ExpAditiva -> ExpMultiplicativa ExpAditivaPrime
+ExpAditivaPrime -> op_Plus ExpMultiplicativa ExpAditivaPrime
+ExpAditivaPrime -> op_Minus ExpMultiplicativa ExpAditivaPrime
+ExpAditivaPrime -> ε
+
+ExpMultiplicativa -> ExpExpon ExpMultiplicativaPrime
+
+ExpMultiplicativaPrime -> op_Multiply ExpExpon ExpMultiplicativaPrime
+ExpMultiplicativaPrime -> op_Divide ExpExpon ExpMultiplicativaPrime
+ExpMultiplicativaPrime -> op_Modulo ExpExpon ExpMultiplicativaPrime
+ExpMultiplicativaPrime -> ε
+
+ExpExpon -> Primary ExpExponPrime
+
+ExpExponPrime -> op_Exp ExpExpon
+ExpExponPrime -> ε
+
+Primary -> punc_LeftParen Expression punc_RightParen
+Primary -> Number
+Primary -> kw_true_
+Primary -> kw_false_
+Primary -> Identifier
