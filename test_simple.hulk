@@ -1,3 +1,23 @@
+# Este es un comentario
+let x = 42 in
+if x > 10 then
+    "Hola mundo"
+else
+    false
+
+# Otro comentario
+type Person inherits Object {
+    name: String;
+    age: Number;
+    
+    function getInfo() {
+        return self.name @@ " tiene " @@ self.age @@ " años";
+    }
+}
+
+let person = new Person("Juan", 25) in
+person.getInfo()
+
 type Bird {
 };
 
