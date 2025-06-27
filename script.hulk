@@ -521,24 +521,24 @@
 //    print(a.norm());
 //};
 //
-//type Animal(){
-//    speak() => "regular Animal noise";
-//};
+type Animal(){
+    speak() => "regular Animal noise";
+};
+
+type Dog() inherits Animal{
+    bark() => "Woof, Woof!";
+};
+
+type Chihuahua() inherits Dog{
+};
 //
-//type Dog() inherits Animal(){
-//    bark() => "Woof, Woof!";
-//};
 //
-//type Chihuahua() inherits Dog(){
-//};
-//
-//
-//let d = new Dog() in {
-//    print(d.bark());
-//    print(d.speak());
-//};
-//
-//let c = new Chihuahua() in print(c.bark());
+let d = new Dog() in {
+    print(d.bark());
+    print(d.speak());
+};
+
+let c = new Chihuahua() in print(c.bark());
 //
 //
 //let a = 42, b = true in print(a@b);

@@ -480,6 +480,18 @@ void CodeGenerator::visit(MethodDecl *stmt)
     
     std::cout << "[CodeGen] Registered method " << stmt->name << " for type " << current_type_ 
               << " with signature: " << method_signature << std::endl;
+    
+    // Check if this method overrides a method from the base type
+    if (inheritance_chain_.find(current_type_) != inheritance_chain_.end())
+    {
+        std::string baseType = inheritance_chain_[current_type_];
+        auto base_methods_it = type_methods_.find(baseType);
+        if (base_methods_it != type_methods_.end() && 
+            base_methods_it->second.find(stmt->name) != base_methods_it->second.end())
+        {
+            std::cout << "[CodeGen] Method " << stmt->name << " overrides method from " << baseType << std::endl;
+        }
+    }
 }
 
 void CodeGenerator::visit(AttributeDecl *stmt)
@@ -1653,14 +1665,14 @@ void CodeGenerator::visit(MethodCallExpr *expr)
     if (type_methods_it == type_methods_.end() || 
         type_methods_it->second.find(expr->methodName) == type_methods_it->second.end())
     {
-        // Method not found in current type, search inheritance chain
+        // CASO 1: Método no encontrado en el tipo actual, buscar en la cadena de herencia
         std::string inherited_type = findInheritedMethod(object_type_name, expr->methodName);
         if (!inherited_type.empty())
         {
             method_owner_type = inherited_type;
             function_name = inherited_type + "_" + expr->methodName;
             std::cout << "[CodeGen] Found inherited method " << expr->methodName 
-                      << " in type " << inherited_type << std::endl;
+                      << " in type " << inherited_type << " (will use wrapper)" << std::endl;
         }
         else
         {
@@ -2416,17 +2428,21 @@ void CodeGenerator::generateInheritedMethodWrappers(TypeDecl *typeDecl)
         return;
     }
 
-    // For each method in the base type that is not overridden
+    // For each method in the base type
     for (const auto &baseMethod : baseTypeDecl->second->methods)
     {
         if (currentMethods.find(baseMethod->name) == currentMethods.end())
         {
-            // Method not overridden, generate wrapper
+            // CASO 1: Método no reescrito - generar wrapper que delega al padre
+            std::cout << "[CodeGen] Generating wrapper for non-overridden method " << baseMethod->name 
+                      << " from " << baseType << " to " << typeDecl->name << std::endl;
             generateMethodWrapper(typeDecl->name, baseType, baseMethod.get());
         }
         else
         {
-            std::cout << "[CodeGen] Method " << baseMethod->name << " is overridden in " << typeDecl->name << std::endl;
+            // CASO 2: Método reescrito - no generar wrapper, usar la implementación propia
+            std::cout << "[CodeGen] Method " << baseMethod->name << " is overridden in " << typeDecl->name 
+                      << " - using own implementation" << std::endl;
         }
     }
 }
