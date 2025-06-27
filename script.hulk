@@ -521,3 +521,6 @@ let a = new Vector(3,2) in {
     print(a.norm());
 };
 let a = 42, b = true in print(a@b);
+
+
+function kk(x:String,y:String) => x == y;

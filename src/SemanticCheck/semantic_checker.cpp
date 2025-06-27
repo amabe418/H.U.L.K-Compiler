@@ -242,11 +242,13 @@ void SemanticAnalyzer::visit(BinaryExpr *expr)
             rightType = TypeInfo(TypeInfo::Kind::Number);
         }
 
-        if (!(leftType.isNumeric() || leftType.isUnknown()) && (rightType.isNumeric() || rightType.isUnknown()))
+        // Validate that both operands are numeric (after type propagation)
+        if (!leftType.isNumeric() || !rightType.isNumeric())
         {
             reportError(ErrorType::TYPE_ERROR,
-                        "Invalid binary operation '" + opStr + "' between types " +
-                            leftType.toString() + " and " + rightType.toString(),
+                        "Invalid arithmetic operation '" + opStr + "' between types " +
+                            leftType.toString() + " and " + rightType.toString() +
+                            ". Arithmetic operations can only be performed between numbers.",
                         expr);
         }
         current_type_ = TypeInfo(TypeInfo::Kind::Number);
@@ -373,22 +375,26 @@ void SemanticAnalyzer::visit(BinaryExpr *expr)
             rightType = TypeInfo(TypeInfo::Kind::Number);
         }
 
-        if (!(leftType.isNumeric() || leftType.isUnknown()) && (rightType.isNumeric() || rightType.isUnknown()))
+        // Validate that both operands are numeric (after type propagation)
+        if (!leftType.isNumeric() || !rightType.isNumeric())
         {
             reportError(ErrorType::TYPE_ERROR,
-                        "Invalid binary operation '" + opStr + "' between types " +
-                            leftType.toString() + " and " + rightType.toString(),
+                        "Invalid comparison operation '" + opStr + "' between types " +
+                            leftType.toString() + " and " + rightType.toString() +
+                            ". Comparison operations can only be performed between numbers.",
                         expr);
         }
         current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
         break;
     case BinaryExpr::OP_AND:
     case BinaryExpr::OP_OR:
-        if (!(leftType.isBoolean() || leftType.isUnknown()) && (rightType.isBoolean() || rightType.isUnknown()))
+        // Validate that both operands are boolean (after type propagation)
+        if (!leftType.isBoolean() || !rightType.isBoolean())
         {
             reportError(ErrorType::TYPE_ERROR,
-                        "Invalid binary operation '" + opStr + "' between types " +
-                            leftType.toString() + " and " + rightType.toString(),
+                        "Invalid logical operation '" + opStr + "' between types " +
+                            leftType.toString() + " and " + rightType.toString() +
+                            ". Logical operations can only be performed between booleans.",
                         expr);
         }
         current_type_ = TypeInfo(TypeInfo::Kind::Boolean);
