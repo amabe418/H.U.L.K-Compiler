@@ -266,11 +266,42 @@ void CodeGenerator::visit(TypeDecl *stmt)
     // Set current type for method generation
     current_type_ = stmt->name;
 
+    // Register inheritance relationship
+    if (stmt->baseType != "Object") {
+        type_inheritance_[stmt->name] = stmt->baseType;
+        std::cout << "[CodeGen] Type " << stmt->name << " inherits from " << stmt->baseType << std::endl;
+    }
+
     // Create struct type name
     std::string struct_name = "%struct." + stmt->name;
 
     // Write type declaration to global scope (before main function)
     global_constants_ << struct_name << " = type { ";
+
+    // ===== NEW: VTable-based structure layout =====
+    
+    // Add VTable pointer as first field
+    global_constants_ << "%struct." << stmt->name << "_vtable_struct*";
+    
+    // Add inherited attributes first (flattened inheritance)
+    if (stmt->baseType != "Object") {
+        // For now, assume parent has one attribute (name) - we'll improve this later
+        global_constants_ << ", %struct.BoxedValue*"; // Inherited name attribute
+    }
+    
+    // Add current type's attributes
+    for (size_t i = 0; i < stmt->attributes.size(); ++i) {
+        global_constants_ << ", %struct.BoxedValue*"; // All attributes as BoxedValue
+    }
+
+    // If no attributes at all, add a dummy field to avoid empty struct
+    if (stmt->attributes.empty() && stmt->baseType == "Object") {
+        global_constants_ << ", i8"; // Empty struct needs at least one field
+    }
+
+    global_constants_ << " }\n";
+
+    // ===== NEW: Register type layout information =====
 
     // Process attributes and determine their LLVM types using our hybrid strategy
     std::vector<std::string> attribute_types;
@@ -278,6 +309,18 @@ void CodeGenerator::visit(TypeDecl *stmt)
     std::vector<std::string> param_to_attr_mapping;
     std::unordered_map<std::string, int> attr_index_map;
 
+    // Add inherited attributes to the mapping
+    if (stmt->baseType != "Object") {
+        // For now, assume parent has one attribute (name) - we'll improve this later
+        std::string attr_name = "name"; // Assume inherited name attribute
+        std::string attr_type = "%struct.BoxedValue*";
+        
+        attribute_types.push_back(attr_type);
+        type_attr_map[attr_name] = attr_type;
+        attr_index_map[attr_name] = 0; // First attribute
+    }
+
+    // Add current type's attributes
     for (size_t i = 0; i < stmt->attributes.size(); ++i)
     {
         std::string attr_name = stmt->attributes[i]->name;
@@ -289,29 +332,13 @@ void CodeGenerator::visit(TypeDecl *stmt)
         attribute_types.push_back(attr_type);
         type_attr_map[attr_name] = attr_type;
         param_to_attr_mapping.push_back(attr_name);
-        attr_index_map[attr_name] = i; // Store the index for direct access
+        attr_index_map[attr_name] = attribute_types.size() - 1; // Store the index for direct access
 
         if (!param_name.empty())
         {
-            std::cout << "[CodeGen] Parameter " << param_name << " maps to attribute " << attr_name << " at position " << i << std::endl;
+            std::cout << "[CodeGen] Parameter " << param_name << " maps to attribute " << attr_name << " at position " << (attribute_types.size() - 1) << std::endl;
         }
     }
-
-    // Build the struct definition
-    for (size_t i = 0; i < attribute_types.size(); ++i)
-    {
-        if (i > 0)
-            global_constants_ << ", ";
-        global_constants_ << attribute_types[i];
-    }
-
-    // If no attributes, add a dummy field to avoid empty struct
-    if (stmt->attributes.empty())
-    {
-        global_constants_ << "i8"; // Empty struct needs at least one field
-    }
-
-    global_constants_ << " }\n";
 
     // Register the type, its attribute types, and parameter mapping for future use
     types_[stmt->name] = struct_name;
@@ -324,7 +351,11 @@ void CodeGenerator::visit(TypeDecl *stmt)
     std::cout << "[CodeGen] Registered " << type_attr_map.size() << " attributes for type " << stmt->name << std::endl;
     std::cout << "[CodeGen] Parameter mapping: " << param_to_attr_mapping.size() << " parameters mapped to attributes" << std::endl;
 
-    generateConstructorFunction(stmt);
+    // ===== NEW: Generate VTable for this type =====
+    generateVTable(stmt->name, stmt);
+
+    // ===== NEW: Generate constructor with VTable support =====
+    generateConstructorWithVTable(stmt);
 
     // Process methods after the type is declared
     for (const auto &method : stmt->methods)
@@ -561,7 +592,7 @@ void CodeGenerator::visit(AttributeDecl *stmt)
             std::cout << "[CodeGen] No conversion needed for attribute '" << stmt->name << "'." << std::endl;
         }
 
-        // Step 4: Store the (potentially converted) value into the struct field
+        // Step 4: Store the (potentially converted) value into the struct field.
         getCurrentStream() << "  store " << store_type << " " << init_value << ", " << store_type << "* %" << field_ptr << "\n";
     }
 }
@@ -1222,14 +1253,14 @@ void CodeGenerator::visit(NewExpr *expr)
     std::string struct_type = type_it->second;
     std::string result_name = generateUniqueName("new_obj");
 
-    // Check if we have a constructor function for this type
-    std::string constructor_name = "construct_" + expr->typeName;
+    // Check if we have a constructor function for this type (with VTable)
+    std::string constructor_name = expr->typeName + "_constructor";
     auto constructor_it = functions_.find(constructor_name);
 
     if (constructor_it != functions_.end())
     {
-        // Use the constructor function
-        std::cout << "[CodeGen] Using constructor function: " << constructor_name << std::endl;
+        // Use the constructor function with VTable
+        std::cout << "[CodeGen] Using constructor function with VTable: " << constructor_name << std::endl;
 
         // Prepare arguments for constructor
         std::vector<std::string> args;
@@ -1257,166 +1288,198 @@ void CodeGenerator::visit(NewExpr *expr)
     }
     else
     {
-        // Always use malloc for object creation
-        std::cout << "[CodeGen] Using malloc for object creation" << std::endl;
+        // Fallback: Check for old-style constructor
+        std::string old_constructor_name = "construct_" + expr->typeName;
+        auto old_constructor_it = functions_.find(old_constructor_name);
 
-        // Use malloc for object allocation
-        std::string malloc_size = "16"; // Default size for BoxedValue
-        getCurrentStream() << "  %" << result_name << "_raw = call i8* @malloc(i32 " << malloc_size << ")\n";
-        getCurrentStream() << "  %" << result_name << " = bitcast i8* %" << result_name << "_raw to " << struct_type << "\n";
-
-        // Get the type declaration to access attribute initializers
-        auto attr_types_it = attribute_types_.find(expr->typeName);
-
-        if (type_declarations_.find(expr->typeName) != type_declarations_.end() &&
-            attr_types_it != attribute_types_.end())
+        if (old_constructor_it != functions_.end())
         {
-            TypeDecl *type_decl = type_declarations_[expr->typeName];
-            const auto &attr_types = attr_types_it->second;
+            // Use the old constructor function
+            std::cout << "[CodeGen] Using old constructor function: " << old_constructor_name << std::endl;
 
-            std::cout << "[CodeGen] Initializing object with " << expr->args.size() << " constructor arguments" << std::endl;
+            // Prepare arguments for constructor
+            std::vector<std::string> args;
+            std::string arg_list;
 
-            // Validate number of arguments
-            if (expr->args.size() != type_decl->params.size())
-            {
-                std::cerr << "[CodeGen] Warning: Type " << expr->typeName << " expects "
-                          << type_decl->params.size() << " parameters but got " << expr->args.size() << std::endl;
-            }
-
-            // Enter a new scope for constructor parameters
-            enterScope();
-
-            // Process constructor arguments and store them as local variables
-            // These will be available as parameters in the attribute initializers
             for (size_t i = 0; i < expr->args.size(); ++i)
             {
                 expr->args[i]->accept(this);
                 std::string arg_value = current_value_;
 
-                // Store parameter as local variable
-                std::string param_var = generateUniqueName("param");
-
-                // Get the parameter type from the type system
-                std::string param_type;
+                // Convert argument to BoxedValue for constructor
                 if (expr->args[i]->inferredType &&
                     expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
                 {
-                    // Parameter has a known type
-                    param_type = getLLVMType(*expr->args[i]->inferredType);
-                    std::cout << "[CodeGen] Parameter " << i << " has known type: "
-                              << expr->args[i]->inferredType->toString() << " -> " << param_type << std::endl;
-                }
-                else
-                {
-                    // Parameter has unknown type - use BoxedValue
-                    param_type = "%struct.BoxedValue*";
-                    std::cout << "[CodeGen] Parameter " << i << " has unknown type -> using BoxedValue" << std::endl;
-
-                    // Convert the argument to BoxedValue if it's not already
-                    if (expr->args[i]->inferredType &&
-                        expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
-                    {
-                        arg_value = generateBoxedValue(arg_value, *expr->args[i]->inferredType);
-                    }
+                    arg_value = generateBoxedValue(arg_value, *expr->args[i]->inferredType);
                 }
 
-                getCurrentStream() << "  %" << param_var << " = call i8* @malloc(i32 8)\n";
-                getCurrentStream() << "  %" << param_var << "_cast = bitcast i8* %" << param_var << " to " << param_type << "*\n";
-                getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "_cast\n";
-
-                // Register parameter in current scope
-                if (i < type_decl->params.size())
-                {
-                    current_scope_->variables[type_decl->params[i]] = param_var;
-                    std::cout << "[CodeGen] Registered parameter " << type_decl->params[i] << " as " << param_var << " (type: " << param_type << ")" << std::endl;
-                }
+                if (i > 0)
+                    arg_list += ", ";
+                arg_list += "%struct.BoxedValue* " + arg_value;
             }
 
-            // Initialize attributes by evaluating their initializers
-            // Each attribute's initializer is evaluated in the context where parameters are available
-            for (size_t attr_index = 0; attr_index < type_decl->attributes.size(); ++attr_index)
-            {
-                const auto &attr = type_decl->attributes[attr_index];
-                std::string attr_name = attr->name;
-                std::string store_type = attr_types.at(attr_name); // The LLVM type of the struct field
-
-                // Get the field pointer
-                std::string field_ptr = generateUniqueName("field_ptr");
-                function_definitions_ << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << attr_index << "\n";
-
-                // Step 1: Evaluate the initializer expression (e.g., 'a+4' in 'x = a+4')
-                attr->initializer->accept(this);
-                std::string init_value = current_value_; // This is the resulting value (e.g., a double like 7.0)
-
-                // Step 2: Determine the LLVM type of the value we just got from the initializer
-                std::string init_type;
-                if (attr->initializer->inferredType && attr->initializer->inferredType->getKind() != TypeInfo::Kind::Unknown)
-                {
-                    init_type = getLLVMType(*attr->initializer->inferredType);
-                    std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
-                }
-                else
-                {
-                    init_type = "%struct.BoxedValue*";
-                    std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
-                }
-
-                std::cout << "[CodeGen] Initializing attribute '" << attr_name << "'. Field type: " << store_type << ", Initializer type: " << init_type << std::endl;
-
-                // Step 3: Check if the initializer's type matches the field's type. If not, convert.
-                // This is the key logic to handle boxing and unboxing.
-                if (store_type != init_type)
-                {
-                    // Case A: The field expects a BoxedValue, but the initializer provided a specific type (e.g., double, i1, i8*).
-                    // This is the exact case for `new Point(3,2)`. The field is BoxedValue, the initializer is double.
-                    // We MUST box the specific type.
-                    if (store_type == "%struct.BoxedValue*")
-                    {
-                        std::cout << "[CodeGen] BOXING required for attribute '" << attr_name << "'. Converting " << init_type << " to BoxedValue." << std::endl;
-                        init_value = generateBoxedValue(init_value, *attr->initializer->inferredType);
-                    }
-                    // Case B: The field expects a specific type, but the initializer provided a BoxedValue.
-                    // We MUST unbox the value.
-                    else if (init_type == "%struct.BoxedValue*")
-                    {
-                        std::cout << "[CodeGen] UNBOXING required for attribute '" << attr_name << "'. Converting BoxedValue to " << store_type << "." << std::endl;
-                        TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
-                        if (store_type == "i1")
-                            target_kind = TypeInfo::Kind::Boolean;
-                        else if (store_type == "i8*")
-                            target_kind = TypeInfo::Kind::String;
-                        else if (store_type.find("%struct.") == 0)
-                            target_kind = TypeInfo::Kind::Object;
-                        init_value = generateUnboxedValue(init_value, TypeInfo(target_kind));
-                    }
-                    // Case C: Mismatch between two different specific types. This is rare but we can handle it by boxing then unboxing.
-                    else
-                    {
-                        std::cout << "[CodeGen] CONVERTING between specific types for attribute '" << attr_name << "' (" << init_type << " -> " << store_type << ")." << std::endl;
-                        std::string temp_boxed = generateBoxedValue(init_value, *attr->initializer->inferredType);
-                        TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
-                        if (store_type == "i1")
-                            target_kind = TypeInfo::Kind::Boolean;
-                        else if (store_type == "i8*")
-                            target_kind = TypeInfo::Kind::String;
-                        init_value = generateUnboxedValue(temp_boxed, TypeInfo(target_kind));
-                    }
-                }
-                else
-                {
-                    std::cout << "[CodeGen] No conversion needed for attribute '" << attr_name << "'." << std::endl;
-                }
-
-                // Step 4: Store the (potentially converted) value into the struct field.
-                function_definitions_ << "  store " << store_type << " " << init_value << ", " << store_type << "* %" << field_ptr << "\n";
-            }
-
-            // Exit the constructor scope
-            exitScope();
+            // Call the constructor function
+            getCurrentStream() << "  %" << result_name << " = call " << struct_type << "* @" << old_constructor_name << "(" << arg_list << ")\n";
         }
         else
         {
-            std::cout << "[CodeGen] Warning: No type information found for " << expr->typeName << ", leaving attributes uninitialized" << std::endl;
+            // Always use malloc for object creation
+            std::cout << "[CodeGen] Using malloc for object creation" << std::endl;
+
+            // Use malloc for object allocation
+            std::string malloc_size = "16"; // Default size for BoxedValue
+            getCurrentStream() << "  %" << result_name << "_raw = call i8* @malloc(i32 " << malloc_size << ")\n";
+            getCurrentStream() << "  %" << result_name << " = bitcast i8* %" << result_name << "_raw to " << struct_type << "\n";
+
+            // Get the type declaration to access attribute initializers
+            auto attr_types_it = attribute_types_.find(expr->typeName);
+
+            if (type_declarations_.find(expr->typeName) != type_declarations_.end() &&
+                attr_types_it != attribute_types_.end())
+            {
+                TypeDecl *type_decl = type_declarations_[expr->typeName];
+                const auto &attr_types = attr_types_it->second;
+
+                std::cout << "[CodeGen] Initializing object with " << expr->args.size() << " constructor arguments" << std::endl;
+
+                // Validate number of arguments
+                if (expr->args.size() != type_decl->params.size())
+                {
+                    std::cerr << "[CodeGen] Warning: Type " << expr->typeName << " expects "
+                              << type_decl->params.size() << " parameters but got " << expr->args.size() << std::endl;
+                }
+
+                // Enter a new scope for constructor parameters
+                enterScope();
+
+                // Process constructor arguments and store them as local variables
+                // These will be available as parameters in the attribute initializers
+                for (size_t i = 0; i < expr->args.size(); ++i)
+                {
+                    expr->args[i]->accept(this);
+                    std::string arg_value = current_value_;
+
+                    // Store parameter as local variable
+                    std::string param_var = generateUniqueName("param");
+
+                    // Get the parameter type from the type system
+                    std::string param_type;
+                    if (expr->args[i]->inferredType &&
+                        expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
+                    {
+                        // Parameter has a known type
+                        param_type = getLLVMType(*expr->args[i]->inferredType);
+                        std::cout << "[CodeGen] Parameter " << i << " has known type: "
+                                  << expr->args[i]->inferredType->toString() << " -> " << param_type << std::endl;
+                    }
+                    else
+                    {
+                        // Parameter has unknown type - use BoxedValue
+                        param_type = "%struct.BoxedValue*";
+                        std::cout << "[CodeGen] Parameter " << i << " has unknown type -> using BoxedValue" << std::endl;
+
+                        // Convert the argument to BoxedValue if it's not already
+                        if (expr->args[i]->inferredType &&
+                            expr->args[i]->inferredType->getKind() != TypeInfo::Kind::Unknown)
+                        {
+                            arg_value = generateBoxedValue(arg_value, *expr->args[i]->inferredType);
+                        }
+                    }
+
+                    getCurrentStream() << "  %" << param_var << " = call i8* @malloc(i32 8)\n";
+                    getCurrentStream() << "  %" << param_var << "_cast = bitcast i8* %" << param_var << " to " << param_type << "*\n";
+                    getCurrentStream() << "  store " << param_type << " " << arg_value << ", " << param_type << "* %" << param_var << "_cast\n";
+
+                    // Register parameter in current scope
+                    if (i < type_decl->params.size())
+                    {
+                        current_scope_->variables[type_decl->params[i]] = param_var;
+                        std::cout << "[CodeGen] Registered parameter " << type_decl->params[i] << " as " << param_var << " (type: " << param_type << ")" << std::endl;
+                    }
+                }
+
+                // Initialize attributes by evaluating their initializers
+                // Each attribute's initializer is evaluated in the context where parameters are available
+                for (size_t attr_index = 0; attr_index < type_decl->attributes.size(); ++attr_index)
+                {
+                    const auto &attr = type_decl->attributes[attr_index];
+                    std::string attr_name = attr->name;
+                    std::string store_type = attr_types.at(attr_name); // The LLVM type of the struct field
+
+                    // Get the field pointer
+                    std::string field_ptr = generateUniqueName("field_ptr");
+                    getCurrentStream() << "  %" << field_ptr << " = getelementptr " << struct_type << ", " << struct_type << "* %" << result_name << ", i32 0, i32 " << attr_index << "\n";
+
+                    // Step 1: Evaluate the initializer expression (e.g., 'a+4' in 'x = a+4')
+                    attr->initializer->accept(this);
+                    std::string init_value = current_value_; // This is the resulting value (e.g., a double like 7.0)
+
+                    // Step 2: Determine the LLVM type of the value we just got from the initializer
+                    std::string init_type;
+                    if (attr->initializer->inferredType && attr->initializer->inferredType->getKind() != TypeInfo::Kind::Unknown)
+                    {
+                        init_type = getLLVMType(*attr->initializer->inferredType);
+                        std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
+                    }
+                    else
+                    {
+                        init_type = "%struct.BoxedValue*";
+                        std::cout << "[CodeGen] INIT TYPE: " << init_type << std::endl; //[DEBUG]
+                    }
+
+                    std::cout << "[CodeGen] Initializing attribute '" << attr_name << "'. Field type: " << store_type << ", Initializer type: " << init_type << std::endl;
+
+                    // Step 3: Check if the initializer's type matches the field's type. If not, convert.
+                    // This is the key logic to handle boxing and unboxing.
+                    if (store_type != init_type)
+                    {
+                        // Case A: The field expects a BoxedValue, but the initializer provided a specific type (e.g., double, i1, i8*).
+                        // This is the exact case for `new Point(3,2)`. The field is BoxedValue, the initializer is double.
+                        // We MUST box the specific type.
+                        if (store_type == "%struct.BoxedValue*")
+                        {
+                            std::cout << "[CodeGen] BOXING required for attribute '" << attr_name << "'. Converting " << init_type << " to BoxedValue." << std::endl;
+                            init_value = generateBoxedValue(init_value, *attr->initializer->inferredType);
+                        }
+                        // Case B: The field expects a specific type, but the initializer provided a BoxedValue.
+                        // We MUST unbox the value.
+                        else if (init_type == "%struct.BoxedValue*")
+                        {
+                            std::cout << "[CodeGen] UNBOXING required for attribute '" << attr_name << "'. Converting BoxedValue to " << store_type << "." << std::endl;
+                            TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
+                            if (store_type == "i1")
+                                target_kind = TypeInfo::Kind::Boolean;
+                            else if (store_type == "i8*")
+                                target_kind = TypeInfo::Kind::String;
+                            else if (store_type.find("%struct.") == 0)
+                                target_kind = TypeInfo::Kind::Object;
+                            init_value = generateUnboxedValue(init_value, TypeInfo(target_kind));
+                        }
+                        // Case C: Mismatch between two different specific types. This is rare but we can handle it by boxing then unboxing.
+                        else
+                        {
+                            std::cout << "[CodeGen] CONVERTING between specific types for attribute '" << attr_name << "' (" << init_type << " -> " << store_type << ")." << std::endl;
+                            std::string temp_boxed = generateBoxedValue(init_value, *attr->initializer->inferredType);
+                            TypeInfo::Kind target_kind = TypeInfo::Kind::Number; // default
+                            if (store_type == "i1")
+                                target_kind = TypeInfo::Kind::Boolean;
+                            else if (store_type == "i8*")
+                                target_kind = TypeInfo::Kind::String;
+                            init_value = generateUnboxedValue(temp_boxed, TypeInfo(target_kind));
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "[CodeGen] No conversion needed for attribute '" << attr_name << "'." << std::endl;
+                    }
+
+                    // Step 4: Store the value in the field
+                    getCurrentStream() << "  store " << init_type << " " << init_value << ", " << init_type << "* %" << field_ptr << "\n";
+                }
+
+                // Exit the constructor parameter scope
+                exitScope();
+            }
         }
     }
 
@@ -1610,17 +1673,10 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         object_type_name = expr->object->inferredType->getTypeName();
     }
 
-    // For now, we'll generate a simple function call
-    // In a more complete implementation, we'd need to handle method dispatch properly
-    std::string result_name = generateUniqueName("method_call");
+    // ===== NEW: VTable-based method dispatch =====
 
-    // Prepare arguments
+    // Prepare arguments for method call
     std::vector<std::string> args;
-    std::vector<std::string> arg_types;
-
-    // Add the object as the first argument (self)
-    args.push_back(object_ptr);
-    arg_types.push_back("%struct." + object_type_name + "*");
 
     // Add method arguments
     for (auto &arg : expr->args)
@@ -1639,16 +1695,22 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         }
 
         args.push_back(arg_value);
-        arg_types.push_back(arg_type);
     }
 
-    // Build argument list
-    std::string arg_list;
-    for (size_t i = 0; i < args.size(); ++i)
-    {
-        if (i > 0)
-            arg_list += ", ";
-        arg_list += arg_types[i] + " " + args[i];
+    // Check if we can use direct dispatch (type known at compile time)
+    std::string result_name;
+    if (isTypeKnownAtCompileTime(object_type_name)) {
+        std::cout << "[CodeGen] Using direct method call for known type: " << object_type_name << std::endl;
+        result_name = generateDirectMethodCall(object_ptr, expr->methodName, args, object_type_name);
+    } else {
+        std::cout << "[CodeGen] Using dynamic dispatch for unknown type: " << object_type_name << std::endl;
+        result_name = generateMethodDispatch(object_ptr, expr->methodName, args);
+    }
+
+    // Handle void return type
+    if (result_name == "void") {
+        current_value_ = "void";
+        return;
     }
 
     // Check the inferred return type of this call expression
@@ -1658,10 +1720,6 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         return_type = getLLVMType(*expr->inferredType);
     }
 
-    // Generate the function call with the correct return type
-    std::string function_name = object_type_name + "_" + expr->methodName;
-    getCurrentStream() << "  %" << result_name << " = call " << return_type << " @" << function_name << "(" << arg_list << ")\n";
-
     // If the method returns a BoxedValue but we expect a specific type, convert it
     if (return_type == "%struct.BoxedValue*" &&
         expr->inferredType && expr->inferredType->getKind() != TypeInfo::Kind::Unknown)
@@ -1670,13 +1728,13 @@ void CodeGenerator::visit(MethodCallExpr *expr)
         if (expected_type != "%struct.BoxedValue*")
         {
             std::cout << "[CodeGen] Converting method return from BoxedValue to " << expected_type << std::endl;
-            std::string converted = generateUnboxedValue("%" + result_name, *expr->inferredType);
+            std::string converted = generateUnboxedValue(result_name, *expr->inferredType);
             current_value_ = converted;
             return;
         }
     }
 
-    current_value_ = "%" + result_name;
+    current_value_ = result_name;
 }
 
 void CodeGenerator::visit(SelfExpr *expr)
@@ -1705,11 +1763,9 @@ void CodeGenerator::visit(IsExpr *expr)
     expr->expr->accept(this);
     std::string expr_value = current_value_;
 
-    // For now, we'll return a placeholder boolean value
-    // In a real implementation, we'd need to check the type at runtime
-    std::string result_name = generateUniqueName("is_check");
-    getCurrentStream() << "  %" << result_name << " = add i1 0, 1\n"; // Default to true
-    current_value_ = "%" + result_name;
+    // ===== NEW: VTable-based type checking =====
+    std::string result_name = generateTypeCheck(expr_value, expr->typeName);
+    current_value_ = result_name;
 }
 
 void CodeGenerator::visit(AsExpr *expr)
@@ -1720,9 +1776,9 @@ void CodeGenerator::visit(AsExpr *expr)
     expr->expr->accept(this);
     std::string expr_value = current_value_;
 
-    // For now, we'll return the expression value as is
-    // In a real implementation, we'd need to perform type casting
-    current_value_ = expr_value;
+    // ===== NEW: VTable-based type casting =====
+    std::string result_name = generateTypeCast(expr_value, expr->typeName);
+    current_value_ = result_name;
 }
 
 std::string CodeGenerator::registerStringConstant(const std::string &value)
@@ -1745,6 +1801,12 @@ std::stringstream &CodeGenerator::getCurrentStream()
 {
     // If we're in constructor context, always use function_definitions_
     if (in_constructor_context_)
+    {
+        return function_definitions_;
+    }
+
+    // If we're processing a type declaration (current_type_ is set), use function_definitions_
+    if (!current_type_.empty())
     {
         return function_definitions_;
     }
@@ -2275,4 +2337,380 @@ std::vector<std::string> CodeGenerator::getInheritedAttributes(const std::string
     }
 
     return all_attributes;
+}
+
+// ===== NEW: VTable and Inheritance Method Implementations =====
+
+void CodeGenerator::generateVTable(const std::string& typeName, TypeDecl* typeDecl)
+{
+    std::cout << "[CodeGen] Generating VTable for type: " << typeName << std::endl;
+    
+    // Get all methods for this type (including inherited ones)
+    std::vector<std::string> methods = getAllMethods(typeName);
+    
+    // Generate VTable structure
+    generateVTableStructure(typeName, methods);
+    
+    // Generate VTable instance
+    generateVTableInstance(typeName, typeDecl, methods);
+    
+    // Register VTable
+    type_vtables_[typeName] = typeName + "_vtable";
+}
+
+void CodeGenerator::generateVTableStructure(const std::string& typeName, const std::vector<std::string>& methods)
+{
+    std::string vtableStructName = typeName + "_vtable_struct";
+    
+    // Generate VTable structure definition
+    function_definitions_ << "%struct." << vtableStructName << " = type {\n";
+    function_definitions_ << "    i8*,    ; type_name\n";
+    function_definitions_ << "    i32,    ; type_id\n";
+    function_definitions_ << "    %struct." << vtableStructName << "*, ; parent_vtable\n";
+    function_definitions_ << "    [" << methods.size() << " x ptr] ; method_pointers\n";
+    function_definitions_ << "}\n\n";
+}
+
+void CodeGenerator::generateVTableInstance(const std::string& typeName, TypeDecl* typeDecl, const std::vector<std::string>& methods)
+{
+    std::string vtableName = typeName + "_vtable";
+    std::string vtableStructName = typeName + "_vtable_struct";
+    
+    // Generate string constant for type name
+    std::string typeNameStr = "@.str." + typeName;
+    global_constants_ << typeNameStr << " = private unnamed_addr constant [" << (typeName.length() + 1) << " x i8] c\"" << typeName << "\\00\"\n";
+    
+    // Generate VTable instance
+    function_definitions_ << "@" << vtableName << " = global %struct." << vtableStructName << " {\n";
+    function_definitions_ << "    i8* " << typeNameStr << ",\n";
+    function_definitions_ << "    i32 " << std::to_string(getTypeId(typeName)) << ",\n";
+    
+    // Set parent VTable pointer
+    if (typeDecl->baseType != "Object") {
+        function_definitions_ << "    %struct." << vtableStructName << "* @" << typeDecl->baseType << "_vtable,\n";
+    } else {
+        function_definitions_ << "    %struct." << vtableStructName << "* null,\n";
+    }
+    
+    // Generate method pointers array
+    function_definitions_ << "    [" << methods.size() << " x ptr] [\n";
+    for (size_t i = 0; i < methods.size(); ++i) {
+        std::string methodName = methods[i];
+        std::string methodImpl = getMethodImplementation(typeName, methodName);
+        std::string methodSig = getMethodSignature(methodName, typeName);
+        
+        function_definitions_ << "        ptr @" << methodImpl;
+        if (i < methods.size() - 1) function_definitions_ << ",";
+        function_definitions_ << "\n";
+    }
+    function_definitions_ << "    ]\n";
+    function_definitions_ << "}\n\n";
+}
+
+std::vector<std::string> CodeGenerator::getAllMethods(const std::string& typeName)
+{
+    std::vector<std::string> methods;
+    
+    // Get methods from current type
+    auto typeDeclIt = type_declarations_.find(typeName);
+    if (typeDeclIt != type_declarations_.end()) {
+        TypeDecl* typeDecl = typeDeclIt->second;
+        for (const auto& method : typeDecl->methods) {
+            methods.push_back(method->name);
+        }
+    }
+    
+    // Get inherited methods
+    auto inheritanceIt = type_inheritance_.find(typeName);
+    if (inheritanceIt != type_inheritance_.end()) {
+        std::string parentType = inheritanceIt->second;
+        std::vector<std::string> parentMethods = getAllMethods(parentType);
+        methods.insert(methods.end(), parentMethods.begin(), parentMethods.end());
+    }
+    
+    return methods;
+}
+
+std::string CodeGenerator::getMethodSignature(const std::string& methodName, const std::string& typeName)
+{
+    // For now, assume all methods return double and take the object pointer as first parameter
+    return "double (%struct." + typeName + "*)";
+}
+
+std::string CodeGenerator::getMethodImplementation(const std::string& typeName, const std::string& methodName)
+{
+    return typeName + "_" + methodName;
+}
+
+int CodeGenerator::getMethodIndex(const std::string& methodName)
+{
+    auto it = method_indices_.find(methodName);
+    if (it != method_indices_.end()) {
+        return it->second;
+    }
+    
+    // Assign new index
+    int index = method_indices_.size();
+    method_indices_[methodName] = index;
+    return index;
+}
+
+std::string CodeGenerator::getMethodReturnType(const std::string& methodName, const std::string& typeName)
+{
+    // For now, assume all methods return double
+    return "double";
+}
+
+void CodeGenerator::computeTypeLayout(const std::string& typeName, TypeDecl* typeDecl)
+{
+    std::vector<std::string> layout;
+    int offset = 0;
+    
+    // Add VTable pointer as first field
+    layout.push_back("vtable");
+    attribute_offsets_[typeName]["vtable"] = offset;
+    offset += 8; // Pointer size
+    
+    // Add inherited attributes first
+    if (typeDecl->baseType != "Object") {
+        std::vector<std::string> inheritedAttrs = getFlattenedAttributes(typeDecl->baseType);
+        for (const auto& attr : inheritedAttrs) {
+            if (attr != "vtable") { // Skip vtable from parent
+                layout.push_back(attr);
+                attribute_offsets_[typeName][attr] = offset;
+                offset += 8; // Assume all attributes are 8 bytes for now
+            }
+        }
+    }
+    
+    // Add current type's attributes
+    for (const auto& attr : typeDecl->attributes) {
+        layout.push_back(attr->name);
+        attribute_offsets_[typeName][attr->name] = offset;
+        offset += 8; // Assume all attributes are 8 bytes for now
+    }
+    
+    type_layouts_[typeName] = layout;
+}
+
+std::vector<std::string> CodeGenerator::getFlattenedAttributes(const std::string& typeName)
+{
+    auto it = type_layouts_.find(typeName);
+    if (it != type_layouts_.end()) {
+        return it->second;
+    }
+    
+    // If not computed yet, return empty vector
+    return {};
+}
+
+int CodeGenerator::getAttributeOffset(const std::string& typeName, const std::string& attrName)
+{
+    auto typeIt = attribute_offsets_.find(typeName);
+    if (typeIt != attribute_offsets_.end()) {
+        auto attrIt = typeIt->second.find(attrName);
+        if (attrIt != typeIt->second.end()) {
+            return attrIt->second;
+        }
+    }
+    return -1; // Not found
+}
+
+int CodeGenerator::getTypeSize(const std::string& typeName)
+{
+    auto layoutIt = type_layouts_.find(typeName);
+    if (layoutIt != type_layouts_.end()) {
+        return layoutIt->second.size() * 8; // 8 bytes per field
+    }
+    return 16; // Default size
+}
+
+void CodeGenerator::generateConstructorWithVTable(TypeDecl* typeDecl)
+{
+    std::cout << "[CodeGen] Generating constructor with VTable for type: " << typeDecl->name << std::endl;
+    
+    // Compute type layout first
+    computeTypeLayout(typeDecl->name, typeDecl);
+    
+    std::string constructorName = typeDecl->name + "_constructor";
+    std::string structType = "%struct." + typeDecl->name;
+    
+    // Build parameter list
+    std::string paramList;
+    for (size_t i = 0; i < typeDecl->params.size(); ++i) {
+        if (i > 0) paramList += ", ";
+        paramList += "%struct.BoxedValue* %" + typeDecl->params[i];
+    }
+    
+    // Generate constructor function
+    function_definitions_ << "define " << structType << "* @" << constructorName << "(" << paramList << ") {\n";
+    function_definitions_ << "entry:\n";
+    
+    // Allocate object
+    std::string objName = generateUniqueName("obj");
+    int typeSize = getTypeSize(typeDecl->name);
+    function_definitions_ << "    %" << objName << "_raw = call i8* @malloc(i32 " << typeSize << ")\n";
+    function_definitions_ << "    %" << objName << " = bitcast i8* %" << objName << "_raw to " << structType << "*\n";
+    
+    // Initialize VTable pointer
+    initializeVTablePointer(typeDecl->name, "%" + objName);
+    
+    // Enter scope for constructor parameters
+    enterScope();
+    
+    // Register parameters in the scope
+    for (size_t i = 0; i < typeDecl->params.size(); ++i) {
+        current_scope_->variables[typeDecl->params[i]] = "%" + typeDecl->params[i];
+        std::cout << "[CodeGen] Registered parameter " << typeDecl->params[i] << " in constructor scope" << std::endl;
+    }
+    
+    // Initialize attributes
+    initializeAttributes(typeDecl->name, "%" + objName, typeDecl);
+    
+    // Exit scope
+    exitScope();
+    
+    // Return the object
+    function_definitions_ << "    ret " << structType << "* %" << objName << "\n";
+    function_definitions_ << "}\n\n";
+    
+    // Register constructor
+    functions_[constructorName] = structType + "*";
+}
+
+void CodeGenerator::initializeVTablePointer(const std::string& typeName, const std::string& objectPtr)
+{
+    std::string vtableName = typeName + "_vtable";
+    function_definitions_ << "    %vtable_ptr = getelementptr %struct." << typeName << ", %struct." << typeName << "* " << objectPtr << ", i32 0, i32 0\n";
+    function_definitions_ << "    store %struct." << typeName << "_vtable_struct* @" << vtableName << ", %struct." << typeName << "_vtable_struct** %vtable_ptr\n";
+}
+
+void CodeGenerator::initializeAttributes(const std::string& typeName, const std::string& objectPtr, TypeDecl* typeDecl)
+{
+    // Initialize inherited attributes first
+    if (typeDecl->baseType != "Object") {
+        // For now, we'll handle this in the constructor of the parent type
+        // This is a simplified approach
+    }
+    
+    // Initialize current type's attributes using visit(AttributeDecl)
+    for (size_t i = 0; i < typeDecl->attributes.size(); ++i) {
+        const auto& attr = typeDecl->attributes[i];
+        
+        // Set context for attribute initialization
+        current_object_ptr_ = objectPtr;
+        current_struct_type_ = "%struct." + typeName;
+        current_attr_index_ = i;
+        in_constructor_context_ = true;
+        
+        // Use visit(AttributeDecl) to properly handle attribute initialization
+        attr->accept(this);
+        
+        // Reset context
+        in_constructor_context_ = false;
+    }
+}
+
+std::string CodeGenerator::generateMethodDispatch(const std::string& objectPtr, const std::string& methodName, const std::vector<std::string>& args)
+{
+    std::string result = generateUniqueName("dispatch_result");
+    
+    // Get VTable from object
+    getCurrentStream() << "    %vtable_ptr = getelementptr %struct.Object, %struct.Object* " << objectPtr << ", i32 0, i32 0\n";
+    getCurrentStream() << "    %vtable = load %struct.Object_vtable_struct*, %struct.Object_vtable_struct** %vtable_ptr\n";
+    
+    // Get method index
+    int methodIndex = getMethodIndex(methodName);
+    
+    // Get method pointer from VTable
+    getCurrentStream() << "    %method_array = getelementptr %struct.Object_vtable_struct, %struct.Object_vtable_struct* %vtable, i32 0, i32 3\n";
+    getCurrentStream() << "    %method_ptr = getelementptr [n x ptr], [n x ptr]* %method_array, i32 0, i32 " << methodIndex << "\n";
+    getCurrentStream() << "    %method = load ptr, ptr* %method_ptr\n";
+    
+    // Call method
+    getCurrentStream() << "    %" << result << " = call double %method(" << objectPtr;
+    for (const auto& arg : args) {
+        getCurrentStream() << ", " << arg;
+    }
+    getCurrentStream() << ")\n";
+    
+    return "%" + result;
+}
+
+std::string CodeGenerator::generateDirectMethodCall(const std::string& objectPtr, const std::string& methodName, const std::vector<std::string>& args, const std::string& objectType)
+{
+    // For direct calls, we assume we know the exact type
+    std::string methodImpl = objectType + "_" + methodName;
+    
+    // Get the return type from the functions map
+    std::string returnType = "double"; // default
+    auto funcIt = functions_.find(methodImpl);
+    if (funcIt != functions_.end()) {
+        returnType = funcIt->second;
+        std::cout << "[CodeGen] Found method " << methodImpl << " with return type: " << returnType << std::endl;
+    } else {
+        std::cout << "[CodeGen] Warning: Method " << methodImpl << " not found in functions map, using default return type: " << returnType << std::endl;
+    }
+    
+    // Build the parameter list with types
+    std::string paramList = "%struct." + objectType + "* " + objectPtr;
+    for (const auto& arg : args) {
+        paramList += ", %struct.BoxedValue* " + arg;
+    }
+    
+    if (returnType == "void") {
+        // For void functions, don't assign to a variable
+        getCurrentStream() << "    call void @" << methodImpl << "(" << paramList << ")\n";
+        return "void"; // Return a special value to indicate void
+    } else {
+        // For non-void functions, assign to a variable
+        std::string result = generateUniqueName("direct_call_result");
+        getCurrentStream() << "    %" << result << " = call " << returnType << " @" << methodImpl << "(" << paramList << ")\n";
+        return "%" + result;
+    }
+}
+
+bool CodeGenerator::isTypeKnownAtCompileTime(const std::string& typeName)
+{
+    // For now, assume types are known at compile time if they're in our type declarations
+    return type_declarations_.find(typeName) != type_declarations_.end();
+}
+
+int CodeGenerator::getTypeId(const std::string& typeName)
+{
+    auto it = type_ids_.find(typeName);
+    if (it != type_ids_.end()) {
+        return it->second;
+    }
+    
+    // Assign new ID
+    int id = next_type_id_++;
+    type_ids_[typeName] = id;
+    return id;
+}
+
+std::string CodeGenerator::generateTypeCheck(const std::string& objectPtr, const std::string& targetType)
+{
+    std::string result = generateUniqueName("type_check_result");
+    
+    // Get VTable from object
+    getCurrentStream() << "    %vtable_ptr = getelementptr %struct.Object, %struct.Object* " << objectPtr << ", i32 0, i32 0\n";
+    getCurrentStream() << "    %vtable = load %struct.Object_vtable_struct*, %struct.Object_vtable_struct** %vtable_ptr\n";
+    
+    // Get type ID from VTable
+    getCurrentStream() << "    %type_id = getelementptr %struct.Object_vtable_struct, %struct.Object_vtable_struct* %vtable, i32 0, i32 1\n";
+    getCurrentStream() << "    %actual_type_id = load i32, i32* %type_id\n";
+    
+    // Compare with target type ID
+    int targetTypeId = getTypeId(targetType);
+    getCurrentStream() << "    %" << result << " = icmp eq i32 %actual_type_id, " << targetTypeId << "\n";
+    
+    return "%" + result;
+}
+
+std::string CodeGenerator::generateTypeCast(const std::string& objectPtr, const std::string& targetType)
+{
+    // For now, just return the object pointer as-is
+    // In a more complete implementation, you'd add runtime checks
+    return objectPtr;
 }

@@ -758,7 +758,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
                   << "' before = " << currentValue.toString() << std::endl;
 
-        if (newValue.isNumber())
+        if (newValue.toString() == lastValue.toString())
         {
             instance->attrs->set(e->attrName, newValue);
             std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
@@ -767,7 +767,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         }
         else
         {
-            throw std::runtime_error("Cannot assign non-numeric value to attribute");
+            throw std::runtime_error("Cannot assign different value to attribute");
         }
     }
 

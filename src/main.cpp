@@ -97,6 +97,10 @@ int main(int argc, char **argv)
     // std::cout << "\n=== End of LLVM Code Generation ===\n"
     //           << std::endl;
 
+    std::cout << "\n=== Print AST ===\n"
+              << std::endl;
+    PrintVisitor printer;
+    rootAST->accept(&printer);
     // Evaluate the program
     std::cout << "\n=== Program Evaluation ===\n"
               << std::endl;
@@ -105,9 +109,5 @@ int main(int argc, char **argv)
     std::cout << "\n=== End of Program Evaluation ===\n"
               << std::endl;
 
-    std::cout << "\n=== Print AST ===\n"
-              << std::endl;
-    PrintVisitor printer;
-    rootAST->accept(&printer);
     return 0;
 }

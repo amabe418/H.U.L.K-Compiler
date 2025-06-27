@@ -79,6 +79,22 @@ private:
     // Boxed value management
     std::unordered_map<std::string, std::string> boxed_value_types_; // variable name -> boxed type info
 
+    // ===== NEW: VTable and Inheritance Support =====
+    
+    // VTable management
+    std::unordered_map<std::string, std::string> type_vtables_; // type name -> vtable name
+    std::unordered_map<std::string, std::vector<std::string>> type_methods_; // type name -> method names
+    std::unordered_map<std::string, std::string> method_implementations_; // method name -> LLVM function name
+    std::unordered_map<std::string, int> method_indices_; // method name -> vtable index
+    
+    // Type layout management (flattened inheritance)
+    std::unordered_map<std::string, std::vector<std::string>> type_layouts_; // type name -> attribute names (including inherited)
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> attribute_offsets_; // type name -> attribute name -> offset
+    
+    // Type IDs for runtime type checking
+    std::unordered_map<std::string, int> type_ids_;
+    int next_type_id_ = 1;
+
     // Built-in functions
     void registerBuiltinFunctions();
 
@@ -93,6 +109,41 @@ private:
     std::stringstream &getCurrentStream();                                        // Get current output stream
     void generateConstructorFunction(TypeDecl *typeDecl);                         // Generate constructor function for types
     std::vector<std::string> getInheritedAttributes(const std::string &typeName); // Get all attributes including inherited ones
+
+    // ===== NEW: VTable and Inheritance Methods =====
+    
+    // VTable generation
+    void generateVTable(const std::string& typeName, TypeDecl* typeDecl);
+    void generateVTableStructure(const std::string& typeName, const std::vector<std::string>& methods);
+    void generateVTableInstance(const std::string& typeName, TypeDecl* typeDecl, const std::vector<std::string>& methods);
+    
+    // Method management
+    std::vector<std::string> getAllMethods(const std::string& typeName);
+    std::string getMethodSignature(const std::string& methodName, const std::string& typeName);
+    std::string getMethodImplementation(const std::string& typeName, const std::string& methodName);
+    int getMethodIndex(const std::string& methodName);
+    std::string getMethodReturnType(const std::string& methodName, const std::string& typeName);
+    
+    // Type layout management
+    void computeTypeLayout(const std::string& typeName, TypeDecl* typeDecl);
+    std::vector<std::string> getFlattenedAttributes(const std::string& typeName);
+    int getAttributeOffset(const std::string& typeName, const std::string& attrName);
+    int getTypeSize(const std::string& typeName);
+    
+    // Constructor generation with VTable support
+    void generateConstructorWithVTable(TypeDecl* typeDecl);
+    void initializeVTablePointer(const std::string& typeName, const std::string& objectPtr);
+    void initializeAttributes(const std::string& typeName, const std::string& objectPtr, TypeDecl* typeDecl);
+    
+    // Method dispatch
+    std::string generateMethodDispatch(const std::string& objectPtr, const std::string& methodName, const std::vector<std::string>& args);
+    std::string generateDirectMethodCall(const std::string& objectPtr, const std::string& methodName, const std::vector<std::string>& args, const std::string& objectType);
+    bool isTypeKnownAtCompileTime(const std::string& typeName);
+    
+    // Type checking support
+    int getTypeId(const std::string& typeName);
+    std::string generateTypeCheck(const std::string& objectPtr, const std::string& targetType);
+    std::string generateTypeCast(const std::string& objectPtr, const std::string& targetType);
 
 public:
     CodeGenerator();
