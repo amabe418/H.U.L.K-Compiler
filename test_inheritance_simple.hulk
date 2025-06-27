@@ -1,0 +1,23 @@
+// Test simple inheritance without stack smashing
+
+type Animal(name) {
+    name = name;
+    
+    speak() => "Animal speaks";
+    getName() => self.name;
+};
+
+type Dog(name) inherits Animal(name) {
+    // Inherits all methods from Animal
+    // Can access inherited attributes through self.name
+};
+
+// Test inheritance
+let animal = new Animal("Generic Animal") in {
+    let dog = new Dog("Rex") in {
+        print("Animal name: " @ animal.getName());
+        print("Dog name: " @ dog.getName());
+        print("Animal speaks: " @ animal.speak());
+        print("Dog speaks: " @ dog.speak());
+    };
+}; 

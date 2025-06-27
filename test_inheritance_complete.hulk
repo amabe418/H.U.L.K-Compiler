@@ -1,0 +1,96 @@
+// Test completo de herencia en HULK según la especificación
+
+// Tipo base con parámetros
+type Animal(name, age) {
+    name = name;
+    age = age;
+    
+    // Métodos públicos y virtuales
+    speak() => "Animal speaks";
+    getName() => self.name;
+    getAge() => self.age;
+    setAge(newAge) => self.age := newAge;
+    info() => "Animal: " @ self.name @ " (" @ self.age @ " years)";
+};
+
+// Herencia simple con argumentos explícitos
+type Dog(name, age, breed) inherits Animal(name, age) {
+    breed = breed;
+    
+    // Método heredado no reescrito (usará wrapper)
+    // speak() se hereda de Animal
+    
+    // Método reescrito
+    info() => "Dog: " @ self.name @ " (" @ self.age @ " years, " @ self.breed @ ")";
+    
+    // Método nuevo
+    bark() => "Woof! I am " @ self.name;
+    getBreed() => self.breed;
+};
+
+// Herencia simple sin argumentos explícitos (hereda parámetros)
+type Cat(name, age) inherits Animal {
+    // Los parámetros name y age se pasan automáticamente al constructor de Animal
+    
+    // Método reescrito
+    speak() => "Meow!";
+    info() => "Cat: " @ self.name @ " (" @ self.age @ " years)";
+    
+    // Método nuevo
+    purr() => "Purrr...";
+};
+
+// Herencia con argumentos calculados
+type Bird(name, age, wingspan) inherits Animal(name, age * 2) {
+    wingspan = wingspan;
+    
+    // Método reescrito
+    speak() => "Tweet!";
+    info() => "Bird: " @ self.name @ " (" @ self.age @ " years, wingspan: " @ self.wingspan @ ")";
+    
+    // Método nuevo
+    fly() => "Flying with wingspan " @ self.wingspan;
+};
+
+// Test de toda la funcionalidad
+let animal = new Animal("Generic Animal", 5) in {
+    let dog = new Dog("Rex", 3, "Golden Retriever") in {
+        let cat = new Cat("Whiskers", 2) in {
+            let bird = new Bird("Tweety", 1, 20) in {
+                
+                // Test de métodos heredados no reescritos
+                print("=== Métodos heredados no reescritos ===");
+                print("Dog speaks: " @ dog.speak());  // Heredado de Animal
+                print("Dog name: " @ dog.getName());  // Heredado de Animal
+                print("Dog age: " @ dog.getAge());    // Heredado de Animal
+                
+                // Test de métodos reescritos
+                print("=== Métodos reescritos ===");
+                print("Animal info: " @ animal.info());
+                print("Dog info: " @ dog.info());     // Reescrito
+                print("Cat info: " @ cat.info());     // Reescrito
+                print("Bird info: " @ bird.info());   // Reescrito
+                
+                // Test de métodos nuevos
+                print("=== Métodos nuevos ===");
+                print("Dog bark: " @ dog.bark());
+                print("Dog breed: " @ dog.getBreed());
+                print("Cat purr: " @ cat.purr());
+                print("Bird fly: " @ bird.fly());
+                
+                // Test de herencia de atributos
+                print("=== Herencia de atributos ===");
+                print("Dog age before: " @ dog.getAge());
+                dog.setAge(4);  // Método heredado
+                print("Dog age after: " @ dog.getAge());
+                
+                // Test de polimorfismo
+                print("=== Polimorfismo ===");
+                print("Animal speak: " @ animal.speak());
+                print("Dog speak: " @ dog.speak());   // Heredado
+                print("Cat speak: " @ cat.speak());   // Reescrito
+                print("Bird speak: " @ bird.speak()); // Reescrito
+            };
+        };
+    };
+}; 

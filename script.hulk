@@ -511,7 +511,7 @@
 //    setY(newY) => self.y := newY;
 //    norm() => (self.x^2 + self.y^2)^(1/2);
 //};
-////
+//
 //let a = new Vector(3,2) in {
 //    print(a.getX());
 //    print(a.getY());
@@ -546,6 +546,7 @@
 //
 //function kk(x:String,y:String) => x == y;
 //
+//
 //type A{
 //    f() => "A";
 //};
@@ -555,38 +556,3 @@
 //};
 //
 //let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f());
-
-type G {
-    foo() => 5;
-};
-
-
-type Holis inherits G {
-};
-
-type A  inherits Holis{
-    foo() => 10;
-};
-
-type B inherits A {
-    foo() => 20;
-};
-
-type C inherits A {
-    foo() => 40;
-};
-
-type D inherits A {
-    foo() => 50;
-};
-
-function bar(x:Number) : A {
-    if (x>5) {
-        new B();
-    } else if (x>3) {
-        new C();
-    }
-};
-
-print(bar(5).foo());
-print(bar(9).foo());
