@@ -939,6 +939,15 @@ void CodeGenerator::visit(VariableExpr *expr)
         auto it = scope->variables.find(expr->name);
         if (it != scope->variables.end())
         {
+            // Check if this is a function parameter (registered with the same name as key and value)
+            if (it->second == expr->name)
+            {
+                // This is a function parameter - use it directly without load
+                std::cout << "[CodeGen] Using function parameter directly: " << expr->name << std::endl;
+                current_value_ = "%" + expr->name;
+                return;
+            }
+
             std::string load_name = generateUniqueName("load");
 
             // Check if this variable is stored as a boxed value
@@ -2306,11 +2315,17 @@ void CodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
     function_definitions_ << "  %" << obj_name << "_raw = call i8* @malloc(i32 " << malloc_size << ")\n";
     function_definitions_ << "  %" << obj_name << " = bitcast i8* %" << obj_name << "_raw to " << struct_type << "*\n";
 
+    // Enter a new scope for the constructor
+    enterScope();
+
     // Register parameters in the scope for attribute initializers to access
+    // Parameters are already available as function parameters, so we just need to reference them
     for (size_t i = 0; i < typeDecl->params.size(); ++i)
     {
         std::string param_name = typeDecl->params[i];
-        current_scope_->variables[param_name] = param_name;
+        // Don't create alloca for parameters - they're already available as function parameters
+        // Just register the parameter name to indicate it's available
+        current_scope_->variables[param_name] = param_name; // This indicates it's a function parameter
     }
 
     // Handle inheritance: initialize base object
@@ -2407,6 +2422,9 @@ void CodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
 
         in_constructor_context_ = false; // Reset constructor context
     }
+
+    // Exit the constructor scope
+    exitScope();
 
     // Return the object
     function_definitions_ << "  ret " << struct_type << "* %" << obj_name << "\n";
