@@ -89,22 +89,22 @@ int main(int argc, char *argv[])
     // }
 
     // 7. Evaluación del programa
-    if (program)
-    {
-        std::cout << "\nEjecutando programa...\n";
-        try
-        {
-            EvaluatorVisitor evaluator;
-            program->accept(&evaluator);
-            std::cout << "Programa ejecutado exitosamente.\n";
-        }
-        catch (const std::exception &ex)
-        {
-            std::cerr << "Error durante la ejecución: " << ex.what() << std::endl;
-            delete program;
-            return 4;
-        }
-    }
+    // if (program)
+    // {
+    //     std::cout << "\nEjecutando programa...\n";
+    //     try
+    //     {
+    //         EvaluatorVisitor evaluator;
+    //         program->accept(&evaluator);
+    //         std::cout << "Programa ejecutado exitosamente.\n";
+    //     }
+    //     catch (const std::exception &ex)
+    //     {
+    //         std::cerr << "Error durante la ejecución: " << ex.what() << std::endl;
+    //         delete program;
+    //         return 4;
+    //     }
+    // }
 
     // 8. Imprimir el AST
     if (program)

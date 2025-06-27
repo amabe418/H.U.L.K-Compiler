@@ -1,8 +1,17 @@
 Program      -> StmtList
 StmtList     -> Stmt StmtListTail | ε
 StmtListTail -> SEMICOLON StmtList | ε
-Stmt         -> Expr | WhileStmt | ForStmt | BlockStmt | FunctionDef
+Stmt         -> Expr | WhileStmt | ForStmt | BlockStmt | FunctionDef | TypeDef
 FunctionDef  -> FUNCTION IDENT LPAREN ArgIdList RPAREN FunctionBody
+TypeDef      -> TYPE IDENT TypeParams TypeInheritance LBRACE TypeBody RBRACE
+TypeParams   -> LPAREN ArgIdList RPAREN | ε
+TypeInheritance -> INHERITS IDENT TypeBaseArgs | ε
+TypeBaseArgs -> LPAREN ArgList RPAREN | ε
+TypeBody     -> TypeMember TypeBody | ε
+TypeMember   -> IDENT TypeMemberTail
+TypeMemberTail -> ASSIGN Expr SEMICOLON | LPAREN ArgIdList RPAREN FunctionBody
+AttributeDef -> IDENT ASSIGN Expr SEMICOLON
+MethodDef    -> IDENT LPAREN ArgIdList RPAREN FunctionBody
 ArgIdList    -> IDENT ArgIdListTail | ε
 ArgIdListTail-> COMMA IDENT ArgIdListTail | ε
 FunctionBody -> ARROW Expr SEMICOLON | BlockStmt
@@ -58,7 +67,11 @@ Primary      -> NUMBER
               | FALSE
               | IDENT PrimaryTail
               | LPAREN Expr RPAREN
-PrimaryTail  -> LPAREN ArgList RPAREN
+              | NEW IDENT LPAREN ArgList RPAREN
+              | SELF
+              | BASE LPAREN ArgList RPAREN
+PrimaryTail  -> LPAREN ArgList RPAREN PrimaryTail
+              | DOT IDENT PrimaryTail
               | ASSIGN_DESTRUCT Expr
               | ASSIGN Expr
               | ε

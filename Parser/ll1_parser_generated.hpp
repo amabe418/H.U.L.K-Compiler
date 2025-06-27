@@ -3,6 +3,8 @@
 #include <iostream>
 #include "theoretical/token.hpp"
 #include "AST/ast.hpp"
+using AttributeDeclPtr = std::unique_ptr<AttributeDecl>;
+using MethodDeclPtr = std::unique_ptr<MethodDecl>;
 class LL1ParserGenerated {
 public:
     LL1ParserGenerated(const std::vector<Token>& tokens);
@@ -14,6 +16,7 @@ public:
     void parse_ArgIdListTail(std::vector<std::string>& args);
     std::vector<ExprPtr> parse_ArgList();
     void parse_ArgListTail(std::vector<std::string>& args);
+    std::unique_ptr<AttributeDecl> parse_AttributeDef();
     Expr* parse_BlockStmt();
     Expr* parse_CmpExpr();
     Expr* parse_CmpExpr_prime();
@@ -32,6 +35,7 @@ public:
     Expr* parse_IfExpr();
     Expr* parse_LetBody();
     Expr* parse_LetExpr();
+    std::unique_ptr<MethodDecl> parse_MethodDef();
     Expr* parse_OrExpr();
     Expr* parse_OrExpr_prime();
     Expr* parse_Power();
@@ -43,6 +47,13 @@ public:
     std::vector<StmtPtr> parse_StmtListTail();
     Expr* parse_Term();
     Expr* parse_Term_prime();
+    std::vector<ExprPtr> parse_TypeBaseArgs();
+    std::pair<std::vector<std::unique_ptr<AttributeDecl>>, std::vector<std::unique_ptr<MethodDecl>>> parse_TypeBody();
+    Stmt* parse_TypeDef();
+    std::pair<std::string, std::vector<ExprPtr>> parse_TypeInheritance();
+    std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> parse_TypeMember();
+    std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> parse_TypeMemberTail(const std::string& memberName);
+    std::vector<std::string> parse_TypeParams();
     Expr* parse_Unary();
     Expr* parse_VarBinding();
     std::vector<std::pair<std::string, ExprPtr>> parse_VarBindingList();
@@ -93,6 +104,12 @@ private:
             case AND: return "AND";
             case CONCAT: return "CONCAT";
             case CONCAT_WS: return "CONCAT_WS";
+            case TYPE: return "TYPE";
+            case INHERITS: return "INHERITS";
+            case NEW: return "NEW";
+            case SELF: return "SELF";
+            case BASE: return "BASE";
+            case DOT: return "DOT";
             case TOKEN_EOF: return "EOF";
             default: return "UNKNOWN";
         }

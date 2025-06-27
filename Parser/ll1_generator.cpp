@@ -333,6 +333,8 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
     header << "#include <iostream>\n";
     header << "#include \"theoretical/token.hpp\"\n";
     header << "#include \"AST/ast.hpp\"\n";
+    header << "using AttributeDeclPtr = std::unique_ptr<AttributeDecl>;\n";
+    header << "using MethodDeclPtr = std::unique_ptr<MethodDecl>;\n";
     header << "class LL1ParserGenerated {\n";
     header << "public:\n";
     header << "    LL1ParserGenerated(const std::vector<Token>& tokens);\n";
@@ -444,6 +446,42 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
         {
             header << "    void parse_VarBindingListTail(std::vector<std::pair<std::string, ExprPtr>>& bindings);\n";
         }
+        else if (nt == "TypeDef")
+        {
+            header << "    Stmt* parse_TypeDef();\n";
+        }
+        else if (nt == "TypeParams")
+        {
+            header << "    std::vector<std::string> parse_TypeParams();\n";
+        }
+        else if (nt == "TypeInheritance")
+        {
+            header << "    std::pair<std::string, std::vector<ExprPtr>> parse_TypeInheritance();\n";
+        }
+        else if (nt == "TypeBaseArgs")
+        {
+            header << "    std::vector<ExprPtr> parse_TypeBaseArgs();\n";
+        }
+        else if (nt == "TypeBody")
+        {
+            header << "    std::pair<std::vector<std::unique_ptr<AttributeDecl>>, std::vector<std::unique_ptr<MethodDecl>>> parse_TypeBody();\n";
+        }
+        else if (nt == "TypeMember")
+        {
+            header << "    std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> parse_TypeMember();\n";
+        }
+        else if (nt == "TypeMemberTail")
+        {
+            header << "    std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> parse_TypeMemberTail(const std::string& memberName);\n";
+        }
+        else if (nt == "AttributeDef")
+        {
+            header << "    std::unique_ptr<AttributeDecl> parse_AttributeDef();\n";
+        }
+        else if (nt == "MethodDef")
+        {
+            header << "    std::unique_ptr<MethodDecl> parse_MethodDef();\n";
+        }
         else
         {
             header << "    Expr* parse_" << method_name << "();\n";
@@ -494,6 +532,12 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
     header << "            case AND: return \"AND\";\n";
     header << "            case CONCAT: return \"CONCAT\";\n";
     header << "            case CONCAT_WS: return \"CONCAT_WS\";\n";
+    header << "            case TYPE: return \"TYPE\";\n";
+    header << "            case INHERITS: return \"INHERITS\";\n";
+    header << "            case NEW: return \"NEW\";\n";
+    header << "            case SELF: return \"SELF\";\n";
+    header << "            case BASE: return \"BASE\";\n";
+    header << "            case DOT: return \"DOT\";\n";
     header << "            case TOKEN_EOF: return \"EOF\";\n";
     header << "            default: return \"UNKNOWN\";\n";
     header << "        }\n";
@@ -606,6 +650,7 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "    else if (t == FOR) { return new ExprStmt(ExprPtr(parse_ForStmt())); }\n";
             out << "    else if (t == LBRACE) { return new ExprStmt(ExprPtr(parse_BlockStmt())); }\n";
             out << "    else if (t == FUNCTION) { return parse_FunctionDef(); }\n";
+            out << "    else if (t == TYPE) { return parse_TypeDef(); }\n";
             out << "    else { return new ExprStmt(ExprPtr(parse_Expr())); }\n";
             out << "}\n";
         }
@@ -675,6 +720,9 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "    if (tok.type == FALSE) { match(FALSE); auto expr = new BooleanExpr(false); expr->line_number = tok.line; expr->column_number = tok.column; return expr; }\n";
             out << "    if (tok.type == IDENT) { match(IDENT); auto expr = parse_PrimaryTail(tok.lexeme); expr->line_number = tok.line; expr->column_number = tok.column; return expr; }\n";
             out << "    if (tok.type == LPAREN) { match(LPAREN); Expr* e = parse_Expr(); match(RPAREN); e->line_number = tok.line; e->column_number = tok.column; return e; }\n";
+            out << "    if (tok.type == NEW) { match(NEW); std::string typeName = lookahead().lexeme; match(IDENT); match(LPAREN); std::vector<ExprPtr> args = parse_ArgList(); match(RPAREN); auto expr = new NewExpr(typeName, std::move(args)); expr->line_number = tok.line; expr->column_number = tok.column; return expr; }\n";
+            out << "    if (tok.type == SELF) { match(SELF); auto expr = parse_PrimaryTail(\"self\"); expr->line_number = tok.line; expr->column_number = tok.column; return expr; }\n";
+            out << "    if (tok.type == BASE) { match(BASE); match(LPAREN); std::vector<ExprPtr> args = parse_ArgList(); match(RPAREN); auto expr = new BaseCallExpr(std::move(args)); expr->line_number = tok.line; expr->column_number = tok.column; return expr; }\n";
             out << "    std::cerr << \"Error de parseo: Token inesperado '\" << tok.lexeme << \"' (tipo: \" << static_cast<int>(tok.type) << \") en línea \" << tok.line << \", columna \" << tok.column << std::endl;\n";
             out << "    throw std::runtime_error(\"Unexpected token in Primary\");\n";
             out << "}\n";
@@ -683,29 +731,70 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
         {
             out << "Expr* LL1ParserGenerated::parse_PrimaryTail(const std::string& varName) {\n";
             out << "    const Token& tok = lookahead();\n";
-            out << "    if (lookahead().type == LPAREN) {\n";
-            out << "        match(LPAREN);\n";
-            out << "        std::vector<ExprPtr> args = parse_ArgList();\n";
-            out << "        match(RPAREN);\n";
-            out << "        auto expr = new CallExpr(varName, std::move(args));\n";
-            out << "        expr->line_number = tok.line; expr->column_number = tok.column;\n";
-            out << "        return expr;\n";
-            out << "    } else if (lookahead().type == ASSIGN_DESTRUCT) {\n";
-            out << "        match(ASSIGN_DESTRUCT);\n";
-            out << "        Expr* value = parse_Expr();\n";
-            out << "        auto expr = new AssignExpr(varName, ExprPtr(value));\n";
-            out << "        expr->line_number = tok.line; expr->column_number = tok.column;\n";
-            out << "        return expr;\n";
-            out << "    } else if (lookahead().type == ASSIGN) {\n";
-            out << "        // Error: Asignación normal (=) no está permitida en este contexto\\n\";\n";
-            out << "        const Token& tok = lookahead();\n";
-            out << "        std::cerr << \"Error de sintaxis: Asignación normal (=) no está permitida. Use asignación destructiva (:=) en línea \" << tok.line << \", columna \" << tok.column << std::endl;\n";
-            out << "        throw std::runtime_error(\"Invalid assignment operator\");\n";
-            out << "    } else {\n";
-            out << "        auto expr = new VariableExpr(varName);\n";
-            out << "        expr->line_number = tok.line; expr->column_number = tok.column;\n";
-            out << "        return expr;\n";
+            out << "    Expr* expr = new VariableExpr(varName);\n";
+            out << "    expr->line_number = tok.line; expr->column_number = tok.column;\n";
+            out << "    while (true) {\n";
+            out << "        if (lookahead().type == LPAREN) {\n";
+            out << "            match(LPAREN);\n";
+            out << "            std::vector<ExprPtr> args = parse_ArgList();\n";
+            out << "            match(RPAREN);\n";
+            out << "            // Si expr es VariableExpr, es una llamada a función normal\n";
+            out << "            if (auto var = dynamic_cast<VariableExpr*>(expr)) {\n";
+            out << "                auto callExpr = new CallExpr(var->name, std::move(args));\n";
+            out << "                callExpr->line_number = tok.line; callExpr->column_number = tok.column;\n";
+            out << "                delete expr;\n";
+            out << "                expr = callExpr;\n";
+            out << "            } else {\n";
+            out << "                // Si no es VariableExpr, es una llamada a método\n";
+            out << "                std::string methodName = \"\";\n";
+            out << "                if (auto getAttr = dynamic_cast<GetAttrExpr*>(expr)) {\n";
+            out << "                    methodName = getAttr->attrName;\n";
+            out << "                    auto methodCall = new MethodCallExpr(std::move(getAttr->object), methodName, std::move(args));\n";
+            out << "                    methodCall->line_number = tok.line; methodCall->column_number = tok.column;\n";
+            out << "                    delete getAttr;\n";
+            out << "                    expr = methodCall;\n";
+            out << "                } else {\n";
+            out << "                    // Fallback: tratar como llamada a función\n";
+            out << "                    auto callExpr = new CallExpr(\"\", std::move(args));\n";
+            out << "                    callExpr->line_number = tok.line; callExpr->column_number = tok.column;\n";
+            out << "                    delete expr;\n";
+            out << "                    expr = callExpr;\n";
+            out << "                }\n";
+            out << "            }\n";
+            out << "        } else if (lookahead().type == DOT) {\n";
+            out << "            match(DOT);\n";
+            out << "            std::string memberName = lookahead().lexeme; match(IDENT);\n";
+            out << "            auto getAttr = new GetAttrExpr(ExprPtr(expr), memberName);\n";
+            out << "            getAttr->line_number = tok.line; getAttr->column_number = tok.column;\n";
+            out << "            expr = getAttr;\n";
+            out << "        } else if (lookahead().type == ASSIGN_DESTRUCT) {\n";
+            out << "            match(ASSIGN_DESTRUCT);\n";
+            out << "            Expr* value = parse_Expr();\n";
+            out << "            // Si expr es GetAttrExpr, asignar a atributo; si es VariableExpr, asignar a variable\n";
+            out << "            if (auto getAttr = dynamic_cast<GetAttrExpr*>(expr)) {\n";
+            out << "                auto setAttr = new SetAttrExpr(std::move(getAttr->object), getAttr->attrName, ExprPtr(value));\n";
+            out << "                setAttr->line_number = tok.line; setAttr->column_number = tok.column;\n";
+            out << "                delete getAttr;\n";
+            out << "                return setAttr;\n";
+            out << "            } else if (auto var = dynamic_cast<VariableExpr*>(expr)) {\n";
+            out << "                auto assignExpr = new AssignExpr(var->name, ExprPtr(value));\n";
+            out << "                assignExpr->line_number = tok.line; assignExpr->column_number = tok.column;\n";
+            out << "                delete var;\n";
+            out << "                return assignExpr;\n";
+            out << "            } else {\n";
+            out << "                std::cerr << \"Error: Asignación destructiva inválida\\n\";\n";
+            out << "                throw std::runtime_error(\"Invalid destructive assignment\");\n";
+            out << "            }\n";
+            out << "        } else if (lookahead().type == ASSIGN) {\n";
+            out << "            const Token& tok = lookahead();\n";
+            out << "            std::cerr << \"Error de sintaxis: Asignación normal (=) no está permitida. Use asignación destructiva (:=) en línea \" << tok.line << \" columna \" << tok.column << std::endl;\n";
+            out << "            throw std::runtime_error(\"Invalid assignment operator\");\n";
+            out << "        } else {\n";
+            out << "            // No hay más tails, terminar y devolver la expresión actual\n";
+            out << "            break;\n";
+            out << "        }\n";
             out << "    }\n";
+            out << "    return expr;\n";
             out << "}\n";
         }
         else if (nt == "FunctionDef")
@@ -726,7 +815,10 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "        paramTypes.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));\n";
             out << "    }\n";
             out << "    \n";
-            out << "    auto funcDecl = new FunctionDecl(name, std::move(args), std::move(body), std::move(paramTypes));\n";
+            out << "    // Crear tipo de retorno por defecto (Unknown)\n";
+            out << "    auto returnType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);\n";
+            out << "    \n";
+            out << "    auto funcDecl = new FunctionDecl(name, std::move(args), std::move(body), std::move(paramTypes), std::move(returnType));\n";
             out << "    funcDecl->line_number = funcToken.line; funcDecl->column_number = funcToken.column;\n";
             out << "    return funcDecl;\n";
             out << "}\n";
@@ -820,8 +912,8 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "std::vector<std::pair<ExprPtr, ExprPtr>> LL1ParserGenerated::parse_ElifList() {\n";
             out << "    std::vector<std::pair<ExprPtr, ExprPtr>> elifs;\n";
             out << "    while (lookahead().type == ELIF) {\n";
-            out << "        auto [condition, thenBranch] = parse_ElifBranch();\n";
-            out << "        elifs.push_back({std::move(condition), std::move(thenBranch)});\n";
+            out << "        auto elif = parse_ElifBranch();\n";
+            out << "        elifs.emplace_back(std::move(elif.first), std::move(elif.second));\n";
             out << "    }\n";
             out << "    return elifs;\n";
             out << "}\n";
@@ -883,7 +975,7 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "    std::string varName = lookahead().lexeme; match(IDENT);\n";
             out << "    match(ASSIGN);\n";
             out << "    Expr* value = parse_Expr();\n";
-            out << "    bindings.push_back({varName, ExprPtr(value)});\n";
+            out << "    bindings.emplace_back(varName, ExprPtr(value));\n";
             out << "    parse_VarBindingListTail(bindings);\n";
             out << "    return bindings;\n";
             out << "}\n";
@@ -896,7 +988,7 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "        std::string varName = lookahead().lexeme; match(IDENT);\n";
             out << "        match(ASSIGN);\n";
             out << "        Expr* value = parse_Expr();\n";
-            out << "        bindings.push_back({varName, ExprPtr(value)});\n";
+            out << "        bindings.emplace_back(varName, ExprPtr(value));\n";
             out << "        parse_VarBindingListTail(bindings);\n";
             out << "    }\n";
             out << "}\n";
@@ -909,6 +1001,164 @@ void generate_parser_cpp(const std::set<std::string> &nonterminals, const std::v
             out << "    } else {\n";
             out << "        return parse_Expr();\n";
             out << "    }\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeDef")
+        {
+            out << "Stmt* LL1ParserGenerated::parse_TypeDef() {\n";
+            out << "    const Token& typeToken = lookahead();\n";
+            out << "    match(TYPE);\n";
+            out << "    std::string name = lookahead().lexeme; match(IDENT);\n";
+            out << "    std::vector<std::string> params = parse_TypeParams();\n";
+            out << "    auto inheritance = parse_TypeInheritance();\n";
+            out << "    match(LBRACE);\n";
+            out << "    auto body = parse_TypeBody();\n";
+            out << "    match(RBRACE);\n";
+            out << "    \n";
+            out << "    // Crear listas de tipos de parámetros con la misma cantidad que params\n";
+            out << "    std::vector<std::shared_ptr<TypeInfo>> paramTypes;\n";
+            out << "    for (size_t i = 0; i < params.size(); ++i) {\n";
+            out << "        paramTypes.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));\n";
+            out << "    }\n";
+            out << "    \n";
+            out << "    auto typeDecl = new TypeDecl(name, std::move(params), std::move(paramTypes), std::move(body.first), std::move(body.second), inheritance.first, std::move(inheritance.second));\n";
+            out << "    typeDecl->line_number = typeToken.line; typeDecl->column_number = typeToken.column;\n";
+            out << "    return typeDecl;\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeParams")
+        {
+            out << "std::vector<std::string> LL1ParserGenerated::parse_TypeParams() {\n";
+            out << "    if (lookahead().type == LPAREN) {\n";
+            out << "        match(LPAREN);\n";
+            out << "        std::vector<std::string> params = parse_ArgIdList();\n";
+            out << "        match(RPAREN);\n";
+            out << "        return params;\n";
+            out << "    }\n";
+            out << "    return {};\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeInheritance")
+        {
+            out << "std::pair<std::string, std::vector<ExprPtr>> LL1ParserGenerated::parse_TypeInheritance() {\n";
+            out << "    if (lookahead().type == INHERITS) {\n";
+            out << "        match(INHERITS);\n";
+            out << "        std::string baseType = lookahead().lexeme; match(IDENT);\n";
+            out << "        std::vector<ExprPtr> baseArgs = parse_TypeBaseArgs();\n";
+            out << "        return std::make_pair(std::move(baseType), std::move(baseArgs));\n";
+            out << "    }\n";
+            out << "    return std::make_pair(\"Object\", std::vector<ExprPtr>{});\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeBaseArgs")
+        {
+            out << "std::vector<ExprPtr> LL1ParserGenerated::parse_TypeBaseArgs() {\n";
+            out << "    if (lookahead().type == LPAREN) {\n";
+            out << "        match(LPAREN);\n";
+            out << "        std::vector<ExprPtr> args = parse_ArgList();\n";
+            out << "        match(RPAREN);\n";
+            out << "        return args;\n";
+            out << "    }\n";
+            out << "    return {};\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeBody")
+        {
+            out << "std::pair<std::vector<std::unique_ptr<AttributeDecl>>, std::vector<std::unique_ptr<MethodDecl>>> LL1ParserGenerated::parse_TypeBody() {\n";
+            out << "    std::vector<std::unique_ptr<AttributeDecl>> attributes;\n";
+            out << "    std::vector<std::unique_ptr<MethodDecl>> methods;\n";
+            out << "    \n";
+            out << "    while (lookahead().type != RBRACE && lookahead().type != TOKEN_EOF) {\n";
+            out << "        auto member = parse_TypeMember();\n";
+            out << "        if (member.first) {\n";
+            out << "            attributes.push_back(std::move(member.first));\n";
+            out << "        }\n";
+            out << "        if (member.second) {\n";
+            out << "            methods.push_back(std::move(member.second));\n";
+            out << "        }\n";
+            out << "    }\n";
+            out << "    \n";
+            out << "    return {std::move(attributes), std::move(methods)};\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeMember")
+        {
+            out << "std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> LL1ParserGenerated::parse_TypeMember() {\n";
+            out << "    std::string memberName = lookahead().lexeme; match(IDENT);\n";
+            out << "    return parse_TypeMemberTail(memberName);\n";
+            out << "}\n";
+        }
+        else if (nt == "TypeMemberTail")
+        {
+            out << "std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> LL1ParserGenerated::parse_TypeMemberTail(const std::string& memberName) {\n";
+            out << "    if (lookahead().type == ASSIGN) {\n";
+            out << "        // Es un atributo\n";
+            out << "        match(ASSIGN);\n";
+            out << "        Expr* initializer = parse_Expr();\n";
+            out << "        match(SEMICOLON);\n";
+            out << "        auto attrDecl = std::make_unique<AttributeDecl>(memberName, ExprPtr(initializer));\n";
+            out << "        return {std::move(attrDecl), std::unique_ptr<MethodDecl>(nullptr)};\n";
+            out << "    } else if (lookahead().type == LPAREN) {\n";
+            out << "        // Es un método\n";
+            out << "        match(LPAREN);\n";
+            out << "        std::vector<std::string> params = parse_ArgIdList();\n";
+            out << "        match(RPAREN);\n";
+            out << "        Expr* bodyExpr = parse_FunctionBody();\n";
+            out << "        match(SEMICOLON); // Consumir el SEMICOLON después del método\n";
+            out << "        StmtPtr body = std::make_unique<ExprStmt>(ExprPtr(bodyExpr));\n";
+            out << "        \n";
+            out << "        // Crear lista de tipos de parámetros con la misma cantidad que params\n";
+            out << "        std::vector<std::shared_ptr<TypeInfo>> paramTypes;\n";
+            out << "        for (size_t i = 0; i < params.size(); ++i) {\n";
+            out << "            paramTypes.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));\n";
+            out << "        }\n";
+            out << "        \n";
+            out << "        // Crear tipo de retorno por defecto (Unknown)\n";
+            out << "        auto returnType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);\n";
+            out << "        \n";
+            out << "        auto methodDecl = std::make_unique<MethodDecl>(memberName, std::move(params), std::move(body), std::move(paramTypes), std::move(returnType));\n";
+            out << "        return {std::unique_ptr<AttributeDecl>(nullptr), std::move(methodDecl)};\n";
+            out << "    }\n";
+            out << "    return {std::unique_ptr<AttributeDecl>(nullptr), std::unique_ptr<MethodDecl>(nullptr)};\n";
+            out << "}\n";
+        }
+        else if (nt == "AttributeDef")
+        {
+            out << "std::unique_ptr<AttributeDecl> LL1ParserGenerated::parse_AttributeDef() {\n";
+            out << "    const Token& attrToken = lookahead();\n";
+            out << "    std::string name = attrToken.lexeme; match(IDENT);\n";
+            out << "    match(ASSIGN);\n";
+            out << "    Expr* initializer = parse_Expr();\n";
+            out << "    match(SEMICOLON);\n";
+            out << "    \n";
+            out << "    auto attrDecl = std::make_unique<AttributeDecl>(name, ExprPtr(initializer));\n";
+            out << "    attrDecl->line_number = attrToken.line; attrDecl->column_number = attrToken.column;\n";
+            out << "    return attrDecl;\n";
+            out << "}\n";
+        }
+        else if (nt == "MethodDef")
+        {
+            out << "std::unique_ptr<MethodDecl> LL1ParserGenerated::parse_MethodDef() {\n";
+            out << "    const Token& methodToken = lookahead();\n";
+            out << "    std::string name = methodToken.lexeme; match(IDENT);\n";
+            out << "    match(LPAREN);\n";
+            out << "    std::vector<std::string> params = parse_ArgIdList();\n";
+            out << "    match(RPAREN);\n";
+            out << "    Expr* bodyExpr = parse_FunctionBody();\n";
+            out << "    StmtPtr body = std::make_unique<ExprStmt>(ExprPtr(bodyExpr));\n";
+            out << "    \n";
+            out << "    // Crear lista de tipos de parámetros con la misma cantidad que params\n";
+            out << "    std::vector<std::shared_ptr<TypeInfo>> paramTypes;\n";
+            out << "    for (size_t i = 0; i < params.size(); ++i) {\n";
+            out << "        paramTypes.push_back(std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown));\n";
+            out << "    }\n";
+            out << "    \n";
+            out << "    // Crear tipo de retorno por defecto (Unknown)\n";
+            out << "    auto returnType = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);\n";
+            out << "    \n";
+            out << "    auto methodDecl = std::make_unique<MethodDecl>(name, std::move(params), std::move(body), std::move(paramTypes), std::move(returnType));\n";
+            out << "    methodDecl->line_number = methodToken.line; methodDecl->column_number = methodToken.column;\n";
+            out << "    return methodDecl;\n";
             out << "}\n";
         }
         else
