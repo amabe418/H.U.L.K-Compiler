@@ -411,134 +411,140 @@
 
 //// [CODEGEN TESTS]
 //
-print("Hello, World!");
-print(true);
-print(false);
-print(true && false);
-print(false || true);
-print(3+2);
-print(3-2);
-print(3*2);
-print(3/2);
-print(2-3);
-print(2^3);
-print(8%2);
-
-print("Hello, " @ "World!");
-print("Probando declaracion de variables e impresion de valores");
-let a = 2, b = 3, c = 4, d = 5 in {
-    print("hello, world");
-    print(a+b+c+d);
-    print(true);
-    print(false);
-};
-
-print("Probando declaracion de variables con condicionales e impresion de su valor:");
-let a = if(3 < 4) 5 else 10 in print(a);
-
-print("Probando bucle while");
-let a = 5 in {
-    while(a > 0){
-        print(a);
-        a := a - 1;
-    };
-};
-
-print("Probando funciones");
-
-print("Sucesor de 0");
-function successor(x) => x+1;
-print(successor(0));
-
-print("Funcion que devuelve Hello, World!");
-function hw() => "Hello, World";
-print(hw());
-
-print("Probando recursividad");
-print("n-esimo numero de fibonacci");
-function fib(n) => if(n <= 1 ) 1 else fib(n-1) + fib(n-2);
-print("fib(5)");
-print(fib(5));
-
-print("Probando funcion con parametros dinamicos");
-function f(x,y) => "Hello, World";
-print("f(x,y) => Hello, World!");
-
-print("f(a,b), donde a y b son strings.");
-print(f("a","b"));
-
-print("f(2,3)");
-print(f(2,3));
-
-print("f(true,false)");
-print(f(true,false));
-print();
-print("Probando funcion con parametro dinamico y tipo de retorno desconocido");
-function id(x) => x;
-print(id("true"));
-print(id(true));
-print(id(1));
-
-print("Probando otra funcion recursiva, suma recursiva hasta n");
-function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
-let b = sum_to(2) in let a = b in print(a);
-print(sum_to(100));
-
-print("Probando for loops");
-for(i in range(1,7)){
-    print("El valor de i es " @ i);
-    print("Moviendo i a " @ i + 1);  
-};
-
-print();
-print("Probando concatenaciones:");
-print(true @ "false");
-print("false" @ true);
-print("Hola " @ "Mundo");
-print("4"@2);
-
-function concat(x,y) => x @ y;
-print(concat("Hola, ", "Mundo!"));
-
-print("Probando tipos");
-
-type Vector(x,y){
-    x = x;
-    y = y;
-    getX() => self.x;
-    getY() => self.y;
-    setX(newX) => self.x := newX;
-    setY(newY) => self.y := newY;
-    norm() => (self.x^2 + self.y^2)^(1/2);
-};
-
-let a = new Vector(3,2) in {
-    print(a.getX());
-    print(a.getY());
-    print(a.norm());
-    a.setX(10);
-    a.setY(10);
-    print(a.norm());
-};
-
-type Animal(){
+//print("Hello, World!");
+//print(true);
+//print(false);
+//print(true && false);
+//print(false || true);
+//print(3+2);
+//print(3-2);
+//print(3*2);
+//print(3/2);
+//print(2-3);
+//print(2^3);
+//print(8%2);
+//
+//print("Hello, " @ "World!");
+//print("Probando declaracion de variables e impresion de valores");
+//let a = 2, b = 3, c = 4, d = 5 in {
+//    print("hello, world");
+//    print(a+b+c+d);
+//    print(true);
+//    print(false);
+//};
+//
+//print("Probando declaracion de variables con condicionales e impresion de su valor:");
+//let a = if(3 < 4) 5 else 10 in print(a);
+//
+//print("Probando bucle while");
+//let a = 5 in {
+//    while(a > 0){
+//        print(a);
+//        a := a - 1;
+//    };
+//};
+//
+//print("Probando funciones");
+//
+//print("Sucesor de 0");
+//function successor(x) => x+1;
+//print(successor(0));
+//
+//print("Funcion que devuelve Hello, World!");
+//function hw() => "Hello, World";
+//print(hw());
+//
+//print("Probando recursividad");
+//print("n-esimo numero de fibonacci");
+//function fib(n) => if(n <= 1 ) 1 else fib(n-1) + fib(n-2);
+//print("fib(5)");
+//print(fib(5));
+//
+//print("Probando funcion con parametros dinamicos");
+//function f(x,y) => "Hello, World";
+//print("f(x,y) => Hello, World!");
+//
+//print("f(a,b), donde a y b son strings.");
+//print(f("a","b"));
+//
+//print("f(2,3)");
+//print(f(2,3));
+//
+//print("f(true,false)");
+//print(f(true,false));
+//print();
+//print("Probando funcion con parametro dinamico y tipo de retorno desconocido");
+//function id(x) => x;
+//print(id("true"));
+//print(id(true));
+//print(id(1));
+//
+//print("Probando otra funcion recursiva, suma recursiva hasta n");
+//function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
+//let b = sum_to(2) in let a = b in print(a);
+//print(sum_to(100));
+//
+//print("Probando for loops");
+//for(i in range(1,7)){
+//    print("El valor de i es " @ i);
+//    print("Moviendo i a " @ i + 1);  
+//};
+//
+//print();
+//print("Probando concatenaciones:");
+//print(true @ "false");
+//print("false" @ true);
+//print("Hola " @ "Mundo");
+//print("4"@2);
+//
+//function concat(x,y) => x @ y;
+//print(concat("Hola, ", "Mundo!"));
+//
+//print("Probando tipos");
+//
+//type Vector(x,y){
+//    x = x;
+//    y = y;
+//    getX() => self.x;
+//    getY() => self.y;
+//    setX(newX) => self.x := newX;
+//    setY(newY) => self.y := newY;
+//    norm() => (self.x^2 + self.y^2)^(1/2);
+//};
+//
+//let a = new Vector(3,2) in {
+//    print(a.getX());
+//    print(a.getY());
+//    print(a.norm());
+//    a.setX(10);
+//    a.setY(10);
+//    print(a.norm());
+//};
+//
+type Animal(name){
+    name = name;
     speak() => "regular Animal noise";
 };
-
+//
+//
+//let a = new Animal("Noel") in print(a.speak());
+//
 type Dog() inherits Animal{
     bark() => "Woof, Woof!";
 };
-
-type Chihuahua() inherits Dog{
-};
-
-
-let d = new Dog() in {
-    print(d.bark());
-    print(d.speak());
-};
-
-let c = new Chihuahua() in print(c.bark());
+//
+//let d = new Dog("Noel") in print(d.bark());
+//
+//type Chihuahua() inherits Dog{
+//};
+//
+//
+//let d = new Dog() in {
+//    print(d.bark());
+//    print(d.speak());
+//};
+//
+//let c = new Chihuahua() in print(c.speak());
 //
 //
 //let a = 42, b = true in print(a@b);
