@@ -106,6 +106,31 @@ void CodeGenerator::exitScope()
 
 void CodeGenerator::generateCode(Program *program)
 {
+    // ====== GENERAR OBJECT Y SU VTABLE ANTES DE TODO ======
+    // 1. Estructura Object
+    global_constants_ << "%struct.Object = type { %struct.Object_vtable_struct* }\n";
+    // 2. Estructura de VTable de Object
+    global_constants_ << "%struct.Object_vtable_struct = type {\n";
+    global_constants_ << "    i8*,\n"; // type_name
+    global_constants_ << "    i32,\n"; // type_id
+    global_constants_ << "    %struct.Object_vtable_struct*,\n"; // parent_vtable
+    global_constants_ << "    [0 x ptr]\n"; // method_pointers vacío
+    global_constants_ << "}\n";
+    // 3. String constante para el nombre
+    global_constants_ << "@.str.Object = private unnamed_addr constant [7 x i8] c\"Object\\00\"\n";
+    // 4. Instancia global de VTable de Object
+    function_definitions_ << "@Object_vtable = global %struct.Object_vtable_struct {\n";
+    function_definitions_ << "    i8* @.str.Object,\n";
+    function_definitions_ << "    i32 0,\n";
+    function_definitions_ << "    %struct.Object_vtable_struct* null,\n";
+    function_definitions_ << "    [0 x ptr] []\n";
+    function_definitions_ << "}\n\n";
+    // 5. Registrar en los mapas internos
+    types_["Object"] = "%struct.Object";
+    type_declarations_["Object"] = nullptr;
+    // ========== FIN OBJECT ==========
+
+    // Llamar al visitor del programa para generar la función main y procesar todos los statements
     program->accept(this);
 }
 
@@ -2235,82 +2260,93 @@ void CodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
     std::string constructor_name = "construct_" + typeDecl->name;
     std::string struct_type = "%struct." + typeDecl->name;
 
+    // ===== PROPAGACIÓN DE ARGUMENTOS =====
+    std::vector<std::string> allParams;
+    
+    // Si hereda de un tipo diferente a Object, obtener sus argumentos
+    if (typeDecl->baseType != "Object") {
+        auto parentTypeDecl = type_declarations_.find(typeDecl->baseType);
+        if (parentTypeDecl != type_declarations_.end() && parentTypeDecl->second != nullptr) {
+            // Agregar argumentos del padre al inicio
+            for (const auto& param : parentTypeDecl->second->params) {
+                allParams.push_back(param);
+            }
+            std::cout << "[CodeGen] Propagated " << parentTypeDecl->second->params.size() 
+                      << " arguments from parent " << typeDecl->baseType << std::endl;
+        }
+    }
+    
+    // Agregar argumentos propios del tipo (solo si no están ya en allParams)
+    for (const auto& param : typeDecl->params) {
+        // Verificar si el parámetro ya existe para evitar duplicados
+        bool exists = false;
+        for (const auto& existingParam : allParams) {
+            if (existingParam == param) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            allParams.push_back(param);
+        }
+    }
+    
     // Build parameter list
-    std::string param_list;
-    std::vector<std::string> param_types;
-
-    for (size_t i = 0; i < typeDecl->params.size(); ++i)
-    {
-        if (i > 0)
-            param_list += ", ";
-
-        // All constructor parameters are treated as BoxedValue for flexibility
-        std::string param_type = "%struct.BoxedValue*";
-        param_list += param_type + " %" + typeDecl->params[i];
-        param_types.push_back(param_type);
+    std::string paramList;
+    for (size_t i = 0; i < allParams.size(); ++i) {
+        if (i > 0) paramList += ", ";
+        paramList += "%struct.BoxedValue* %" + allParams[i];
     }
-
+    
     // Generate constructor function
-    function_definitions_ << "define " << struct_type << "* @" << constructor_name << "(" << param_list << ") {\n";
+    function_definitions_ << "define " << struct_type << "* @" << constructor_name << "(" << paramList << ") {\n";
     function_definitions_ << "entry:\n";
-
-    // Allocate object using malloc
-    std::string obj_name = generateUniqueName("obj");
-    std::string malloc_size = "16"; // Default size for BoxedValue
-    function_definitions_ << "  %" << obj_name << "_raw = call i8* @malloc(i32 " << malloc_size << ")\n";
-    function_definitions_ << "  %" << obj_name << " = bitcast i8* %" << obj_name << "_raw to " << struct_type << "*\n";
-
-    // Register parameters in the scope for attribute initializers to access
-    for (size_t i = 0; i < typeDecl->params.size(); ++i)
-    {
-        std::string param_name = typeDecl->params[i];
-        current_scope_->variables[param_name] = param_name;
+    
+    // Allocate object
+    std::string objName = generateUniqueName("obj");
+    int typeSize = getTypeSize(typeDecl->name);
+    function_definitions_ << "    %" << objName << "_raw = call i8* @malloc(i32 " << typeSize << ")\n";
+    function_definitions_ << "    %" << objName << " = bitcast i8* %" << objName << "_raw to " << struct_type << "*\n";
+    
+    // Initialize VTable pointer
+    initializeVTablePointer(typeDecl->name, "%" + objName);
+    
+    // Enter scope for constructor parameters
+    enterScope();
+    
+    // Register all parameters in the scope
+    for (size_t i = 0; i < allParams.size(); ++i) {
+        current_scope_->variables[allParams[i]] = allParams[i];
+        std::cout << "[CodeGen] Registered parameter " << allParams[i] << " in constructor scope" << std::endl;
     }
-
-    // Get attribute types for this type
-    auto attr_types_it = attribute_types_.find(typeDecl->name);
-    if (attr_types_it != attribute_types_.end())
-    {
-        const auto &attr_types = attr_types_it->second;
-
-        // Set context variables for attribute initialization
-        current_object_ptr_ = "%" + obj_name;
-        current_struct_type_ = struct_type;
-        in_constructor_context_ = true; // Set constructor context
-
-        // Initialize attributes by calling visit(AttributeDecl *) for each one
-        for (size_t i = 0; i < typeDecl->attributes.size(); ++i)
-        {
-            current_attr_index_ = i;
-            typeDecl->attributes[i]->accept(this);
-        }
-
-        in_constructor_context_ = false; // Reset constructor context
+    
+    // Initialize parent first (if not Object)
+    if (typeDecl->baseType != "Object") {
+        initializeParent(typeDecl, "%" + objName, allParams);
     }
-    else
-    {
-        // Fallback: treat all attributes as BoxedValue
-        current_object_ptr_ = "%" + obj_name;
-        current_struct_type_ = struct_type;
-        in_constructor_context_ = true; // Set constructor context
-
-        for (size_t i = 0; i < typeDecl->attributes.size(); ++i)
-        {
-            current_attr_index_ = i;
-            typeDecl->attributes[i]->accept(this);
-        }
-
-        in_constructor_context_ = false; // Reset constructor context
-    }
-
+    
+    // Initialize attributes
+    initializeAttributes(typeDecl->name, "%" + objName, typeDecl);
+    
+    // Exit scope
+    exitScope();
+    
     // Return the object
-    function_definitions_ << "  ret " << struct_type << "* %" << obj_name << "\n";
+    function_definitions_ << "    ret " << struct_type << "* %" << objName << "\n";
     function_definitions_ << "}\n\n";
-
-    // Register the constructor function
+    
+    // Register constructor
     functions_[constructor_name] = struct_type + "*";
+}
 
-    std::cout << "[CodeGen] Generated constructor function: " << constructor_name << std::endl;
+void CodeGenerator::generateConstructorWithVTable(TypeDecl* typeDecl)
+{
+    std::cout << "[CodeGen] Generating constructor with VTable for type: " << typeDecl->name << std::endl;
+    
+    // Generate the constructor function
+    generateConstructorFunction(typeDecl);
+    
+    // TODO: Add additional VTable-specific logic if needed
 }
 
 std::vector<std::string> CodeGenerator::getInheritedAttributes(const std::string &typeName)
@@ -2439,6 +2475,26 @@ std::string CodeGenerator::getMethodSignature(const std::string& methodName, con
 
 std::string CodeGenerator::getMethodImplementation(const std::string& typeName, const std::string& methodName)
 {
+    // First check if the method is defined in the current type
+    auto typeDeclIt = type_declarations_.find(typeName);
+    if (typeDeclIt != type_declarations_.end()) {
+        TypeDecl* typeDecl = typeDeclIt->second;
+        for (const auto& method : typeDecl->methods) {
+            if (method->name == methodName) {
+                // Method is defined in current type
+                return typeName + "_" + methodName;
+            }
+        }
+    }
+    
+    // Method is inherited, find the implementation in the inheritance chain
+    auto inheritanceIt = type_inheritance_.find(typeName);
+    if (inheritanceIt != type_inheritance_.end()) {
+        std::string parentType = inheritanceIt->second;
+        return getMethodImplementation(parentType, methodName);
+    }
+    
+    // Fallback: return current type name (this shouldn't happen)
     return typeName + "_" + methodName;
 }
 
@@ -2525,59 +2581,6 @@ int CodeGenerator::getTypeSize(const std::string& typeName)
     return 16; // Default size
 }
 
-void CodeGenerator::generateConstructorWithVTable(TypeDecl* typeDecl)
-{
-    std::cout << "[CodeGen] Generating constructor with VTable for type: " << typeDecl->name << std::endl;
-    
-    // Compute type layout first
-    computeTypeLayout(typeDecl->name, typeDecl);
-    
-    std::string constructorName = typeDecl->name + "_constructor";
-    std::string structType = "%struct." + typeDecl->name;
-    
-    // Build parameter list
-    std::string paramList;
-    for (size_t i = 0; i < typeDecl->params.size(); ++i) {
-        if (i > 0) paramList += ", ";
-        paramList += "%struct.BoxedValue* %" + typeDecl->params[i];
-    }
-    
-    // Generate constructor function
-    function_definitions_ << "define " << structType << "* @" << constructorName << "(" << paramList << ") {\n";
-    function_definitions_ << "entry:\n";
-    
-    // Allocate object
-    std::string objName = generateUniqueName("obj");
-    int typeSize = getTypeSize(typeDecl->name);
-    function_definitions_ << "    %" << objName << "_raw = call i8* @malloc(i32 " << typeSize << ")\n";
-    function_definitions_ << "    %" << objName << " = bitcast i8* %" << objName << "_raw to " << structType << "*\n";
-    
-    // Initialize VTable pointer
-    initializeVTablePointer(typeDecl->name, "%" + objName);
-    
-    // Enter scope for constructor parameters
-    enterScope();
-    
-    // Register parameters in the scope
-    for (size_t i = 0; i < typeDecl->params.size(); ++i) {
-        current_scope_->variables[typeDecl->params[i]] = "%" + typeDecl->params[i];
-        std::cout << "[CodeGen] Registered parameter " << typeDecl->params[i] << " in constructor scope" << std::endl;
-    }
-    
-    // Initialize attributes
-    initializeAttributes(typeDecl->name, "%" + objName, typeDecl);
-    
-    // Exit scope
-    exitScope();
-    
-    // Return the object
-    function_definitions_ << "    ret " << structType << "* %" << objName << "\n";
-    function_definitions_ << "}\n\n";
-    
-    // Register constructor
-    functions_[constructorName] = structType + "*";
-}
-
 void CodeGenerator::initializeVTablePointer(const std::string& typeName, const std::string& objectPtr)
 {
     std::string vtableName = typeName + "_vtable";
@@ -2660,12 +2663,12 @@ std::string CodeGenerator::generateDirectMethodCall(const std::string& objectPtr
     
     if (returnType == "void") {
         // For void functions, don't assign to a variable
-        getCurrentStream() << "    call void @" << methodImpl << "(" << paramList << ")\n";
+        getCurrentStream() << "  call void @" << methodImpl << "(" << paramList << ")\n";
         return "void"; // Return a special value to indicate void
     } else {
         // For non-void functions, assign to a variable
         std::string result = generateUniqueName("direct_call_result");
-        getCurrentStream() << "    %" << result << " = call " << returnType << " @" << methodImpl << "(" << paramList << ")\n";
+        getCurrentStream() << "  %" << result << " = call " << returnType << " @" << methodImpl << "(" << paramList << ")\n";
         return "%" + result;
     }
 }
@@ -2713,4 +2716,61 @@ std::string CodeGenerator::generateTypeCast(const std::string& objectPtr, const 
     // For now, just return the object pointer as-is
     // In a more complete implementation, you'd add runtime checks
     return objectPtr;
+}
+
+void CodeGenerator::initializeParent(TypeDecl* typeDecl, const std::string& objectPtr, const std::vector<std::string>& allParams)
+{
+    std::string parentType = typeDecl->baseType;
+    std::cout << "[CodeGen] Initializing parent " << parentType << " for " << typeDecl->name << std::endl;
+    
+    // Get parent type declaration
+    auto parentTypeDecl = type_declarations_.find(parentType);
+    if (parentTypeDecl == type_declarations_.end() || parentTypeDecl->second == nullptr) {
+        std::cerr << "[CodeGen] Error: Parent type " << parentType << " not found" << std::endl;
+        return;
+    }
+    
+    // Determine arguments for parent constructor
+    std::vector<std::string> parentArgs;
+    
+    if (typeDecl->baseArgs.empty()) {
+        // Propagación automática: usar los primeros argumentos del hijo para el padre
+        size_t parentParamCount = parentTypeDecl->second->params.size();
+        for (size_t i = 0; i < parentParamCount && i < allParams.size(); ++i) {
+            parentArgs.push_back("%" + allParams[i]);
+        }
+        std::cout << "[CodeGen] Auto-propagating " << parentArgs.size() << " arguments to parent" << std::endl;
+    } else {
+        // Evaluar las expresiones baseArgs en el contexto actual
+        for (const auto& baseArg : typeDecl->baseArgs) {
+            // Save current context
+            std::string oldValue = current_value_;
+            
+            // Evaluate the expression
+            baseArg->accept(this);
+            parentArgs.push_back(current_value_);
+            
+            // Restore context
+            current_value_ = oldValue;
+        }
+        std::cout << "[CodeGen] Evaluated " << parentArgs.size() << " base arguments for parent" << std::endl;
+    }
+    
+    // Call parent constructor
+    std::string parentConstructor = "construct_" + parentType;
+    std::string parentResult = generateUniqueName("parent_obj");
+    
+    std::string parentArgList;
+    for (size_t i = 0; i < parentArgs.size(); ++i) {
+        if (i > 0) parentArgList += ", ";
+        parentArgList += "%struct.BoxedValue* " + parentArgs[i];
+    }
+    
+    getCurrentStream() << "    %" << parentResult << " = call %struct." << parentType << "* @" << parentConstructor << "(" << parentArgList << ")\n";
+    
+    // Copy parent attributes to child object
+    // For now, we'll assume parent attributes are at the beginning of the child's memory layout
+    // This is a simplified approach - in a full implementation, you'd need proper offset calculation
+    
+    std::cout << "[CodeGen] Parent initialization completed for " << typeDecl->name << std::endl;
 }

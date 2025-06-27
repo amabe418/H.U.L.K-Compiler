@@ -134,6 +134,7 @@ private:
     void generateConstructorWithVTable(TypeDecl* typeDecl);
     void initializeVTablePointer(const std::string& typeName, const std::string& objectPtr);
     void initializeAttributes(const std::string& typeName, const std::string& objectPtr, TypeDecl* typeDecl);
+    void initializeParent(TypeDecl* typeDecl, const std::string& objectPtr, const std::vector<std::string>& allParams);
     
     // Method dispatch
     std::string generateMethodDispatch(const std::string& objectPtr, const std::string& methodName, const std::vector<std::string>& args);
