@@ -354,6 +354,26 @@ stmt:
         free($2);
     }
 
+    | FUNCTION IDENT LPAREN RPAREN COLON type LBRACE stmt_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        auto block = std::make_unique<Program>();
+        block->stmts = std::move(*$8);
+        delete $8;
+        
+        auto funcDecl = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            std::move(block), 
+            std::move(param_types),
+            *$6
+        ));
+        setStmtLocation(funcDecl, @2);
+        (yyval.stmt) = funcDecl;
+        delete $6;
+        free($2);
+    }
 
     | type_decl
 ;    
