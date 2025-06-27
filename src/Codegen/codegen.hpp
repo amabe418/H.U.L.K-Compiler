@@ -51,6 +51,15 @@ private:
     // Inheritance relationships (child -> parent)
     std::unordered_map<std::string, std::string> type_inheritance_;
 
+    // Inheritance chain for method resolution (child -> parent)
+    std::unordered_map<std::string, std::string> inheritance_chain_;
+
+    // Methods defined in each type (type -> set of method names)
+    std::unordered_map<std::string, std::set<std::string>> type_methods_;
+
+    // Method signatures for inheritance checking (type.method -> signature)
+    std::unordered_map<std::string, std::string> method_signatures_;
+
     // Current function being generated
     std::string current_function_;
 
@@ -93,6 +102,12 @@ private:
     std::stringstream &getCurrentStream();                                        // Get current output stream
     void generateConstructorFunction(TypeDecl *typeDecl);                         // Generate constructor function for types
     std::vector<std::string> getInheritedAttributes(const std::string &typeName); // Get all attributes including inherited ones
+    void generateInheritedMethodWrappers(TypeDecl *typeDecl);                     // Generate wrappers for inherited methods
+    void generateMethodWrapper(const std::string &childType, const std::string &baseType, MethodDecl *baseMethod); // Generate wrapper for a specific method
+    std::string getMethodSignature(MethodDecl *method);                           // Get method signature for inheritance checking
+    bool isMethodOverridden(const std::string &typeName, const std::string &methodName); // Check if method is overridden
+    std::string findInheritedMethod(const std::string &typeName, const std::string &methodName); // Find method in inheritance chain
+    int calculateStructSize(const std::string &typeName); // Calculate struct size in bytes
 
 public:
     CodeGenerator();

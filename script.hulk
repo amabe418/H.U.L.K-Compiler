@@ -511,7 +511,7 @@
 //    setY(newY) => self.y := newY;
 //    norm() => (self.x^2 + self.y^2)^(1/2);
 //};
-//
+////
 //let a = new Vector(3,2) in {
 //    print(a.getX());
 //    print(a.getY());
@@ -520,11 +520,73 @@
 //    a.setY(10);
 //    print(a.norm());
 //};
+//
+//type Animal(){
+//    speak() => "regular Animal noise";
+//};
+//
+//type Dog() inherits Animal(){
+//    bark() => "Woof, Woof!";
+//};
+//
+//type Chihuahua() inherits Dog(){
+//};
+//
+//
+//let d = new Dog() in {
+//    print(d.bark());
+//    print(d.speak());
+//};
+//
+//let c = new Chihuahua() in print(c.bark());
+//
+//
 //let a = 42, b = true in print(a@b);
 //
 //
 //function kk(x:String,y:String) => x == y;
+//
+//type A{
+//    f() => "A";
+//};
+//
+//type B inherits A{
+//    f() => "B";
+//};
+//
+//let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f());
 
-function getNumber():Number {
-     "hello";  // Error: function expects number but returns string
+type G {
+    foo() => 5;
 };
+
+
+type Holis inherits G {
+};
+
+type A  inherits Holis{
+    foo() => 10;
+};
+
+type B inherits A {
+    foo() => 20;
+};
+
+type C inherits A {
+    foo() => 40;
+};
+
+type D inherits A {
+    foo() => 50;
+};
+
+function bar(x:Number) : A {
+    if (x>5) {
+        new B();
+    } else if (x>3) {
+        new C();
+    }
+};
+
+print(bar(5).foo());
+print(bar(9).foo());

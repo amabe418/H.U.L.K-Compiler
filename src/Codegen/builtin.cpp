@@ -7,6 +7,10 @@ void CodeGenerator::registerBuiltinFunctions()
 
     // Add BoxedValue struct definition FIRST - before any other code
     global_constants_ << "%struct.BoxedValue = type { i8, [7 x i8], i64 }\n";
+    
+    // Add Object struct definition - base of inheritance chain
+    global_constants_ << "%struct.Object = type { i8 }\n";
+    
     global_constants_ << "\n";
 
     // Add built-in function declarations
@@ -634,6 +638,16 @@ void CodeGenerator::registerBuiltinFunctions()
     global_constants_ << "  ret %struct.BoxedValue* %box\n";
     global_constants_ << "}\n\n";
 
+    // Object constructor - base of inheritance chain
+    global_constants_ << "define %struct.Object* @construct_Object() {\n";
+    global_constants_ << "entry:\n";
+    global_constants_ << "  %obj = call i8* @malloc(i32 8)\n";
+    global_constants_ << "  %obj_ptr = bitcast i8* %obj to %struct.Object*\n";
+    global_constants_ << "  %dummy_field = getelementptr %struct.Object, %struct.Object* %obj_ptr, i32 0, i32 0\n";
+    global_constants_ << "  store i8 0, i8* %dummy_field\n";
+    global_constants_ << "  ret %struct.Object* %obj_ptr\n";
+    global_constants_ << "}\n\n";
+
     // Add print functions for different types
     global_constants_ << "; Print functions for different types\n";
 
@@ -777,6 +791,10 @@ void CodeGenerator::registerBuiltinFunctions()
     // // ir_code_ << "@.str_debug_type_value = private unnamed_addr constant [24 x i8] c\"[DEBUG] Type value: %d\\0A\\00\"\n";
     // // ir_code_ << "@.str_debug_result = private unnamed_addr constant [20 x i8] c\"[DEBUG] Result: %d\\0A\\00\"\n";
     global_constants_ << "\n";
+
+    // Register Object type in the inheritance system
+    // Note: This will be done by the codegen when it processes type declarations
+    // Object is the implicit base type for all types that don't specify inheritance
 
     builtins_registered_ = true;
 }
