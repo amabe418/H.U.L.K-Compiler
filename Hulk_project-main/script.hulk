@@ -1,3 +1,0 @@
-
-let b= 3
-    in print(b+2);
