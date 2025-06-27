@@ -4,33 +4,32 @@
 //42;
 //-42;
 //((((1 + 2) ^ 3) * 4) / 5);
-//====================================================
-// =========== STRINGS ===============
-//====================================================
-
+////====================================================
+//// =========== STRINGS ===============
+////====================================================
+//
 //print("Hello World");
 //print("The message is Hello World");
 //print("The meaning of life is " @ 42);
-
-
-//====================================================
-//========== FUNCIONES BUILT IN =============
-//====================================================
-
+//
+//
+////====================================================
+////========== FUNCIONES BUILT IN =============
+////====================================================
+//
 //print(sin(2 * PI) ^ 2 + cos(3 * PI / log(4, 64)));
 //{
 //    print(42);
 //    print(sin(PI/2));
 //    print("Hello World");
 //};
-
-
-//====================================================
-//========== FUNCIONES =============
-//====================================================
-// Test file for function return type declarations
-
-// Function with explicit return type - should work
+//
+//
+////====================================================
+////========== FUNCIONES =============
+////====================================================
+////Test file for function return type declaration
+////Function with explicit return type - should work
 //function add(x: Number, y: Number) : Number => x + y;
 //
 //// Function with explicit return type and block body - should work
@@ -52,15 +51,14 @@
 //
 //// Function with no parameters and no explicit return type
 //function getE() => 2.71828;
-
-// Test calls
+////Test calls
 //add(5, 3);
 //multiply(4, 6);
 //subtract(10, 3);
 //compatibleReturn(7);
 //getPi();
 //getE();
-//function s(a,b)=>a;
+//function s(a)=>a;
 //print(s(2));
 //function tan(x: Number): Number => sin(x) / cos(x);
 //function cot(x: Number): Number => 1 / tan(x);
@@ -77,14 +75,13 @@
 //function h(x,y) => x+y;
 //function g(x,y)=> h(x,y);
 //function f(x,y)=> g(x,y);
-
-
-
-//====================================================
-//========== CLASES =============
-//====================================================
-// Test file for type declaration semantic checking
-
+//
+//
+////====================================================
+////========== CLASES =============
+////====================================================
+//// Test file for type declaration semantic checking
+//
 //type Point(x,y) {
 //    x = x;
 //    y = y;
@@ -119,28 +116,12 @@
 //let p = new Knight("Phil", "Collins") in
 //    print(p.name()); 
 //
-
-//
 //type vector (a:Number,b:Number) inherits Point {
 //
 //};
-
-//type Person(firstname, lastname) {
-//    firstname = firstname;
-//    lastname = lastname;
 //
-//    name() => self.firstname @@ self.lastname;
-//};
-//
-//type Knight inherits Person {
-//    name() => "Sir" @@ base();
-//}
-//
-//let p = new Knight("Phil", "Collins") in
-//    print(p.name()); // prints 'Sir Phil Collins'
-
-// Test attribute access
-//let p = new Point() in {
+//// Test attribute access
+//let p = new Point(3,4) in {
 //    print(p.getX());
 //    print(p.getY());
 //    p.setX(10);
@@ -161,120 +142,146 @@
 //
 //let pt = new Pointa(3,4) in
 //    print("x: " @ pt.getX() @ "; y: " @ pt.getY());
+//
+//
+////===============================================
+////
+//// HASTA AQUI TODO FUNCIONA
+////
+////===============================================
+//
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //// Type with typed parameters
-//type Point(x: Number, y: Number) {
-//    // Attributes with explicit types
-//    x: Number = x;
-//    y: Number = y;
-//    
-//    // Method with typed parameters and return type
-//    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
-//    
-//    // Method with typed parameters but inferred return type
-//    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
-//    
-//    // Method with no parameters and explicit return type
-//    magnitude() : Number => sqrt(self.x^2 + self.y^2);
-//    
-//    // Method with no parameters and inferred return type
-//    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
-//};
-//
-//// Type with inheritance and typed parameters
-//type Circle(center: Point, radius: Number) inherits Object {
-//    // Attributes with explicit types
-//    center: Point = center;
-//    radius: Number = radius;
-//    
-//    // Method with typed parameters and return type
-//    area() : Number => PI * self.radius^2;
-//    
-//    // Method with typed parameters but inferred return type
-//    contains(point: Point) => (point.x - self.center.x)^2 + (point.y - self.center.y)^2 <= self.radius^2;
-//    
-//    // Method with no parameters and explicit return type
-//    circumference() : Number => 2 * PI * self.radius;
-//};
-//
-//// Type with no parameters
-//type Counter {
-//    // Attribute with explicit type
-//    count: Number = 0;
-//    
-//    // Method with typed parameters and return type
-//    increment(amount: Number) : Number {
-//        self.count := self.count + amount;
-//        self.count;
-//    };
-//    
-//    // Method with no parameters and explicit return type
-//    getCount() : Number => self.count;
-//    
-//    // Method with no parameters and inferred return type
-//    reset() => self.count := 0;
-//};
-//
-//// Test function with typed parameters and return type
-//function createPoint(x: Number, y: Number) : Point => new Point(x, y);
-//
-//// Test function with typed parameters but inferred return type
-//function distance(p1: Point, p2: Point) => p1.distance(p2);
-//
-//// Test calls
-//let p1 = createPoint(3, 4) in
-//let p2 = createPoint(6, 8) in
-//let c = new Circle(p1, 5) in
-//let counter = new Counter() in
-//{
-//    print("Distance: " @ distance(p1, p2));
-//    print("Circle area: " @ c.area());
-//    print("Point magnitude: " @ p1.magnitude());
-//    print("Counter count: " @ counter.getCount());
-//    counter.increment(10);
-//    print("After increment: " @ counter.getCount());
-//};
-//
-//type Bird {
-//    // ...
-//};
-//
-//type Plane {
-//    // ...
-//};
-//
-//type Superman {
-//    // ...
-//};
-//
-//let x = new Superman() in
-//    print(
-//        if (x is Bird) "It's bird!"
-//        elif (x is Plane) "It's a plane!"
-//        else "No, it's Superman!"
-//    );
+type Point(x: Number, y: Number) {
+    // Attributes with explicit types
+    x: Number = x;
+    y: Number = y;
+    
+    // Method with typed parameters and return type
+    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
+    
+    // Method with typed parameters but inferred return type
+    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
+    
+    // Method with no parameters and explicit return type
+    magnitude() : Number => sqrt(self.x^2 + self.y^2);
+    
+    // Method with no parameters and inferred return type
+    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
+};
 
+// Type with inheritance and typed parameters
+type Circle(center: Point, radius: Number) inherits Object {
+    // Attributes with explicit types
+    center: Point = center;
+    radius: Number = radius;
+    
+    // Method with typed parameters and return type
+    area() : Number => PI * self.radius^2;
+    
+    // Method with typed parameters but inferred return type
+    contains(point: Point) => (point.x - self.center.x)^2 + (point.y - self.center.y)^2 <= self.radius^2;
+    
+    // Method with no parameters and explicit return type
+    circumference() : Number => 2 * PI * self.radius;
+};
 
-//type A {
-//    // ...
-//};
-//
-//type B inherits A {
-//    // ...
-//};
-//
-//type C inherits A {
-//    // ...
-//};
-//
-//let x : A = if (rand() < 0.5) new B() else new C() in
-//    if (x is B)
-//        let y : B = x as B in {
-//           print("se pudo");
-//        }
-//    else {
-//        print("no se pudo");
-//    };
+// Type with no parameters
+type Counter {
+    // Attribute with explicit type
+    count: Number = 0;
+    
+    // Method with typed parameters and return type
+    increment(amount: Number) : Number {
+        self.count := self.count + amount;
+        self.count;
+    };
+    
+    // Method with no parameters and explicit return type
+    getCount() : Number => self.count;
+    
+    // Method with no parameters and inferred return type
+    reset() => self.count := 0;
+};
+
+// Test function with typed parameters and return type
+function createPoint(x: Number, y: Number) : Point => new Point(x, y);
+
+// Test function with typed parameters but inferred return type
+function distance(p1: Point, p2: Point) => p1.distance(p2);
+
+// Test calls
+let p1 = createPoint(3, 4) in
+let p2 = createPoint(6, 8) in
+let c = new Circle(p1, 5) in
+let counter = new Counter() in
+{
+    print("Distance: " @ distance(p1, p2));
+    print("Circle area: " @ c.area());
+    print("Point magnitude: " @ p1.magnitude());
+    print("Counter count: " @ counter.getCount());
+    counter.increment(10);
+    print("After increment: " @ counter.getCount());
+};
+
+type Bird {
+    // ...
+};
+
+type Plane {
+    // ...
+};
+
+type Superman {
+    // ...
+};
+
+let x = new Superman() in
+    print(
+        if (x is Bird) "It's bird!"
+        elif (x is Plane) "It's a plane!"
+        else "No, it's Superman!"
+    )
+type A {
+    // ...
+};
+
+type B inherits A {
+    // ...
+};
+
+type C inherits A {
+    // ...
+};
+
+let x : A = if (rand() < 0.5) new B() else new C() in
+    if (x is B)
+        let y : B = x as B in {
+           print("se pudo");
+        }
+    else {
+        print("no se pudo");
+    };
 //====================================================
 //========== IF ELSE =============
 //====================================================
