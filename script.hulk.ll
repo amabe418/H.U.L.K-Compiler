@@ -1,8 +1,74 @@
+%struct.G = type { i8 }
+%struct.Holis = type { i8 }
 %struct.A = type { i8 }
 %struct.B = type { i8 }
 %struct.C = type { i8 }
-@.str.11514100687449187254 = private unnamed_addr constant [8 x i8] c"se pudo\00"
-@.str.13097573105356038884 = private unnamed_addr constant [11 x i8] c"no se pudo\00"
+%struct.D = type { i8 }
+define double @G_foo(%struct.G* %self) {
+entry:
+  ret double 5.000000
+}
+
+define double @A_foo(%struct.A* %self) {
+entry:
+  ret double 10.000000
+}
+
+define double @B_foo(%struct.B* %self) {
+entry:
+  ret double 20.000000
+}
+
+define double @C_foo(%struct.C* %self) {
+entry:
+  ret double 40.000000
+}
+
+define double @D_foo(%struct.D* %self) {
+entry:
+  ret double 50.000000
+}
+
+define %struct.A* @bar(double %x) {
+entry:
+  %param_0 = alloca double
+  store double %x, double* %param_0
+  %load_1 = load double, double* %param_0
+  %binary_2 = fcmp ugt double %load_1, 5.000000
+  br i1 %binary_2, label %then_3, label %else_4
+
+then_3:
+  %size_7 = ptrtoint %struct.B* null to i64
+  %new_obj_6 = call i8* @malloc(i64 %size_7)
+  %new_obj_6_cast = bitcast i8* %new_obj_6 to %struct.B*
+  br label %ifcont_5
+
+else_4:
+  %load_8 = load double, double* %param_0
+  %binary_9 = fcmp ugt double %load_8, 3.000000
+  br i1 %binary_9, label %then_10, label %else_11
+
+then_10:
+  %size_14 = ptrtoint %struct.C* null to i64
+  %new_obj_13 = call i8* @malloc(i64 %size_14)
+  %new_obj_13_cast = bitcast i8* %new_obj_13 to %struct.C*
+  br label %ifcont_12
+
+else_11:
+  %size_16 = ptrtoint %struct.D* null to i64
+  %new_obj_15 = call i8* @malloc(i64 %size_16)
+  %new_obj_15_cast = bitcast i8* %new_obj_15 to %struct.D*
+  br label %ifcont_12
+
+ifcont_12:
+  %iftmp_17 = phi double [ %new_obj_13_cast, %then_10 ], [ %new_obj_15_cast, %else_11 ]
+  br label %ifcont_5
+
+ifcont_5:
+  %iftmp_18 = phi double [ %new_obj_6_cast, %then_3 ], [ %iftmp_17, %else_4 ]
+  ret %struct.A* %iftmp_18
+}
+
 ; Built-in function declarations
 declare double @sqrt(double)
 declare double @pow(double, double)
@@ -98,44 +164,12 @@ entry:
 
 define i32 @main() {
 entry:
-  %call_0 = call double @rand()
-  %binary_1 = fcmp ult double %call_0, 0.500000
-  br i1 %binary_1, label %then_2, label %else_3
-
-then_2:
-  %size_6 = ptrtoint %struct.B* null to i64
-  %new_obj_5 = call i8* @malloc(i64 %size_6)
-  %new_obj_5_cast = bitcast i8* %new_obj_5 to %struct.B*
-  br label %ifcont_4
-
-else_3:
-  %size_8 = ptrtoint %struct.C* null to i64
-  %new_obj_7 = call i8* @malloc(i64 %size_8)
-  %new_obj_7_cast = bitcast i8* %new_obj_7 to %struct.C*
-  br label %ifcont_4
-
-ifcont_4:
-  %iftmp_9 = phi double [ %new_obj_5_cast, %then_2 ], [ %new_obj_7_cast, %else_3 ]
-  %x_10 = alloca double
-  store double %iftmp_9, double* %x_10
-  %load_11 = load %struct.A*, %struct.A** %x_10
-  %is_check_12 = icmp eq i32 1, 1
-  br i1 %is_check_12, label %then_13, label %else_14
-
-then_13:
-  %load_16 = load %struct.A*, %struct.A** %x_10
-  %as_cast_17 = call i8* @hulk_downcast(%load_16, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.str.type_name_18, i32 0, i32 0))
-  %y_19 = alloca %struct.B*
-  store %struct.B* %as_cast_17, %struct.B** %y_19
-  %call_20 = call double @print_string(i8* @.str.11514100687449187254)
-  br label %ifcont_15
-
-else_14:
-  %call_21 = call double @print_string(i8* @.str.13097573105356038884)
-  br label %ifcont_15
-
-ifcont_15:
-  %iftmp_22 = phi double [ %call_20, %then_13 ], [ %call_21, %else_14 ]
+  %call_19 = call %struct.A* @bar(double 5.000000)
+  %method_call_20 = call double @A_foo(%struct.A* %call_19)
+  %call_21 = call double @print_double(double %method_call_20)
+  %call_22 = call %struct.A* @bar(double 9.000000)
+  %method_call_23 = call double @A_foo(%struct.A* %call_22)
+  %call_24 = call double @print_double(double %method_call_23)
   ret i32 0
 }
 

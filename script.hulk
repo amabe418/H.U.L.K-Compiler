@@ -42,7 +42,7 @@
 //function subtract(x: Number, y: Number) => x - y;
 
 // Function with wrong return type - should give error
-function wrongReturn(x: Number) : String => x + 1;
+//function wrongReturn(x: Number) : String => x + 1;
 
 // Function with compatible return type - should work
 //function compatibleReturn(x: Number) : Number => x * 2;
@@ -489,3 +489,43 @@ function wrongReturn(x: Number) : String => x + 1;
 //};
 //
 //let a = new Car("mercedes") in print(a.getBrand());
+
+
+type G {
+    foo() => 5;
+};
+
+
+type Holis inherits G {
+};
+
+type A  inherits Holis{
+    foo() => 10;
+};
+
+type B inherits A {
+    foo() => 20;
+};
+
+type C inherits A {
+    foo() => 40;
+};
+
+type D inherits A {
+    foo() => 50;
+};
+
+function bar(x:Number) : A {
+    if (x>5) {
+        new B();
+    } else {
+        if (x>3) {
+        new C();
+    } else {
+        new D();
+    };
+    };
+};
+
+print(bar(5).foo());
+print(bar(9).foo());
