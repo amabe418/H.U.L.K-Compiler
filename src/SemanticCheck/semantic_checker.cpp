@@ -1734,6 +1734,15 @@ bool SemanticAnalyzer::isReservedWord(const std::string &word)
     return reserved_words.find(word) != reserved_words.end();
 }
 
+void SemanticAnalyzer::setSymbolTable(SymbolTable *symbol_table)
+{
+    // Replace the internal symbol table with the provided one
+    symbol_table_ = *symbol_table;
+
+    // Configure TypeInfo to access the symbol table for type checking
+    TypeInfo::setSymbolTable(&symbol_table_);
+}
+
 void SemanticAnalyzer::analyze(Program *program)
 {
     std::cout << "DEBUG: Starting semantic analysis" << std::endl;

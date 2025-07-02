@@ -30,47 +30,52 @@
 //====================================================
 // Test file for function return type declarations
 
-// Function with explicit return type - should work
-//function add(x: Number, y: Number) : Number => x + y;
-//
-//// Function with explicit return type and block body - should work
-//function multiply(x: Number, y: Number) : Number {
-//    x * y;
-//};
-//
-//// Function without explicit return type - should infer Number
-//function subtract(x: Number, y: Number) => x - y;
-//
-//// Function with wrong return type - should give error
-////function wrongReturn(x: Number) : String => x + 1;
-//
-//// Function with compatible return type - should work
-//function compatibleReturn(x: Number) : Number => x * 2;
-//
-//// Function with no parameters and explicit return type
-//function getPi() : Number => 3.14159;
-//
-//// Function with no parameters and no explicit return type
-//function getE() => 2.71828;
+// function add(x: Number, y: Number) : Number => x + y;
+// //Function with explicit return type - should work
 
-// Test calls
-//add(5, 3);
-//multiply(4, 6);
-//subtract(10, 3);
-//compatibleReturn(7);
-//getPi();
-//getE();
-//function s(a,b)=>a;
-//print(s(2));
-//function tan(x: Number): Number => sin(x) / cos(x);
-//function cot(x: Number): Number => 1 / tan(x);
-//function fib(n) => if (n == 0 || n == 1) 1 else fib(n-1) + fib(n-2);
-//
-// print(tan(PI) ** 2 + cot(PI) ** 2);
-//function operate(x, y) {
-//    print(x + y);
-//    print(x - y);
-//    print(x * y);
+// // Function with explicit return type and block body - should work
+// function multiply(x: Number, y: Number) : Number {
+//    x * y;
+// };
+
+// //Function without explicit return type - should infer Number
+// function subtract(x: Number, y: Number) => x - y;
+
+// // Function with wrong return type - should give error
+// // function wrongReturn(x: Number) : String => x + 1;
+
+// // Function with compatible return type - should work
+// function compatibleReturn(x: Number) : Number => x * 2;
+
+// // Function with no parameters and explicit return type
+// function getPi() : Number => 3.14159;
+
+// // Function with no parameters and no explicit return type
+// function getE() => 2.71828;
+
+// //Test calls
+// add(5, 3);
+// multiply(4, 6);
+// subtract(10, 3);
+// compatibleReturn(7);
+// getPi();
+// getE();
+// function s(a)=>a;
+// print(s(2));
+// function tan(x: Number): Number => sin(x) / cos(x);
+// function cot(x: Number): Number => 1 / tan(x);
+// function fib(n) => if (n == 0 || n == 1) 1 else fib(n-1) + fib(n-2);
+
+// type a inherits c{
+//     f() => self.y;
+// };
+
+// type b inherits a{
+// };
+// type c inherits b{
+
+// };
+
 //    print(x / y);
 //};
 //print(sin(90*3.14/180));
@@ -528,29 +533,30 @@ type Animal(name,age){
     getName() => self.name;
     getAge() => self.age;
 };
-//
-//
-//let a = new Animal("Noel") in print(a.speak());
-//
+
+
+// let a = new Animal("Noel", 4) in print(a.speak());
+
 type Dog() inherits Animal{
     bark() => "Woof, Woof!";
+    speak() =>  "regular Dog noise";
 };
-//
-//let d = new Dog("Noel",3) in {
-//    print(d.bark());
-//    print(d.speak());
-//    print(d.getName());
-//};
-//
-type Chihuahua() inherits Dog{
-};
-//
-//
-let d = new Dog("Noel",3) in {
-    print(d.bark());
-    print(d.speak());
+
+let d: Animal = new Dog("Noel",3) in {
     print(d.getName());
+    print(d.speak());
 };
+
+//
+// type Chihuahua() inherits Dog{
+// };
+// //
+// //
+// let d = new Dog("Noel",3) in {
+//     print(d.bark());
+//     print(d.speak());
+//     print(d.getName());
+// };
 //
 //let c = new Chihuahua() in print(c.speak());
 //
