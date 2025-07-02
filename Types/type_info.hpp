@@ -140,8 +140,7 @@ public:
         {
             if (kind_ == Kind::Object)
             {
-                // Use the conforming relationship for type compatibility
-                return this->conformsTo(other);
+                return typeName_ == other.typeName_;
             }
             return true;
         }

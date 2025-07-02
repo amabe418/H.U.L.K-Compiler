@@ -715,7 +715,9 @@ void SemanticAnalyzer::visit(LetExpr *expr)
     std::cout << "[DEBUG] LetExpr variable typeName: '" << varType.getTypeName() << "'" << std::endl;
     std::cout << "[DEBUG] LetExpr variable kind: " << (int)varType.getKind() << std::endl;
 
-    if (symbol_table_.isVariableDeclared(expr->name))
+    // In Hulk, variables from parent scopes can be shadowed by variables in child scopes
+    // So we only check if the variable is already declared in the current scope
+    if (symbol_table_.hasLocalVariable(expr->name))
     {
         reportError(ErrorType::REDEFINED_VARIABLE,
                     "Variable '" + expr->name + "' ya está definida en este ámbito",
@@ -920,6 +922,14 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
 
     // Enter new scope for function body
     symbol_table_.enterScope();
+    std::cout << "DEBUG: Entering function scope" << std::endl;
+    std::cout << "DEBUG: Function parameters: ";
+    for (const auto &param : stmt->params)
+    {
+        std::cout << param << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "DEBUG: paramtypes: " << stmt->paramTypes.size() << std::endl;
 
     // First pass: declare parameters with unknown types
     for (size_t i = 0; i < stmt->params.size(); ++i)
@@ -928,20 +938,6 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
         {
             stmt->paramTypes[i] = std::make_shared<TypeInfo>(TypeInfo::Kind::Unknown);
         }
-
-        // If the parameter type is a user-defined type, verify it exists
-        if (stmt->paramTypes[i]->getKind() == TypeInfo::Kind::Object && !stmt->paramTypes[i]->getTypeName().empty())
-        {
-            std::string declaredTypeName = stmt->paramTypes[i]->getTypeName();
-            if (!symbol_table_.isTypeDeclared(declaredTypeName))
-            {
-                reportError(ErrorType::UNDEFINED_TYPE,
-                            "Parameter type '" + declaredTypeName + "' is not defined",
-                            stmt, "declaración de función");
-                return;
-            }
-        }
-
         std::cout << "DEBUG: Declaring parameter " << stmt->params[i] << " with type "
                   << stmt->paramTypes[i]->toString() << std::endl;
         symbol_table_.declareVariable(stmt->params[i], *stmt->paramTypes[i]);
@@ -977,29 +973,12 @@ void SemanticAnalyzer::visit(FunctionDecl *stmt)
     }
 
     // Check return type
-    if (stmt->returnType->getKind() != TypeInfo::Kind::Unknown)
+    if (stmt->returnType->getKind() != TypeInfo::Kind::Unknown && !current_type_.isCompatibleWith(*stmt->returnType))
     {
-        // If the declared return type is a user-defined type, verify it exists
-        if (stmt->returnType->getKind() == TypeInfo::Kind::Object && !stmt->returnType->getTypeName().empty())
-        {
-            std::string declaredTypeName = stmt->returnType->getTypeName();
-            if (!symbol_table_.isTypeDeclared(declaredTypeName))
-            {
-                reportError(ErrorType::UNDEFINED_TYPE,
-                            "Return type '" + declaredTypeName + "' is not defined",
-                            stmt, "declaración de función");
-                return;
-            }
-        }
-
-        // Check type compatibility using conforming relationship
-        if (!current_type_.conformsTo(*stmt->returnType))
-        {
-            reportError(ErrorType::TYPE_ERROR,
-                        "Function '" + stmt->name + "' returns type " + current_type_.toString() +
-                            " but declared return type is " + stmt->returnType->toString(),
-                        stmt);
-        }
+        reportError(ErrorType::TYPE_ERROR,
+                    "Function '" + stmt->name + "' returns type " + current_type_.toString() +
+                        " but declared return type is " + stmt->returnType->toString(),
+                    stmt);
     }
     else if (stmt->returnType->getKind() == TypeInfo::Kind::Unknown)
     {
@@ -1741,9 +1720,6 @@ void SemanticAnalyzer::setSymbolTable(SymbolTable *symbol_table)
 void SemanticAnalyzer::analyze(Program *program)
 {
     std::cout << "DEBUG: Starting semantic analysis" << std::endl;
-
-    // Configure TypeInfo to access the symbol table for type checking
-    TypeInfo::setSymbolTable(&symbol_table_);
 
     // First pass: collect all function declarations (but don't declare them yet)
     collectFunctions(program);
