@@ -409,33 +409,80 @@
 
 
 
-//// [CODEGEN TESTS]
-//
+////  ===[CODEGEN TESTS]===
+//// [Programa Basico]
+//42;
+//3.2;
+//"Hello, World!";
+//true;
+//false;
+// [Imprimiendo tipos de datos basicos]
+//print(42);
+//print(3.2);
 //print("Hello, World!");
 //print(true);
 //print(false);
-//print(true && false);
-//print(false || true);
-//print(3+2);
-//print(3-2);
-//print(3*2);
-//print(3/2);
-//print(2-3);
-//print(2^3);
-//print(8%2);
+//// [Imprimiendo Operaciones Aritmeticas]
+//print(42 + 1);  //   43
+//print(42 - 1);  //   41
+//print(2 - 3);   //   -1
+//print(2 * 3);   //   6
+//print(2.2 + 1); //   3.2
+//print(2/3);     //   0.666667
+//print(2^3);     //   8.000000
 //
-//print("Hello, " @ "World!");
+//// [Imprimiendo Operaciones de Comparacion]
+//print(5 == 5);                  // true
+//print(5 == 3);                  // false
+//print(3.14 == 3.14);            // true
+//print(3.14 == 2.5);             // false
+//print(true == true);            // true
+//print(true == false);           // false
+//print("hello" == "hello");      // true
+//print("hello" == "world");      // false
+//print(10 == 10.0);              // true
+//print(5 != 3);                  // true
+//print(3.14 != 2.5);             // true
+//print(true != false);           // true
+//print("hello" != "world");      // true
+//print(2^3 == 8.0);              // false
+//print(2 < 3);                   // true
+//print(2.2 == 2.3);              // false
+//print(5 >= 3);                  // true
+//print(6 <= 3);                  // false
+//
+// [Imprimiendo Operaciones Logicas]
+//print(true && false);                                         // false
+//print(false && true);                                         // false
+//print(true || true);                                          // true
+//print(true && true);                                          // true
+//print(false || true);                                         // true
+//print(2^(3+2)^2 == 2^25);                                     // true
+//print("Hello" @ " World");                                    // Hello, World
+//print(42 @ " is the answer");                                 // 42 is the answer
+//print("The value is: " @ 3.14);                               // The value is 3.14
+//print(true @ " is a boolean");                                // true is a boolean
+//print(10 @ " + " @ 5 @ " = " @ 15);                           // 10 + 5 = 15
+//print("Pi is " @ 3.14159 @ " and e is " @ 2.71828);           // Pi is 3.14159 and e is 2.718228
+//print(false @ " is not " @ true); 
+//
 //print("Probando declaracion de variables e impresion de valores");
 //let a = 2, b = 3, c = 4, d = 5 in {
 //    print("hello, world");
 //    print(a+b+c+d);
+//    print(a@b@c@d);
 //    print(true);
 //    print(false);
 //};
 //
-//print("Probando declaracion de variables con condicionales e impresion de su valor:");
-//let a = if(3 < 4) 5 else 10 in print(a);
 //
+//print("Probando declaracion de variables con condicionales e impresion de su valor:");
+let a = if(3 > 4) 123 else "dsa" in {
+    print(a);
+    a := false;
+    print(a);
+};
+
 //print("Probando bucle while");
 //let a = 5 in {
 //    while(a > 0){
@@ -521,38 +568,40 @@
 //    print(a.norm());
 //};
 //
-type Animal(name,age){
-    name = name;
-    age = age;
-    speak() => "regular Animal noise";
-    getName() => self.name;
-    getAge() => self.age;
-};
+//type Animal(name,age){
+//    name = name;
+//    age = age;
+//    speak() => "regular Animal noise";
+//    getName() => self.name;
+//    getAge() => self.age;
+//};
 //
 //
-//let a = new Animal("Noel") in print(a.speak());
+//let a = new Animal("Amalia",1) in {
+//    print(a.speak());
+//    print(a.getName());
+//    print(a.getAge());
+//};
 //
-type Dog() inherits Animal{
-    bark() => "Woof, Woof!";
-};
+//type Dog() inherits Animal{
+//    bark() => "Woof, Woof!";
+//};
 //
-//let d = new Dog("Noel",3) in {
-//    print(d.bark());
+//let d = new Dog("Noel",2) in {
 //    print(d.speak());
+//    print(d.bark());
 //    print(d.getName());
 //};
 //
-type Chihuahua() inherits Dog{
-};
+//type Chihuahua() inherits Dog{
+//};
 //
 //
-let d = new Dog("Noel",3) in {
-    print(d.bark());
-    print(d.speak());
-    print(d.getName());
-};
-//
-//let c = new Chihuahua() in print(c.speak());
+//let c = new Chihuahua("Alejandro",3) in {
+//    print(c.speak());
+//    print(c.bark());
+//    print(c.getName());
+//};
 //
 //
 //let a = 42, b = true in print(a@b);
@@ -562,11 +611,12 @@ let d = new Dog("Noel",3) in {
 //
 //
 //type A{
-//    f() => "A";
+//
 //};
 //
 //type B inherits A{
-//    f() => "B";
+//    f() => "A";
 //};
 //
 //let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f());
+//    f() => "B";
