@@ -774,13 +774,8 @@ void SemanticAnalyzer::visit(AssignExpr *expr)
                     "Cannot assign to undefined variable '" + expr->name + "'",
                     expr, "asignación destructiva");
     }
-    else if (!valueType.conformsTo(varInfo->type))
-    {
-        reportError(ErrorType::TYPE_ERROR,
-                    "Cannot assign value of type " + valueType.toString() +
-                        " to variable of type " + varInfo->type.toString(),
-                    expr, "asignación destructiva");
-    }
+    // For destructive assignment (:=), we allow type changes dynamically
+    // No type checking is performed as the variable can change its type
 
     // Assignment returns the type of the value
     current_type_ = valueType;
