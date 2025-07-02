@@ -41,6 +41,11 @@ public:
     void analyze(Program *program);
 
     /**
+     * @brief Set the symbol table to use for analysis
+     */
+    void setSymbolTable(SymbolTable *symbol_table);
+
+    /**
      * @brief Get all semantic errors found
      */
     const std::vector<SemanticError> &getErrors() const

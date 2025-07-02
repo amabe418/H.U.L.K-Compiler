@@ -140,6 +140,3 @@ std::string TypeInfo::findLowestCommonAncestor(const std::string &type1, const s
 
     return "Object";
 }
-
-// Initialize static member
-/// SymbolTable *TypeInfo::symbolTable_ = nullptr;
