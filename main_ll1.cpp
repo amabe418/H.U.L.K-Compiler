@@ -6,7 +6,7 @@
 #include "Parser/ll1_parser_generated.hpp"
 #include "PrintVisitor/print_visitor.hpp"
 #include "SemanticCheck/semantic_checker.hpp"
-#include "Codegen/codegen.hpp"
+#include "Codegen/llvm_codegen.hpp"
 #include "Evaluator/evaluator.hpp"
 
 int main(int argc, char *argv[])

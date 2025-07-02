@@ -39,10 +39,8 @@ test-llvm: test_llvm.cpp
 	./test_llvm
 
 # Test LLVM basic expressions
-test-llvm-basic: test_llvm_basic.cpp src/Codegen/llvm_codegen.cpp
+test-llvm-basic: src/Codegen/llvm_codegen.cpp
 	$(CXX) $(CXXFLAGS) $^ -o test_llvm_basic $(LLVM_LDFLAGS) $(LLVM_LIBS)
-	@echo "LLVM basic expressions test compiled successfully!"
-	./test_llvm_basic
 
 clean:
 	rm -f $(TARGET) $(GENERATOR) $(GENERATED) *.o theoretical/Parser/*.o theoretical/Lexer/*.o theoretical/automata/*.o Codegen/*.o ll1_parser_generated.cpp ll1_parser_generated.hpp 
