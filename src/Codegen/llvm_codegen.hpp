@@ -90,6 +90,100 @@ private:
     
     llvm::Value* unbox(llvm::Value* boxed); // Función unbox genérica que usa las funciones específicas
     
+    // Mixed-type arithmetic operations (return native types)
+    // BoxedValue + BoxedValue → native type
+    llvm::Value* boxed_add(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_sub(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_mul(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_div(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_pow(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_mod(llvm::Value* left, llvm::Value* right);
+    
+    // Native + BoxedValue → native type
+    llvm::Value* boxed_add_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_sub_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_mul_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_div_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_pow_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_mod_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    
+    // BoxedValue + Native → native type
+    llvm::Value* boxed_add_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_sub_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_mul_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_div_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_pow_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_mod_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    
+    // Mixed-type comparison operations (return i1 boolean)
+    // BoxedValue comparison BoxedValue → i1
+    llvm::Value* boxed_greater(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_lessthan(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_ge(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_le(llvm::Value* left, llvm::Value* right);
+    
+    // Native comparison BoxedValue → i1
+    llvm::Value* boxed_greater_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_lessthan_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_ge_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_le_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    
+    // BoxedValue comparison Native → i1
+    llvm::Value* boxed_greater_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_lessthan_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_ge_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_le_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    
+    // Mixed-type equality operations (return i1 boolean)
+    // BoxedValue equality BoxedValue → i1
+    llvm::Value* boxed_equals(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_neq(llvm::Value* left, llvm::Value* right);
+    
+    // Native equality BoxedValue → i1
+    llvm::Value* boxed_equals_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_neq_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    
+    // BoxedValue equality Native → i1
+    llvm::Value* boxed_equals_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_neq_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    
+    // Mixed-type concatenation operations (return BoxedValue* when BoxedValues involved)
+    // Helper function to convert any BoxedValue to string
+    llvm::Value* boxedValueToString(llvm::Value* boxed);
+    
+    // Helper function to convert any native value to string
+    llvm::Value* nativeValueToString(llvm::Value* nativeVal);
+    
+    // Helper functions for converting specific types to strings
+    llvm::Value* intToString(llvm::Value* intVal);
+    llvm::Value* doubleToString(llvm::Value* doubleVal);
+    llvm::Value* boolToString(llvm::Value* boolVal);
+    
+    // BoxedValue concat BoxedValue → BoxedValue*
+    llvm::Value* boxed_concat(llvm::Value* left, llvm::Value* right);
+    
+    // Native concat BoxedValue → BoxedValue*
+    llvm::Value* boxed_concat_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    
+    // BoxedValue concat Native → BoxedValue*
+    llvm::Value* boxed_concat_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    
+    // Mixed-type logical operations (return i1 boolean)
+    // Helper function to convert any BoxedValue to boolean
+    llvm::Value* boxedValueToBool(llvm::Value* boxed);
+    
+    // BoxedValue logical BoxedValue → i1
+    llvm::Value* boxed_and(llvm::Value* left, llvm::Value* right);
+    llvm::Value* boxed_or(llvm::Value* left, llvm::Value* right);
+    
+    // Native logical BoxedValue → i1
+    llvm::Value* boxed_and_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    llvm::Value* boxed_or_native_left(llvm::Value* nativeVal, llvm::Value* boxed);
+    
+    // BoxedValue logical Native → i1
+    llvm::Value* boxed_and_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    llvm::Value* boxed_or_native_right(llvm::Value* boxed, llvm::Value* nativeVal);
+    
     // Helper methods
     std::string generateUniqueName(const std::string &base);
     llvm::Type* getLLVMType(const TypeInfo &type);

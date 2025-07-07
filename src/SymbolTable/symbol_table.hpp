@@ -163,6 +163,27 @@ public:
     }
 
     /**
+     * @brief Update the type of an existing variable (for destructive assignments)
+     */
+    bool updateVariableType(const std::string &name, const TypeInfo &new_type)
+    {
+        for (auto it = variable_scopes_.rbegin(); it != variable_scopes_.rend(); ++it)
+        {
+            auto found = it->find(name);
+            if (found != it->end())
+            {
+                std::cout << "[DEBUG] SymbolTable::updateVariableType - updating variable " << name
+                          << " from type: " << found->second.type.toString()
+                          << " to type: " << new_type.toString() << std::endl;
+                
+                found->second.type = new_type;
+                return true;
+            }
+        }
+        return false; // Variable not found
+    }
+
+    /**
      * @brief Declare a function
      */
     bool declareFunction(const std::string &name, const std::vector<TypeInfo> &params,

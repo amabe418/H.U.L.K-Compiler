@@ -776,8 +776,22 @@ void SemanticAnalyzer::visit(AssignExpr *expr)
                     "Cannot assign to undefined variable '" + expr->name + "'",
                     expr, "asignación destructiva");
     }
-    // For destructive assignment (:=), we allow type changes dynamically
-    // No type checking is performed as the variable can change its type
+    else
+    {
+        // For destructive assignment (:=), update the variable type in the symbol table
+        std::cout << "[DEBUG] Updating variable '" << expr->name << "' type from " 
+                  << varInfo->type.toString() << " to " << valueType.toString() << std::endl;
+        
+        if (!symbol_table_.updateVariableType(expr->name, valueType))
+        {
+            std::cout << "[DEBUG] Failed to update variable type for '" << expr->name << "'" << std::endl;
+        }
+        else
+        {
+            std::cout << "[DEBUG] Successfully updated variable '" << expr->name << "' type to " 
+                      << valueType.toString() << std::endl;
+        }
+    }
 
     // Assignment returns the type of the value
     current_type_ = valueType;

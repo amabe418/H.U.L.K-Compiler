@@ -98,12 +98,12 @@ int main(int argc, char **argv)
     //           << std::endl;
 
     // Evaluate the program
-    std::cout << "\n=== Program Evaluation ===\n"
-              << std::endl;
-    EvaluatorVisitor evaluator;
-    rootAST->accept(&evaluator);
-    std::cout << "\n=== End of Program Evaluation ===\n"
-              << std::endl;
+    // std::cout << "\n=== Program Evaluation ===\n"
+    //           << std::endl;
+    // EvaluatorVisitor evaluator;
+    // rootAST->accept(&evaluator);
+    // std::cout << "\n=== End of Program Evaluation ===\n"
+    //           << std::endl;
 
     std::cout << "\n=== Print AST ===\n"
               << std::endl;

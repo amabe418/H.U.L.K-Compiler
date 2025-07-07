@@ -416,7 +416,7 @@
 //"Hello, World!";
 //true;
 //false;
-// [Imprimiendo tipos de datos basicos]
+////[Imprimiendo tipos de datos basicos]
 //print(42);
 //print(3.2);
 //print("Hello, World!");
@@ -451,7 +451,7 @@
 //print(5 >= 3);                  // true
 //print(6 <= 3);                  // false
 //
-// [Imprimiendo Operaciones Logicas]
+////[Imprimiendo Operaciones Logicas]
 //print(true && false);                                         // false
 //print(false && true);                                         // false
 //print(true || true);                                          // true
@@ -474,16 +474,14 @@
 //    print(true);
 //    print(false);
 //};
-//
-//
-//print("Probando declaracion de variables con condicionales e impresion de su valor:");
 
-let a = if(3 > 4) "true" else "dsa" in {
-    print(a);
-    a := false;
-    print(a);
-};
 
+print("Probando declaracion de variables con condicionales e impresion de su valor:");
+//let a = if(3 > 4) "2" else true in {
+//    print(a);
+//    a := 4;
+//    print(a+1);
+//};
 //print("Probando bucle while");
 //let a = 5 in {
 //    while(a > 0){
