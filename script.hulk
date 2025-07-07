@@ -477,7 +477,8 @@
 //
 //
 //print("Probando declaracion de variables con condicionales e impresion de su valor:");
-let a = if(3 > 4) 123 else "dsa" in {
+
+let a = if(3 > 4) "true" else "dsa" in {
     print(a);
     a := false;
     print(a);

@@ -20,17 +20,10 @@ SymbolTable symbolTable;
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || argc > 3)
+    if (argc != 2)
     {
-        std::cerr << "Usage: " << argv[0] << " <input_file> [--llvm-api]" << std::endl;
-        std::cerr << "  --llvm-api: Use LLVM API instead of manual IR generation" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <input_file>" << std::endl;
         return 1;
-    }
-
-    bool use_llvm_api = false;
-    if (argc == 3 && std::string(argv[2]) == "--llvm-api") {
-        use_llvm_api = true;
-        std::cout << "Using LLVM API for code generation" << std::endl;
     }
 
     FILE *input = fopen(argv[1], "r");
@@ -88,56 +81,33 @@ int main(int argc, char **argv)
     // Generate LLVM IR code
     std::cout << "\n=== LLVM Code Generation ===\n"
               << std::endl;
-    
+    LLVMCodeGenerator codegen;
+    codegen.initialize("hulk_module");
+    codegen.generateCode(rootAST);
+
+    // Print generated IR
+    // std::cout << "\nGenerated LLVM IR:" << std::endl;
+    // codegen.printIR();
+
+    // Write IR to file
     std::string output_file = std::string(argv[1]) + ".ll";
-    
-    if (use_llvm_api) {
-        // Use new LLVM API code generator
-        std::cout << "Using LLVM API code generator..." << std::endl;
-        LLVMCodeGenerator llvm_codegen;
-        llvm_codegen.initialize("hulk_module");
-        
-        // Generate code using LLVM API
-        llvm_codegen.generateCode(rootAST);
-        
-        // Print generated IR
-        std::cout << "\nGenerated LLVM IR (API):" << std::endl;
-        llvm_codegen.printIR();
-        
-        // Write IR to file
-        llvm_codegen.writeIRToFile(output_file);
-    } else {
-        // Use original manual IR generation
-        std::cout << "Using manual IR generation..." << std::endl;
-        LLVMCodeGenerator codegen;
-        codegen.initialize("hulk_module");
-        codegen.generateCode(rootAST);
     codegen.writeIRToFile(output_file);
-    }
+    // std::cout << "\nLLVM IR written to: " << output_file << std::endl;
 
-
-    // Print AST before evaluation
-    std::cout << "\n=== Print AST ===\n" << std::endl;
-    PrintVisitor printer;
-    rootAST->accept(&printer);
+    // std::cout << "\n=== End of LLVM Code Generation ===\n"
+    //           << std::endl;
 
     // Evaluate the program
     std::cout << "\n=== Program Evaluation ===\n"
               << std::endl;
     EvaluatorVisitor evaluator;
     rootAST->accept(&evaluator);
-    std::cout << "\n=== End of Program Evaluation ===\n" << std::endl;
-    
-    // Generate LLVM IR using API
-    std::cout << "\n=== LLVM API Code Generation ===\n" << std::endl;
-    LLVMCodeGenerator llvm_codegen;
-    llvm_codegen.initialize("hulk_module_api");
-    llvm_codegen.generateCode(rootAST);
-    
-    // Write IR to file
-    std::string llvm_output_file = std::string(argv[1]) + ".ll";
-    llvm_codegen.writeIRToFile(llvm_output_file);
-    std::cout << "LLVM API IR written to: " << llvm_output_file << std::endl;
-    
+    std::cout << "\n=== End of Program Evaluation ===\n"
+              << std::endl;
+
+    std::cout << "\n=== Print AST ===\n"
+              << std::endl;
+    PrintVisitor printer;
+    rootAST->accept(&printer);
     return 0;
 }
