@@ -177,24 +177,152 @@ std::string LLVMCodeGenerator::getObjectTypeName(llvm::Value* objectPtr)
         return "";
     }
     
-    // In LLVM 19 with opaque pointers, we can't directly get the element type
-    // We need a different approach - use metadata or track types differently
+    // Method 0: Check our runtime type tracking first (LLVM 19 compatible)
+    std::string trackedType = getTrackedValueType(objectPtr);
+    if (!trackedType.empty()) {
+        std::cout << "[LLVM CodeGen] Found tracked type: " << trackedType << std::endl;
+        return trackedType;
+    }
     
-    // For now, we'll use a simple heuristic based on the instruction that created this value
+    // Method 1: Check if this is a constructor call
     if (auto callInst = llvm::dyn_cast<llvm::CallInst>(objectPtr)) {
         llvm::Function* calledFunc = callInst->getCalledFunction();
         if (calledFunc) {
             std::string funcName = calledFunc->getName().str();
             // If it's a constructor call like "Point_constructor", extract "Point"
             if (funcName.length() > 12 && funcName.substr(funcName.length() - 12) == "_constructor") {
-                return funcName.substr(0, funcName.length() - 12);
+                std::string typeName = funcName.substr(0, funcName.length() - 12);
+                std::cout << "[LLVM CodeGen] Determined type from constructor call: " << typeName << std::endl;
+                // Track this type for future reference
+                trackValueType(objectPtr, typeName);
+                return typeName;
             }
         }
     }
     
-    // If we can't determine the type, we'll need to use dynamic type information
-    // For now, return empty string to indicate unknown type
-    std::cerr << "[LLVM CodeGen] Warning: Could not determine object type name for value" << std::endl;
+    // Method 2: Check if this is a variable load
+    if (auto loadInst = llvm::dyn_cast<llvm::LoadInst>(objectPtr)) {
+        llvm::Value* allocaPtr = loadInst->getPointerOperand();
+        if (auto allocaInst = llvm::dyn_cast<llvm::AllocaInst>(allocaPtr)) {
+            std::string varName = allocaInst->getName().str();
+            
+            // First, check our global variable type tracking
+            std::string trackedVarType = getTrackedVariableType(varName);
+            if (!trackedVarType.empty()) {
+                std::cout << "[LLVM CodeGen] Found tracked variable type: " << trackedVarType << std::endl;
+                trackValueType(objectPtr, trackedVarType);
+                return trackedVarType;
+            }
+            
+            // Check if we have type information for this variable in current scope
+            if (current_scope_) {
+                // First, check if we have explicit object type information
+                auto objTypeIt = current_scope_->variable_object_types.find(varName);
+                if (objTypeIt != current_scope_->variable_object_types.end()) {
+                    std::cout << "[LLVM CodeGen] Found object type in variable_object_types: " << objTypeIt->second << std::endl;
+                    trackValueType(objectPtr, objTypeIt->second);
+                    trackVariableType(varName, objTypeIt->second);
+                    return objTypeIt->second;
+                }
+                
+                // Then check the general type information
+                auto typeIt = current_scope_->variable_types.find(varName);
+                if (typeIt != current_scope_->variable_types.end()) {
+                    // Extract type name from the LLVM type
+                    llvm::Type* llvmType = typeIt->second;
+                    if (llvmType->isPointerTy()) {
+                        // For struct types, try to extract the type name
+                        std::string typeName = extractTypeNameFromLLVMType(llvmType);
+                        if (!typeName.empty()) {
+                            std::cout << "[LLVM CodeGen] Determined type from variable: " << typeName << std::endl;
+                            trackValueType(objectPtr, typeName);
+                            trackVariableType(varName, typeName);
+                            return typeName;
+                        }
+                    }
+                }
+            }
+            
+            // Fallback: try to infer from variable name patterns
+            if (varName.find("_obj") != std::string::npos) {
+                // Look for patterns like "Point_obj", "Person_obj", etc.
+                size_t pos = varName.find("_obj");
+                if (pos > 0) {
+                    std::string typeName = varName.substr(0, pos);
+                    std::cout << "[LLVM CodeGen] Inferred type from variable name: " << typeName << std::endl;
+                    return typeName;
+                }
+            }
+        }
+    }
+    
+    // Method 3: Check if this is a method call result
+    if (auto callInst = llvm::dyn_cast<llvm::CallInst>(objectPtr)) {
+        llvm::Function* calledFunc = callInst->getCalledFunction();
+        if (calledFunc) {
+            std::string funcName = calledFunc->getName().str();
+            
+            // Check if this is a method call that returns an object
+            size_t underscorePos = funcName.find('_');
+            if (underscorePos != std::string::npos) {
+                std::string potentialType = funcName.substr(0, underscorePos);
+                
+                // Verify this is a known type
+                if (types_.find(potentialType) != types_.end()) {
+                    std::cout << "[LLVM CodeGen] Determined type from method call: " << potentialType << std::endl;
+                    return potentialType;
+                }
+            }
+        }
+    }
+    
+    // Method 4: Check if this is a struct GEP operation
+    if (auto gepInst = llvm::dyn_cast<llvm::GetElementPtrInst>(objectPtr)) {
+        // This might be accessing a field, try to get the base object type
+        llvm::Value* basePtr = gepInst->getPointerOperand();
+        return getObjectTypeName(basePtr); // Recursive call
+    }
+    
+    // Method 5: Check if this is a bitcast operation
+    if (auto bitcastInst = llvm::dyn_cast<llvm::BitCastInst>(objectPtr)) {
+        llvm::Value* sourcePtr = bitcastInst->getOperand(0);
+        return getObjectTypeName(sourcePtr); // Recursive call
+    }
+    
+    // Method 6: Try to extract type from instruction name/metadata
+    if (auto inst = llvm::dyn_cast<llvm::Instruction>(objectPtr)) {
+        std::string instName = inst->getName().str();
+        if (!instName.empty()) {
+            // Look for type patterns in instruction names
+            for (const auto& typePair : types_) {
+                if (instName.find(typePair.first) != std::string::npos) {
+                    std::cout << "[LLVM CodeGen] Inferred type from instruction name: " << typePair.first << std::endl;
+                    return typePair.first;
+                }
+            }
+        }
+    }
+    
+    // If we can't determine the type, return empty string
+    std::cout << "[LLVM CodeGen] Could not determine object type name for value" << std::endl;
+    return "";
+}
+
+std::string LLVMCodeGenerator::extractTypeNameFromLLVMType(llvm::Type* llvmType)
+{
+    if (!llvmType->isPointerTy()) {
+        return "";
+    }
+    
+    // For opaque pointers in LLVM 19, we need to use other methods
+    // Try to match against known struct types
+    for (const auto& typePair : types_) {
+        llvm::Type* knownType = llvm::PointerType::get(typePair.second, 0);
+        if (llvmType == knownType) {
+            return typePair.first;
+        }
+    }
+    
     return "";
 }
 
@@ -3823,4 +3951,44 @@ llvm::Value* LLVMCodeGenerator::boxed_or_native_right(llvm::Value* boxed, llvm::
     resultPhi->addIncoming(trueResult, shortCircuitBlock);
     
     return resultPhi;
+}
+
+// === Type tracking functions for LLVM 19 opaque pointers ===
+
+void LLVMCodeGenerator::trackValueType(llvm::Value* value, const std::string& typeName)
+{
+    if (value && !typeName.empty()) {
+        value_type_map_[value] = typeName;
+        std::cout << "[LLVM CodeGen] Tracked value type: " << typeName << " for value " << value << std::endl;
+    }
+}
+
+std::string LLVMCodeGenerator::getTrackedValueType(llvm::Value* value)
+{
+    if (!value) return "";
+    
+    auto it = value_type_map_.find(value);
+    if (it != value_type_map_.end()) {
+        std::cout << "[LLVM CodeGen] Found tracked type: " << it->second << " for value " << value << std::endl;
+        return it->second;
+    }
+    return "";
+}
+
+void LLVMCodeGenerator::trackVariableType(const std::string& varName, const std::string& typeName)
+{
+    if (!varName.empty() && !typeName.empty()) {
+        variable_type_map_[varName] = typeName;
+        std::cout << "[LLVM CodeGen] Tracked variable type: " << varName << " -> " << typeName << std::endl;
+    }
+}
+
+std::string LLVMCodeGenerator::getTrackedVariableType(const std::string& varName)
+{
+    auto it = variable_type_map_.find(varName);
+    if (it != variable_type_map_.end()) {
+        std::cout << "[LLVM CodeGen] Found tracked variable type: " << varName << " -> " << it->second << std::endl;
+        return it->second;
+    }
+    return "";
 }

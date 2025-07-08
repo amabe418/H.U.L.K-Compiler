@@ -205,6 +205,7 @@ private:
     int getAttributeIndex(llvm::StructType* structType, const std::string& attrName);
     void storeTypeMetadata(const std::string& typeName, const std::vector<std::string>& attrNames);
     std::string getObjectTypeName(llvm::Value* objectPtr);
+    std::string extractTypeNameFromLLVMType(llvm::Type* llvmType);
     
     // Inheritance and polymorphism support
     void addBaseTypeFields(const std::string& baseTypeName, std::vector<llvm::Type*>& fieldTypes, std::vector<std::string>& attributeNames);
@@ -230,6 +231,16 @@ private:
     
     // Special function handlers
     void handlePrintFunction(CallExpr *expr);
+
+    // Runtime type tracking for LLVM 19 opaque pointers
+    std::unordered_map<llvm::Value*, std::string> value_type_map_; // Track value -> type name
+    std::unordered_map<std::string, std::string> variable_type_map_; // Track variable name -> type name in current context
+    
+    // Type tracking helpers
+    void trackValueType(llvm::Value* value, const std::string& typeName);
+    std::string getTrackedValueType(llvm::Value* value);
+    void trackVariableType(const std::string& varName, const std::string& typeName);
+    std::string getTrackedVariableType(const std::string& varName);
 
 public:
     LLVMCodeGenerator();
@@ -288,6 +299,7 @@ class LLVMScope
 public:
     std::unordered_map<std::string, llvm::AllocaInst*> variables; // variable name -> alloca instruction
     std::unordered_map<std::string, llvm::Type*> variable_types;  // variable name -> type
+    std::unordered_map<std::string, std::string> variable_object_types; // variable name -> object type name
     LLVMScope* parent;
 
     LLVMScope(LLVMScope* p = nullptr) : parent(p) {}

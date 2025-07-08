@@ -1073,8 +1073,30 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
             llvm::AllocaInst* alloca = it->second;
             llvm::Type* varType = scope->variable_types[expr->name];
             
-            // Cargar el valor de la variable
+            // Load the value from the variable
             current_value_ = builder_->CreateLoad(varType, alloca);
+            
+            // Give the loaded value a meaningful name for debugging and track type
+            if (auto inst = llvm::dyn_cast<llvm::Instruction>(current_value_)) {
+                // Check if we have object type information
+                auto objTypeIt = scope->variable_object_types.find(expr->name);
+                if (objTypeIt != scope->variable_object_types.end()) {
+                    std::string objType = objTypeIt->second;
+                    inst->setName(objType + "_obj_" + expr->name);
+                    trackValueType(current_value_, objType);
+                    std::cout << "[LLVM CodeGen] Variable " << expr->name << " loaded as object of type " << objType << std::endl;
+                } else {
+                    inst->setName("var_" + expr->name);
+                    // Check if we have tracked type info
+                    std::string trackedType = getTrackedVariableType(expr->name);
+                    if (!trackedType.empty()) {
+                        trackValueType(current_value_, trackedType);
+                        std::cout << "[LLVM CodeGen] Variable " << expr->name << " loaded with tracked type " << trackedType << std::endl;
+                    } else {
+                        std::cout << "[LLVM CodeGen] Variable " << expr->name << " loaded (no object type info)" << std::endl;
+                    }
+                }
+            }
             
             std::cout << "[LLVM CodeGen] VariableExpr: Variable " << expr->name << " has type: ";
             varType->print(llvm::outs());
@@ -1087,12 +1109,12 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
             
             // Alternative check: if it's a pointer to a struct named "BoxedValue"
             if (!isBoxedValue && varType->isPointerTy()) {
-            if (auto ptrType = llvm::dyn_cast<llvm::PointerType>(varType)) {
-                if (ptrType->getNumContainedTypes() > 0) {
-                    llvm::Type* elementType = ptrType->getContainedType(0);
-                    if (elementType->isStructTy()) {
-                        std::string structName = elementType->getStructName().str();
-                        isBoxedValue = (structName == "BoxedValue");
+                if (auto ptrType = llvm::dyn_cast<llvm::PointerType>(varType)) {
+                    if (ptrType->getNumContainedTypes() > 0) {
+                        llvm::Type* elementType = ptrType->getContainedType(0);
+                        if (elementType->isStructTy()) {
+                            std::string structName = elementType->getStructName().str();
+                            isBoxedValue = (structName == "BoxedValue");
                         }
                     }
                 }
@@ -1100,7 +1122,6 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
             
             if (isBoxedValue) {
                 std::cout << "[LLVM CodeGen] VariableExpr: " << expr->name << " is BoxedValue*" << std::endl;
-                // El valor ya es el puntero al BoxedValue, no necesitamos hacer nada más
             } else {
                 std::cout << "[LLVM CodeGen] VariableExpr: " << expr->name << " is native type" << std::endl;
             }
@@ -1117,67 +1138,52 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
 void LLVMCodeGenerator::visit(LetExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing LetExpr: " << expr->name << std::endl;
-
-    // Entrar a un nuevo scope antes de evaluar el inicializador (permite shadowing)
-    enterScope();
-
-    // Evaluar el inicializador
-    expr->initializer->accept(this);
+    
+    // Generate code for the initializer
+    if (expr->initializer) {
+        expr->initializer->accept(this);
+    } else {
+        // Default initialization with null
+        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+    }
+    
     llvm::Value* initValue = current_value_;
-
-    // Crear el alloca en el entry block de la función actual (mejor práctica LLVM)
-    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
+    
+    // Create an alloca for the variable
     llvm::Type* varType = initValue->getType();
+    llvm::AllocaInst* alloca = builder_->CreateAlloca(varType, nullptr, expr->name);
     
-    std::cout << "[LLVM CodeGen] LetExpr: Variable " << expr->name << " will be created with type: ";
-    varType->print(llvm::outs());
-    std::cout << std::endl;
+    // Store the initial value
+    builder_->CreateStore(initValue, alloca);
     
-    // Check if this is a BoxedValue* by comparing with our known BoxedValue type
-    llvm::StructType* boxedTy = getBoxedValueType();
-    llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
-    bool isBoxedValue = (varType == boxedPtrTy);
-    
-    // Alternative check: if it's a pointer to a struct named "BoxedValue"
-    if (!isBoxedValue && varType->isPointerTy()) {
-    if (auto ptrType = llvm::dyn_cast<llvm::PointerType>(varType)) {
-        if (ptrType->getNumContainedTypes() > 0) {
-            llvm::Type* elementType = ptrType->getContainedType(0);
-            if (elementType->isStructTy()) {
-                std::string structName = elementType->getStructName().str();
-                isBoxedValue = (structName == "BoxedValue");
-                }
+    // Store variable information in current scope
+    if (current_scope_) {
+        current_scope_->variables[expr->name] = alloca;
+        current_scope_->variable_types[expr->name] = varType;
+        
+        // Try to track the object type if this is an object
+        if (varType->isPointerTy()) {
+            std::string objectType = getObjectTypeName(initValue);
+            if (!objectType.empty()) {
+                current_scope_->variable_object_types[expr->name] = objectType;
+                trackVariableType(expr->name, objectType);
+                std::cout << "[LLVM CodeGen] Stored and tracked object type " << objectType << " for variable " << expr->name << std::endl;
             }
         }
     }
     
-    if (isBoxedValue) {
-        std::cout << "[LLVM CodeGen] LetExpr: Variable " << expr->name << " is initialized with BoxedValue* - storing as BoxedValue*" << std::endl;
-        
-        // Para BoxedValue*, crear un alloca que almacene el puntero al BoxedValue
-        llvm::AllocaInst* alloca = entryBuilder.CreateAlloca(boxedPtrTy, nullptr, expr->name);
-        builder_->CreateStore(initValue, alloca);
-        current_scope_->variables[expr->name] = alloca;
-        current_scope_->variable_types[expr->name] = boxedPtrTy;
-        
-        std::cout << "[LLVM CodeGen] LetExpr: Variable " << expr->name << " stored as BoxedValue*" << std::endl;
+    std::cout << "[LLVM CodeGen] LetExpr: Declared variable " << expr->name << std::endl;
+    
+    // CRITICAL: Process the body of the let expression
+    if (expr->body) {
+        std::cout << "[LLVM CodeGen] Processing LetExpr body..." << std::endl;
+        expr->body->accept(this);
+        std::cout << "[LLVM CodeGen] LetExpr body processed successfully" << std::endl;
     } else {
-        // Para otros tipos, crear alloca del tipo específico
-        std::cout << "[LLVM CodeGen] LetExpr: Variable " << expr->name << " is native type - storing as native type" << std::endl;
-        
-    llvm::AllocaInst* alloca = entryBuilder.CreateAlloca(varType, nullptr, expr->name);
-    builder_->CreateStore(initValue, alloca);
-    current_scope_->variables[expr->name] = alloca;
-    current_scope_->variable_types[expr->name] = varType;
-        
-        std::cout << "[LLVM CodeGen] LetExpr: Variable " << expr->name << " stored as native type" << std::endl;
+        std::cout << "[LLVM CodeGen] LetExpr has no body" << std::endl;
+        // Set the current value to the alloca for potential chaining
+        current_value_ = alloca;
     }
-
-    // Evaluar el cuerpo; el valor de la expresión let es el valor de la última expresión del cuerpo
-    expr->body->accept(this);
-
-    // Salir del scope
-    exitScope();
 }
 
 void LLVMCodeGenerator::visit(AssignExpr *expr)
@@ -1241,27 +1247,35 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
             if (isBoxedVariable) {
                 std::cout << "[LLVM CodeGen] AssignExpr: Variable " << expr->name << " is BoxedValue*" << std::endl;
             
-            if (isBoxedValue) {
+                if (isBoxedValue) {
                     // Both variable and value are BoxedValue*, direct assignment
                     std::cout << "[LLVM CodeGen] AssignExpr: Direct BoxedValue* assignment" << std::endl;
                     builder_->CreateStore(value, alloca);
                     current_value_ = value;
+                    
+                    // Update object type information if we can determine it
+                    std::string objectType = getObjectTypeName(value);
+                    if (!objectType.empty()) {
+                        scope->variable_object_types[expr->name] = objectType;
+                        trackVariableType(expr->name, objectType);
+                        std::cout << "[LLVM CodeGen] Updated and tracked object type for " << expr->name << " to " << objectType << std::endl;
+                    }
                 } else {
                     // Variable is BoxedValue*, but value is native type - need to box it
                     std::cout << "[LLVM CodeGen] AssignExpr: Boxing native value for BoxedValue* variable" << std::endl;
                     
                     llvm::Value* newBoxed = nullptr;
-                if (valueType->isIntegerTy(32)) {
+                    if (valueType->isIntegerTy(32)) {
                         // Convert int to double since all numbers are now double
                         llvm::Value* doubleValue = builder_->CreateSIToFP(value, llvm::Type::getDoubleTy(*context_));
                         newBoxed = createBoxedFromDouble(doubleValue);
-                } else if (valueType->isDoubleTy()) {
+                    } else if (valueType->isDoubleTy()) {
                         newBoxed = createBoxedFromDouble(value);
-                } else if (valueType->isIntegerTy(1)) {
+                    } else if (valueType->isIntegerTy(1)) {
                         newBoxed = createBoxedFromBool(value);
-                } else if (valueType->isPointerTy()) {
+                    } else if (valueType->isPointerTy()) {
                         newBoxed = createBoxedFromString(value);
-                } else {
+                    } else {
                         // Unknown type, try to convert to int and box
                         std::cout << "[LLVM CodeGen] AssignExpr: Unknown type, converting to int" << std::endl;
                         llvm::Value* intValue = builder_->CreateBitCast(value, llvm::Type::getInt32Ty(*context_));
@@ -1270,8 +1284,11 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                         newBoxed = createBoxedFromDouble(doubleValue);
                     }
                     
-                builder_->CreateStore(newBoxed, alloca);
-                current_value_ = newBoxed;
+                    builder_->CreateStore(newBoxed, alloca);
+                    current_value_ = newBoxed;
+                    
+                    // Clear object type information since we're boxing a native value
+                    scope->variable_object_types.erase(expr->name);
                 }
             } else {
                 // Variable is native type
@@ -1293,34 +1310,59 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                     scope->variables[expr->name] = newAlloca;
                     scope->variable_types[expr->name] = boxedPtrTy;
                     
+                    // Try to determine object type
+                    std::string objectType = getObjectTypeName(value);
+                    if (!objectType.empty()) {
+                        scope->variable_object_types[expr->name] = objectType;
+                        trackVariableType(expr->name, objectType);
+                        std::cout << "[LLVM CodeGen] Set and tracked object type for " << expr->name << " to " << objectType << std::endl;
+                    }
+                    
                     current_value_ = value;
                 } else {
                     // Both are native types
-                if (valueType == varType) {
+                    if (valueType == varType) {
                         // Same types, direct assignment
                         std::cout << "[LLVM CodeGen] AssignExpr: Direct native assignment (same types)" << std::endl;
-                    builder_->CreateStore(value, alloca);
-            current_value_ = value;
-                } else {
+                        builder_->CreateStore(value, alloca);
+                        current_value_ = value;
+                        
+                        // Clear object type information since we're assigning a native value
+                        scope->variable_object_types.erase(expr->name);
+                    } else {
                         // Different types, change variable type (destructive assignment)
                         std::cout << "[LLVM CodeGen] AssignExpr: Changing variable " << expr->name << " type from ";
-                    varType->print(llvm::outs());
-                    std::cout << " to ";
-                    valueType->print(llvm::outs());
-                    std::cout << std::endl;
-                    
+                        varType->print(llvm::outs());
+                        std::cout << " to ";
+                        valueType->print(llvm::outs());
+                        std::cout << std::endl;
+                        
                         // Create new alloca with the new type
-                    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-                    llvm::AllocaInst* newAlloca = entryBuilder.CreateAlloca(valueType, nullptr, expr->name);
-                    
+                        llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
+                        llvm::AllocaInst* newAlloca = entryBuilder.CreateAlloca(valueType, nullptr, expr->name);
+                        
                         // Store the value
-                    builder_->CreateStore(value, newAlloca);
-                    
+                        builder_->CreateStore(value, newAlloca);
+                        
                         // Update the variable in the scope
-                    scope->variables[expr->name] = newAlloca;
-                    scope->variable_types[expr->name] = valueType;
-                    
-                    current_value_ = value;
+                        scope->variables[expr->name] = newAlloca;
+                        scope->variable_types[expr->name] = valueType;
+                        
+                        // Try to determine if this is an object type
+                        if (valueType->isPointerTy()) {
+                            std::string objectType = getObjectTypeName(value);
+                            if (!objectType.empty()) {
+                                scope->variable_object_types[expr->name] = objectType;
+                                trackVariableType(expr->name, objectType);
+                                std::cout << "[LLVM CodeGen] Set and tracked object type for " << expr->name << " to " << objectType << std::endl;
+                            }
+                        } else {
+                            // Clear object type information since we're assigning a native value
+                            scope->variable_object_types.erase(expr->name);
+                            variable_type_map_.erase(expr->name);
+                        }
+                        
+                        current_value_ = value;
                     }
                 }
             }
@@ -1603,6 +1645,17 @@ void LLVMCodeGenerator::visit(NewExpr *expr)
         
         llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
         current_value_ = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
+        
+        // Store type information for later use
+        if (current_value_) {
+            if (auto inst = llvm::dyn_cast<llvm::Instruction>(current_value_)) {
+                inst->setName(expr->typeName + "_obj");
+            }
+            // Track the type for LLVM 19 compatibility
+            trackValueType(current_value_, expr->typeName);
+            std::cout << "[LLVM CodeGen] Tracked fallback NewExpr result type: " << expr->typeName << std::endl;
+        }
+        
         return;
     }
     
@@ -1639,6 +1692,16 @@ void LLVMCodeGenerator::visit(NewExpr *expr)
     
     // Call constructor
     current_value_ = builder_->CreateCall(constructor, args);
+    
+    // Set instruction name to help with type identification
+    if (current_value_) {
+        if (auto inst = llvm::dyn_cast<llvm::Instruction>(current_value_)) {
+            inst->setName(expr->typeName + "_obj");
+        }
+        // Track the type for LLVM 19 compatibility
+        trackValueType(current_value_, expr->typeName);
+        std::cout << "[LLVM CodeGen] Tracked NewExpr result type: " << expr->typeName << std::endl;
+    }
     
     std::cout << "[LLVM CodeGen] NewExpr: Called constructor " << constructorName << " with " << args.size() << " arguments" << std::endl;
 }
@@ -1781,9 +1844,12 @@ void LLVMCodeGenerator::visit(SetAttrExpr *expr)
 
 void LLVMCodeGenerator::visit(MethodCallExpr *expr)
 {
+    std::cout << "[LLVM CodeGen] ========================================" << std::endl;
     std::cout << "[LLVM CodeGen] Processing MethodCallExpr: " << expr->methodName << std::endl;
+    std::cout << "[LLVM CodeGen] ========================================" << std::endl;
     
     // Get the object
+    std::cout << "[LLVM CodeGen] Evaluating object expression..." << std::endl;
     expr->object->accept(this);
     llvm::Value* objectPtr = current_value_;
     
@@ -1793,121 +1859,211 @@ void LLVMCodeGenerator::visit(MethodCallExpr *expr)
         return;
     }
     
-    // Get object type for static dispatch (fallback)
+    std::cout << "[LLVM CodeGen] Object ptr obtained: " << objectPtr << std::endl;
+    std::cout << "[LLVM CodeGen] Object type: ";
+    objectPtr->getType()->print(llvm::outs());
+    std::cout << std::endl;
+    
+    // Debug: print object instruction details
+    if (auto inst = llvm::dyn_cast<llvm::Instruction>(objectPtr)) {
+        std::cout << "[LLVM CodeGen] Object is instruction: " << inst->getOpcodeName() << std::endl;
+        std::cout << "[LLVM CodeGen] Object instruction name: " << inst->getName().str() << std::endl;
+    } else {
+        std::cout << "[LLVM CodeGen] Object is not an instruction" << std::endl;
+    }
+    
+    // Try to determine object type through various means
+    std::cout << "[LLVM CodeGen] Attempting to determine object type..." << std::endl;
     std::string objectTypeName = getObjectTypeName(objectPtr);
     
-    // Try polymorphic dispatch first
-    if (!objectTypeName.empty()) {
-        // Load vtable from object (first field)
-        llvm::Value* vtablePtr = builder_->CreateStructGEP(
-            getOrCreateStructType(objectTypeName), 
-            objectPtr, 
-            0
-        );
-        llvm::Value* vtable = builder_->CreateLoad(
-            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
-            vtablePtr
-        );
-        
-        // Find method index in vtable
-        auto methodsIt = type_methods_.find(objectTypeName);
-        if (methodsIt != type_methods_.end()) {
-            auto& methods = methodsIt->second;
-            auto methodIt = std::find(methods.begin(), methods.end(), expr->methodName);
-            
-            if (methodIt != methods.end()) {
-                int methodIndex = std::distance(methods.begin(), methodIt);
-                
-                std::cout << "[LLVM CodeGen] Polymorphic call to " << expr->methodName << " at vtable index " << methodIndex << std::endl;
-                
-                // Get method pointer from vtable
-                llvm::Value* methodPtrPtr = builder_->CreateGEP(
-                    llvm::Type::getInt8Ty(*context_), 
-                    vtable, 
-                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), methodIndex * 8)
-                );
-                
-                llvm::Value* methodPtr = builder_->CreateLoad(
-                    llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
-                    methodPtrPtr
-                );
-                
-                // Prepare arguments
-                std::vector<llvm::Value*> args;
-                args.push_back(objectPtr); // self
-                
-                // Box method arguments
-                llvm::StructType* boxedTy = getBoxedValueType();
-                llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
-                
-                for (auto& arg : expr->args) {
-                    arg->accept(this);
-                    llvm::Value* argValue = current_value_;
-                    
-                    // Convert to BoxedValue* if needed
-                    llvm::Value* boxedArg = argValue;
-                    if (argValue->getType() != boxedPtrTy) {
-                        llvm::Type* valueType = argValue->getType();
-                        if (valueType->isDoubleTy()) {
-                            boxedArg = createBoxedFromDouble(argValue);
-                        } else if (valueType->isIntegerTy(1)) {
-                            boxedArg = createBoxedFromBool(argValue);
-                        } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
-                            boxedArg = createBoxedFromString(argValue);
-                        } else {
-                            boxedArg = builder_->CreateBitCast(argValue, boxedPtrTy);
-                        }
-                    }
-                    args.push_back(boxedArg);
-                }
-                
-                // Create function type for the call
-                std::vector<llvm::Type*> paramTypes;
-                for (auto arg : args) {
-                    paramTypes.push_back(arg->getType());
-                }
-                
-                llvm::FunctionType* callType = llvm::FunctionType::get(boxedPtrTy, paramTypes, false);
-                llvm::Value* typedMethodPtr = builder_->CreateBitCast(methodPtr, llvm::PointerType::get(callType, 0));
-                
-                // Make the polymorphic call
-                current_value_ = builder_->CreateCall(callType, typedMethodPtr, args);
-                
-                std::cout << "[LLVM CodeGen] Polymorphic method call completed" << std::endl;
-                return;
-            }
-        }
-    }
+    std::cout << "[LLVM CodeGen] getObjectTypeName returned: '" << objectTypeName << "'" << std::endl;
     
-    // Fallback to static dispatch
-    std::cout << "[LLVM CodeGen] Falling back to static dispatch for " << expr->methodName << std::endl;
-    
+    // If we can't determine the type statically, we need to add runtime type information
     if (objectTypeName.empty()) {
-        std::cerr << "[LLVM CodeGen] Error: Could not determine object type for static dispatch" << std::endl;
-        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
-        return;
+        std::cerr << "[LLVM CodeGen] Warning: Cannot determine object type for method call to " << expr->methodName << std::endl;
+        
+        // List all known types for debugging
+        std::cout << "[LLVM CodeGen] Known types in module:" << std::endl;
+        for (const auto& typePair : types_) {
+            std::cout << "[LLVM CodeGen]   - " << typePair.first << std::endl;
+        }
+        
+        // Try to use a default type (this is a fallback approach)
+        objectTypeName = "Object"; // Default fallback
+        std::cout << "[LLVM CodeGen] Using fallback type: " << objectTypeName << std::endl;
     }
     
-    // Static method call
+    std::cout << "[LLVM CodeGen] Final object type: " << objectTypeName << std::endl;
+    
+    // Use static dispatch for reliability
     std::string methodFunctionName = objectTypeName + "_" + expr->methodName;
+    std::cout << "[LLVM CodeGen] Looking for method function: " << methodFunctionName << std::endl;
+    
     llvm::Function* methodFunc = module_->getFunction(methodFunctionName);
     
     if (!methodFunc) {
         std::cerr << "[LLVM CodeGen] Error: Method function " << methodFunctionName << " not found" << std::endl;
-        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
-        return;
+        
+        // List all functions in the module for debugging
+        std::cout << "[LLVM CodeGen] Available functions in module:" << std::endl;
+        for (auto& func : *module_) {
+            std::cout << "[LLVM CodeGen]   - " << func.getName().str() << std::endl;
+        }
+        
+        // Try to find the method in base classes
+        if (objectTypeName != "Object") {
+            std::cout << "[LLVM CodeGen] Searching in base classes..." << std::endl;
+            auto typeIt = type_declarations_.find(objectTypeName);
+            if (typeIt != type_declarations_.end()) {
+                std::string baseType = typeIt->second->baseType;
+                std::cout << "[LLVM CodeGen] Base type: " << baseType << std::endl;
+                
+                while (baseType != "Object") {
+                    std::string baseMethodName = baseType + "_" + expr->methodName;
+                    std::cout << "[LLVM CodeGen] Trying base method: " << baseMethodName << std::endl;
+                    methodFunc = module_->getFunction(baseMethodName);
+                    if (methodFunc) {
+                        methodFunctionName = baseMethodName;
+                        std::cout << "[LLVM CodeGen] Found method in base class: " << baseMethodName << std::endl;
+                        break;
+                    }
+                    
+                    auto baseIt = type_declarations_.find(baseType);
+                    if (baseIt != type_declarations_.end()) {
+                        baseType = baseIt->second->baseType;
+                        std::cout << "[LLVM CodeGen] Moving to next base: " << baseType << std::endl;
+                    } else {
+                        std::cout << "[LLVM CodeGen] Base type " << baseType << " not found in declarations" << std::endl;
+                        break;
+                    }
+                }
+            } else {
+                std::cout << "[LLVM CodeGen] Type " << objectTypeName << " not found in type_declarations_" << std::endl;
+            }
+        }
+        
+        if (!methodFunc) {
+            std::cerr << "[LLVM CodeGen] Error: Method " << expr->methodName << " not found in type hierarchy" << std::endl;
+            std::cout << "[LLVM CodeGen] Available type declarations:" << std::endl;
+            for (const auto& typePair : type_declarations_) {
+                std::cout << "[LLVM CodeGen]   - Type: " << typePair.first << std::endl;
+                if (typePair.second) {
+                    std::cout << "[LLVM CodeGen]     Methods:" << std::endl;
+                    for (const auto& method : typePair.second->methods) {
+                        std::cout << "[LLVM CodeGen]       - " << method->name << std::endl;
+                    }
+                }
+            }
+            current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+            return;
+        }
     }
     
-    // Prepare arguments for static call
+    std::cout << "[LLVM CodeGen] Using method function: " << methodFunctionName << std::endl;
+    
+    // Prepare arguments for method call
     std::vector<llvm::Value*> args;
-    args.push_back(objectPtr);
+    args.push_back(objectPtr); // self parameter
+    std::cout << "[LLVM CodeGen] Added self parameter" << std::endl;
     
-    for (auto& arg : expr->args) {
-        arg->accept(this);
-        args.push_back(current_value_);
+    // Process method arguments
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    
+    std::cout << "[LLVM CodeGen] Processing " << expr->args.size() << " method arguments..." << std::endl;
+    
+    for (size_t i = 0; i < expr->args.size(); i++) {
+        std::cout << "[LLVM CodeGen] Processing argument " << i << "..." << std::endl;
+        expr->args[i]->accept(this);
+        llvm::Value* argValue = current_value_;
+        
+        if (!argValue) {
+            std::cerr << "[LLVM CodeGen] Error: Argument " << i << " is null" << std::endl;
+            continue;
+        }
+        
+        std::cout << "[LLVM CodeGen] Argument " << i << " type: ";
+        argValue->getType()->print(llvm::outs());
+        std::cout << std::endl;
+        
+        // Check the expected parameter type of the method
+        llvm::FunctionType* funcType = methodFunc->getFunctionType();
+        llvm::Type* expectedType = nullptr;
+        
+        if (i + 1 < funcType->getNumParams()) { // +1 because first param is self
+            expectedType = funcType->getParamType(i + 1);
+            std::cout << "[LLVM CodeGen] Expected argument " << i << " type: ";
+            expectedType->print(llvm::outs());
+            std::cout << std::endl;
+        } else {
+            // Default to BoxedValue* for variadic or unknown parameters
+            expectedType = boxedPtrTy;
+            std::cout << "[LLVM CodeGen] Using default BoxedValue* for argument " << i << std::endl;
+        }
+        
+        // Convert argument to expected type if necessary
+        llvm::Value* finalArg = argValue;
+        if (argValue->getType() != expectedType) {
+            std::cout << "[LLVM CodeGen] Converting argument " << i << " from actual to expected type" << std::endl;
+            if (expectedType == boxedPtrTy) {
+                // Convert to BoxedValue*
+                llvm::Type* valueType = argValue->getType();
+                if (valueType->isDoubleTy()) {
+                    finalArg = createBoxedFromDouble(argValue);
+                } else if (valueType->isIntegerTy(1)) {
+                    finalArg = createBoxedFromBool(argValue);
+                } else if (valueType->isPointerTy()) {
+                    // Check if it's already a BoxedValue*
+                    if (valueType == boxedPtrTy) {
+                        finalArg = argValue;
+                    } else {
+                        // Assume it's a string
+                        finalArg = createBoxedFromString(argValue);
+                    }
+                } else {
+                    std::cerr << "[LLVM CodeGen] Warning: Cannot convert argument type to BoxedValue*" << std::endl;
+                    finalArg = builder_->CreateBitCast(argValue, expectedType);
+                }
+            } else {
+                // Convert from BoxedValue* to expected type
+                if (argValue->getType() == boxedPtrTy) {
+                    if (expectedType->isDoubleTy()) {
+                        finalArg = unboxDouble(argValue);
+                    } else if (expectedType->isIntegerTy(1)) {
+                        finalArg = unboxBool(argValue);
+                    } else if (expectedType->isPointerTy()) {
+                        finalArg = unboxString(argValue);
+                    } else {
+                        finalArg = builder_->CreateBitCast(argValue, expectedType);
+                    }
+                } else {
+                    // Direct type conversion
+                    finalArg = builder_->CreateBitCast(argValue, expectedType);
+                }
+            }
+        } else {
+            std::cout << "[LLVM CodeGen] Argument " << i << " types match, no conversion needed" << std::endl;
+        }
+        
+        args.push_back(finalArg);
+        std::cout << "[LLVM CodeGen] Added argument " << i << " to method call" << std::endl;
     }
     
+    // Make the method call
+    std::cout << "[LLVM CodeGen] Making method call with " << args.size() << " arguments..." << std::endl;
     current_value_ = builder_->CreateCall(methodFunc, args);
+    
+    if (current_value_) {
+        std::cout << "[LLVM CodeGen] Method call successful, result type: ";
+        current_value_->getType()->print(llvm::outs());
+        std::cout << std::endl;
+    } else {
+        std::cout << "[LLVM CodeGen] Method call returned null" << std::endl;
+    }
+    
+    std::cout << "[LLVM CodeGen] ========================================" << std::endl;
+    std::cout << "[LLVM CodeGen] Method call to " << methodFunctionName << " completed" << std::endl;
+    std::cout << "[LLVM CodeGen] ========================================" << std::endl;
 }
 
 void LLVMCodeGenerator::visit(SelfExpr *expr)
