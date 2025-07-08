@@ -406,9 +406,9 @@
 //    print("Comparison between subtypes is valid: " @ areEqual); 
 //
 //
-
-
-
+//
+//
+//
 ////  ===[CODEGEN TESTS]===
 //// [Programa Basico]
 //42;
@@ -474,9 +474,7 @@
 //    print(true);
 //    print(false);
 //};
-
-
-print("Probando declaracion de variables con condicionales e impresion de su valor:");
+//print("Probando declaracion de variables con condicionales e impresion de su valor:");
 //let a = if(3 > 4) "2" else true in {
 //    print(a);
 //    a := 4;
@@ -491,7 +489,6 @@ print("Probando declaracion de variables con condicionales e impresion de su val
 //};
 //
 //print("Probando funciones");
-//
 //print("Sucesor de 0");
 //function successor(x) => x+1;
 //print(successor(0));
@@ -506,21 +503,21 @@ print("Probando declaracion de variables con condicionales e impresion de su val
 //print("fib(5)");
 //print(fib(5));
 //
+//print();
 //print("Probando funcion con parametros dinamicos");
 //function f(x,y) => "Hello, World";
 //print("f(x,y) => Hello, World!");
-//
 //print("f(a,b), donde a y b son strings.");
 //print(f("a","b"));
-//
 //print("f(2,3)");
 //print(f(2,3));
-//
 //print("f(true,false)");
 //print(f(true,false));
 //print();
+//
 //print("Probando funcion con parametro dinamico y tipo de retorno desconocido");
 //function id(x) => x;
+//print(id("asd"));
 //print(id("true"));
 //print(id(true));
 //print(id(1));
@@ -548,24 +545,24 @@ print("Probando declaracion de variables con condicionales e impresion de su val
 //
 //print("Probando tipos");
 //
-//type Vector(x,y){
-//    x = x;
-//    y = y;
-//    getX() => self.x;
-//    getY() => self.y;
-//    setX(newX) => self.x := newX;
-//    setY(newY) => self.y := newY;
-//    norm() => (self.x^2 + self.y^2)^(1/2);
-//};
+type Vector(x,y){
+    x = x;
+    y = y;
+    getX() => self.x;
+    getY() => self.y;
+    setX(newX) => self.x := newX;
+    setY(newY) => self.y := newY;
+    norm() => (self.x^2 + self.y^2)^(1/2);
+};
 //
-//let a = new Vector(3,2) in {
-//    print(a.getX());
-//    print(a.getY());
-//    print(a.norm());
-//    a.setX(10);
-//    a.setY(10);
-//    print(a.norm());
-//};
+let a = new Vector(3,2) in {
+    print(a.getX());
+    print(a.getY());
+    //print(a.norm());
+    //a.setX(10);
+    //a.setY(10);
+    //print(a.norm());
+};
 //
 //type Animal(name,age){
 //    name = name;

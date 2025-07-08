@@ -85,9 +85,25 @@ void LLVMCodeGenerator::visit(Program *stmt)
     current_block_ = llvm::BasicBlock::Create(*context_, "entry", current_function_);
     builder_->SetInsertPoint(current_block_);
 
+    // Save the main entry block
+    llvm::BasicBlock* mainBlock = current_block_;
+    
     // Procesar cada statement
     for (auto &s : stmt->stmts) {
         s->accept(this);
+        
+        // After each statement, ensure we have a valid insertion point for the next statement
+        // Some operations create complex control flow and may leave the builder in a merge block
+        // which is fine - we just continue from there
+        llvm::BasicBlock* currentBlock = builder_->GetInsertBlock();
+        
+        if (currentBlock && currentBlock != mainBlock) {
+            std::cout << "[LLVM CodeGen] Builder moved to merge block after complex operation" << std::endl;
+            // Update mainBlock to be the current block for linear continuation
+            mainBlock = currentBlock;
+            current_block_ = currentBlock;
+        }
+        
         // Si current_value_ es un valor, simplemente lo dejamos generado en el IR
         // (no se usa, pero existe como instrucción)
     }
@@ -106,6 +122,11 @@ void LLVMCodeGenerator::visit(ExprStmt *stmt)
 void LLVMCodeGenerator::visit(FunctionDecl *stmt)
 {
     std::cout << "[LLVM CodeGen] Processing FunctionDecl: " << stmt->name << std::endl;
+
+    // Save current function context
+    llvm::Function* savedFunction = current_function_;
+    llvm::BasicBlock* savedBlock = current_block_;
+    std::cout << "[LLVM CodeGen] Saving function context before processing function declaration" << std::endl;
 
     // Get return type
     llvm::Type* returnType = getLLVMType(*stmt->returnType);
@@ -152,6 +173,26 @@ void LLVMCodeGenerator::visit(FunctionDecl *stmt)
     }
     else if (current_value_)
     {
+        // Check if we need to box the return value
+        if (returnType->isPointerTy()) {
+            llvm::StructType* boxedTy = getBoxedValueType();
+            llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
+            
+            // If the return type is BoxedValue* but current_value_ is not, box it
+            if (returnType == boxedPtrTy && current_value_->getType() != boxedPtrTy) {
+                std::cout << "[LLVM CodeGen] Boxing return value for BoxedValue* return type" << std::endl;
+                if (current_value_->getType()->isDoubleTy()) {
+                    current_value_ = createBoxedFromDouble(current_value_);
+                } else if (current_value_->getType()->isIntegerTy(32)) {
+                    llvm::Value* doubleValue = builder_->CreateSIToFP(current_value_, llvm::Type::getDoubleTy(*context_));
+                    current_value_ = createBoxedFromDouble(doubleValue);
+                } else if (current_value_->getType()->isIntegerTy(1)) {
+                    current_value_ = createBoxedFromBool(current_value_);
+                } else if (current_value_->getType()->isPointerTy()) {
+                    current_value_ = createBoxedFromString(current_value_);
+                }
+            }
+        }
         builder_->CreateRet(current_value_);
     }
     else
@@ -165,14 +206,36 @@ void LLVMCodeGenerator::visit(FunctionDecl *stmt)
         {
             builder_->CreateRet(llvm::ConstantFP::get(returnType, 0.0));
         }
+        else if (returnType->isPointerTy())
+        {
+            llvm::StructType* boxedTy = getBoxedValueType();
+            llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
+            
+            // If the return type is BoxedValue*, create a default boxed value
+            if (returnType == boxedPtrTy) {
+                std::cout << "[LLVM CodeGen] Creating default BoxedValue* return value (0.0)" << std::endl;
+                llvm::Value* defaultValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
+                llvm::Value* boxedDefault = createBoxedFromDouble(defaultValue);
+                builder_->CreateRet(boxedDefault);
+            } else {
+                builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
+            }
+        }
         else
         {
             builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
         }
     }
 
-    current_function_ = nullptr;
-    current_block_ = nullptr;
+    // Restore function context
+    current_function_ = savedFunction;
+    current_block_ = savedBlock;
+    if (current_function_ && current_block_) {
+        builder_->SetInsertPoint(current_block_);
+        std::cout << "[LLVM CodeGen] Restored function context after processing function declaration" << std::endl;
+    } else {
+        std::cout << "[LLVM CodeGen] No function context to restore (was processing top-level)" << std::endl;
+    }
 }
 
 void LLVMCodeGenerator::visit(TypeDecl *stmt)
@@ -180,28 +243,43 @@ void LLVMCodeGenerator::visit(TypeDecl *stmt)
     std::cout << "[LLVM CodeGen] Processing TypeDecl: " << stmt->name << std::endl;
 
     current_type_ = stmt->name;
-
-    // Create struct type
-    std::vector<llvm::Type*> fieldTypes;
     
-    // Add base type pointer if inheriting
-    if (stmt->baseType != "Object")
-    {
-        llvm::StructType* baseType = getOrCreateStructType(stmt->baseType);
-        fieldTypes.push_back(llvm::PointerType::get(baseType, 0));
+    // Store type declaration for inheritance processing
+    type_declarations_[stmt->name] = stmt;
+
+    // Create struct type with inheritance support
+    std::vector<llvm::Type*> fieldTypes;
+    std::vector<std::string> attributeNames;
+    
+    // First field is always vtable pointer
+    llvm::PointerType* vtablePtrType = llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0);
+    fieldTypes.push_back(vtablePtrType);
+    attributeNames.push_back("__vtable__");
+    
+    // Add base type fields directly (flattened inheritance)
+    if (stmt->baseType != "Object") {
+        addBaseTypeFields(stmt->baseType, fieldTypes, attributeNames);
     }
 
-    // Add own attributes (all as BoxedValue pointers for now)
-    for (size_t i = 0; i < stmt->attributes.size(); ++i)
+    // Add own attributes (always BoxedValue* for user-defined types)
+    for (const auto& attr : stmt->attributes)
     {
-        // For now, all attributes are BoxedValue pointers
-        // In a full implementation, we'd use the actual types
-        fieldTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        // All attributes of user-defined types are always BoxedValue* 
+        llvm::StructType* boxedTy = getBoxedValueType();
+        fieldTypes.push_back(llvm::PointerType::get(boxedTy, 0));
+        attributeNames.push_back(attr->name);
     }
 
     // Create the struct type
     llvm::StructType* structType = llvm::StructType::create(*context_, fieldTypes, "struct." + stmt->name);
     types_[stmt->name] = structType;
+    
+    // Store attribute metadata
+    std::vector<std::string> userAttributeNames;
+    for (const auto& attr : stmt->attributes) {
+        userAttributeNames.push_back(attr->name);
+    }
+    storeTypeMetadata(stmt->name, userAttributeNames);
 
     // Generate constructor
     generateConstructorFunction(stmt);
@@ -211,6 +289,9 @@ void LLVMCodeGenerator::visit(TypeDecl *stmt)
     {
         method->accept(this);
     }
+    
+    // Generate vtable for this type
+    generateVTable(stmt);
 
     current_type_ = "";
 }
@@ -232,15 +313,9 @@ void LLVMCodeGenerator::visit(NumberExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing NumberExpr: " << expr->value << std::endl;
     
-    // Create native types for numbers
-    bool isInteger = (expr->value == std::floor(expr->value));
-    if (isInteger) {
-        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), static_cast<int64_t>(expr->value));
-        std::cout << "[LLVM CodeGen] NumberExpr created as i32: " << expr->value << std::endl;
-    } else {
-        current_value_ = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), expr->value);
-        std::cout << "[LLVM CodeGen] NumberExpr created as double: " << expr->value << std::endl;
-    }
+    // All numbers are now always double
+    current_value_ = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), expr->value);
+    std::cout << "[LLVM CodeGen] NumberExpr created as double: " << expr->value << std::endl;
 }
 
 void LLVMCodeGenerator::visit(StringExpr *expr)
@@ -347,23 +422,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_add_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_add_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native addition" << std::endl;
-            // Ambos nativos: promoción de tipos tradicional
-    bool leftIsDouble = left->getType()->isDoubleTy();
-    bool rightIsDouble = right->getType()->isDoubleTy();
-            bool needPromotion = leftIsDouble || rightIsDouble;
-
-    if (needPromotion) {
-        if (!leftIsDouble && left->getType()->isIntegerTy(32)) {
-            left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-        }
-        if (!rightIsDouble && right->getType()->isIntegerTy(32)) {
-            right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-        }
-                current_value_ = builder_->CreateFAdd(left, right);
-            } else {
-                current_value_ = builder_->CreateAdd(left, right);
+            std::cout << "[LLVM CodeGen] Using native addition - promoting all to double" << std::endl;
+            // Always promote to double
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            current_value_ = builder_->CreateFAdd(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for addition" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -381,22 +448,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_sub_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_sub_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native subtraction" << std::endl;
-            bool leftIsDouble = left->getType()->isDoubleTy();
-            bool rightIsDouble = right->getType()->isDoubleTy();
-            bool needPromotion = leftIsDouble || rightIsDouble;
-            
-            if (needPromotion) {
-                if (!leftIsDouble && left->getType()->isIntegerTy(32)) {
-                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-                }
-                if (!rightIsDouble && right->getType()->isIntegerTy(32)) {
-                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-                }
-                current_value_ = builder_->CreateFSub(left, right);
-            } else {
-                current_value_ = builder_->CreateSub(left, right);
+            std::cout << "[LLVM CodeGen] Using native subtraction - promoting all to double" << std::endl;
+            // Always promote to double
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            current_value_ = builder_->CreateFSub(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for subtraction" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -414,22 +474,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_mul_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_mul_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native multiplication" << std::endl;
-            bool leftIsDouble = left->getType()->isDoubleTy();
-            bool rightIsDouble = right->getType()->isDoubleTy();
-            bool needPromotion = leftIsDouble || rightIsDouble;
-            
-            if (needPromotion) {
-                if (!leftIsDouble && left->getType()->isIntegerTy(32)) {
-                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-                }
-                if (!rightIsDouble && right->getType()->isIntegerTy(32)) {
-                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-                }
-                current_value_ = builder_->CreateFMul(left, right);
-            } else {
-                current_value_ = builder_->CreateMul(left, right);
+            std::cout << "[LLVM CodeGen] Using native multiplication - promoting all to double" << std::endl;
+            // Always promote to double
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            current_value_ = builder_->CreateFMul(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for multiplication" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -506,29 +559,23 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_mod_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_mod_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native modulo" << std::endl;
-            // Native modulo depends on type
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                // Integer modulo
-                current_value_ = builder_->CreateSRem(left, right);
-            } else {
-                // Floating point modulo using fmod
-                llvm::Function* fmodFunc = module_->getFunction("fmod");
-                if (!fmodFunc) {
-                    std::vector<llvm::Type*> fmodArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
-                    llvm::FunctionType* fmodType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), fmodArgs, false);
-                    fmodFunc = llvm::Function::Create(fmodType, llvm::Function::ExternalLinkage, "fmod", module_.get());
-                }
-                // Convert to double if needed
-                if (!left->getType()->isDoubleTy()) {
-                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-                }
-                if (!right->getType()->isDoubleTy()) {
-                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-                }
-                std::vector<llvm::Value*> args = {left, right};
-                current_value_ = builder_->CreateCall(fmodFunc, args);
+            std::cout << "[LLVM CodeGen] Using native modulo - always floating-point" << std::endl;
+            // Always use floating point modulo with fmod
+            llvm::Function* fmodFunc = module_->getFunction("fmod");
+            if (!fmodFunc) {
+                std::vector<llvm::Type*> fmodArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
+                llvm::FunctionType* fmodType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), fmodArgs, false);
+                fmodFunc = llvm::Function::Create(fmodType, llvm::Function::ExternalLinkage, "fmod", module_.get());
             }
+            // Convert to double if needed
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+            }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            std::vector<llvm::Value*> args = {left, right};
+            current_value_ = builder_->CreateCall(fmodFunc, args);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for modulo" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -547,20 +594,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_greater_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_greater_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native greater than" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpSGT(left, right);
-            } else {
-                // Convert to double if needed for mixed int/double comparison
-                if (!left->getType()->isDoubleTy()) {
-                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-                }
-                if (!right->getType()->isDoubleTy()) {
-                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-                }
-                current_value_ = builder_->CreateFCmpOGT(left, right);
+            std::cout << "[LLVM CodeGen] Using native greater than - always double comparison" << std::endl;
+            // Always convert to double for comparison
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            current_value_ = builder_->CreateFCmpOGT(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for greater than" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -578,20 +620,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_lessthan_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_lessthan_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native less than" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpSLT(left, right);
-            } else {
-                // Convert to double if needed for mixed int/double comparison
-                if (!left->getType()->isDoubleTy()) {
+            std::cout << "[LLVM CodeGen] Using native less than - always double comparison" << std::endl;
+            // Always convert to double for comparison
+            if (!left->getType()->isDoubleTy()) {
                 left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
-                if (!right->getType()->isDoubleTy()) {
+            if (!right->getType()->isDoubleTy()) {
                 right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
             }
-                current_value_ = builder_->CreateFCmpOLT(left, right);
-            }
+            current_value_ = builder_->CreateFCmpOLT(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for less than" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -609,20 +646,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_ge_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_ge_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native greater than or equal" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpSGE(left, right);
-            } else {
-                // Convert to double if needed for mixed int/double comparison
-                if (!left->getType()->isDoubleTy()) {
+            std::cout << "[LLVM CodeGen] Using native greater than or equal - always double comparison" << std::endl;
+            // Always convert to double for comparison
+            if (!left->getType()->isDoubleTy()) {
                 left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
-                if (!right->getType()->isDoubleTy()) {
+            if (!right->getType()->isDoubleTy()) {
                 right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
             }
-                current_value_ = builder_->CreateFCmpOGE(left, right);
-            }
+            current_value_ = builder_->CreateFCmpOGE(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for greater than or equal" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -640,20 +672,15 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using boxed_le_native_right(BoxedValue*, native)" << std::endl;
             current_value_ = boxed_le_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
-            std::cout << "[LLVM CodeGen] Using native less than or equal" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpSLE(left, right);
-            } else {
-                // Convert to double if needed for mixed int/double comparison
-                if (!left->getType()->isDoubleTy()) {
-                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-                }
-                if (!right->getType()->isDoubleTy()) {
-                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-                }
-                current_value_ = builder_->CreateFCmpOLE(left, right);
+            std::cout << "[LLVM CodeGen] Using native less than or equal - always double comparison" << std::endl;
+            // Always convert to double for comparison
+            if (!left->getType()->isDoubleTy()) {
+                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
+            if (!right->getType()->isDoubleTy()) {
+                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+            }
+            current_value_ = builder_->CreateFCmpOLE(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for less than or equal" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -673,12 +700,9 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             current_value_ = boxed_equals_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native equality" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpEQ(left, right);
-            } else if (left->getType()->isDoubleTy() && right->getType()->isDoubleTy()) {
-                current_value_ = builder_->CreateFCmpOEQ(left, right);
-            } else if (left->getType()->isIntegerTy(1) && right->getType()->isIntegerTy(1)) {
+            // Handle different types
+            if (left->getType()->isIntegerTy(1) && right->getType()->isIntegerTy(1)) {
+                // Boolean comparison
                 current_value_ = builder_->CreateICmpEQ(left, right);
             } else if (left->getType()->isPointerTy() && right->getType()->isPointerTy()) {
                 // String comparison using strcmp
@@ -692,6 +716,16 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
                 std::vector<llvm::Value*> strcmpArgs = {left, right};
                 llvm::Value* strcmpResult = builder_->CreateCall(strcmpFunc, strcmpArgs);
                 current_value_ = builder_->CreateICmpEQ(strcmpResult, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0));
+            } else if ((left->getType()->isIntegerTy(32) || left->getType()->isDoubleTy()) && 
+                       (right->getType()->isIntegerTy(32) || right->getType()->isDoubleTy())) {
+                // Numeric comparison - always convert to double
+                if (!left->getType()->isDoubleTy()) {
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
+                if (!right->getType()->isDoubleTy()) {
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFCmpOEQ(left, right);
             } else {
                 // Mixed types - different types are never equal
                 current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -714,12 +748,9 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             current_value_ = boxed_neq_native_right(left, right);
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native not equal" << std::endl;
-            // Both native, use traditional comparison
-            if (left->getType()->isIntegerTy(32) && right->getType()->isIntegerTy(32)) {
-                current_value_ = builder_->CreateICmpNE(left, right);
-            } else if (left->getType()->isDoubleTy() && right->getType()->isDoubleTy()) {
-                current_value_ = builder_->CreateFCmpONE(left, right);
-            } else if (left->getType()->isIntegerTy(1) && right->getType()->isIntegerTy(1)) {
+            // Handle different types
+            if (left->getType()->isIntegerTy(1) && right->getType()->isIntegerTy(1)) {
+                // Boolean comparison
                 current_value_ = builder_->CreateICmpNE(left, right);
             } else if (left->getType()->isPointerTy() && right->getType()->isPointerTy()) {
                 // String comparison using strcmp
@@ -733,6 +764,16 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
                 std::vector<llvm::Value*> strcmpArgs = {left, right};
                 llvm::Value* strcmpResult = builder_->CreateCall(strcmpFunc, strcmpArgs);
                 current_value_ = builder_->CreateICmpNE(strcmpResult, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0));
+            } else if ((left->getType()->isIntegerTy(32) || left->getType()->isDoubleTy()) && 
+                       (right->getType()->isIntegerTy(32) || right->getType()->isDoubleTy())) {
+                // Numeric comparison - always convert to double
+                if (!left->getType()->isDoubleTy()) {
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
+                if (!right->getType()->isDoubleTy()) {
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFCmpONE(left, right);
             } else {
                 // Mixed types - different types are always not equal
                 current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 1);
@@ -919,15 +960,103 @@ void LLVMCodeGenerator::visit(CallExpr *expr)
         return;
     }
 
-    // Prepare arguments
+    // Prepare arguments with type conversion if needed
     std::vector<llvm::Value*> args;
-    for (auto &arg : expr->args)
+    llvm::FunctionType* funcType = func->getFunctionType();
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
+    
+    std::cout << "[LLVM CodeGen] Function " << expr->callee << " expects " << funcType->getNumParams() << " parameters" << std::endl;
+    
+    for (size_t i = 0; i < expr->args.size() && i < funcType->getNumParams(); ++i)
     {
-        arg->accept(this);
+        expr->args[i]->accept(this);
+        llvm::Value* argValue = current_value_;
+        llvm::Type* expectedType = funcType->getParamType(i);
+        llvm::Type* actualType = argValue->getType();
+        
+        std::cout << "[LLVM CodeGen] Parameter " << i << ":" << std::endl;
+        std::cout << "  - Expected type: ";
+        expectedType->print(llvm::outs());
+        std::cout << std::endl;
+        std::cout << "  - Actual type: ";
+        actualType->print(llvm::outs());
+        std::cout << std::endl;
+        
+        // Check if we need to convert the argument
+        if (expectedType == actualType) {
+            // Types match, no conversion needed
+            std::cout << "  - No conversion needed" << std::endl;
+            args.push_back(argValue);
+        }
+        else if (expectedType == boxedPtrTy && actualType != boxedPtrTy) {
+            // Function expects BoxedValue* but we have a native type - box it
+            std::cout << "  - Converting native type to BoxedValue*" << std::endl;
+            llvm::Value* boxedArg = nullptr;
+            
+            if (actualType->isDoubleTy()) {
+                boxedArg = createBoxedFromDouble(argValue);
+            } else if (actualType->isIntegerTy(32)) {
+                llvm::Value* doubleValue = builder_->CreateSIToFP(argValue, llvm::Type::getDoubleTy(*context_));
+                boxedArg = createBoxedFromDouble(doubleValue);
+            } else if (actualType->isIntegerTy(1)) {
+                boxedArg = createBoxedFromBool(argValue);
+            } else if (actualType->isPointerTy()) {
+                boxedArg = createBoxedFromString(argValue);
+            } else {
+                std::cout << "  - Unknown type, converting to int and boxing" << std::endl;
+                llvm::Value* intValue = builder_->CreateBitCast(argValue, llvm::Type::getInt32Ty(*context_));
+                llvm::Value* doubleValue = builder_->CreateSIToFP(intValue, llvm::Type::getDoubleTy(*context_));
+                boxedArg = createBoxedFromDouble(doubleValue);
+            }
+            
+            args.push_back(boxedArg);
+        }
+        else if (expectedType != boxedPtrTy && actualType == boxedPtrTy) {
+            // Function expects native type but we have BoxedValue* - unbox it
+            std::cout << "  - Converting BoxedValue* to native type" << std::endl;
+            llvm::Value* unboxedArg = nullptr;
+            
+            if (expectedType->isDoubleTy()) {
+                unboxedArg = extractFromBoxed(argValue, 1); // tag 1 = double
+            } else if (expectedType->isIntegerTy(32)) {
+                llvm::Value* doubleValue = extractFromBoxed(argValue, 1); // tag 1 = double
+                unboxedArg = builder_->CreateFPToSI(doubleValue, llvm::Type::getInt32Ty(*context_));
+            } else if (expectedType->isIntegerTy(1)) {
+                unboxedArg = extractFromBoxed(argValue, 0); // tag 0 = bool
+            } else if (expectedType->isPointerTy()) {
+                unboxedArg = extractFromBoxed(argValue, 2); // tag 2 = string
+            } else {
+                std::cout << "  - Cannot convert BoxedValue* to expected type, using as-is" << std::endl;
+                unboxedArg = argValue;
+            }
+            
+            args.push_back(unboxedArg);
+        }
+        else {
+            // Types are different but neither is BoxedValue* - try basic conversions
+            std::cout << "  - Attempting basic type conversion" << std::endl;
+            
+            if (expectedType->isDoubleTy() && actualType->isIntegerTy(32)) {
+                args.push_back(builder_->CreateSIToFP(argValue, llvm::Type::getDoubleTy(*context_)));
+            } else if (expectedType->isIntegerTy(32) && actualType->isDoubleTy()) {
+                args.push_back(builder_->CreateFPToSI(argValue, llvm::Type::getInt32Ty(*context_)));
+            } else {
+                std::cout << "  - No suitable conversion found, using as-is" << std::endl;
+                args.push_back(argValue);
+            }
+        }
+    }
+    
+    // Handle case where we have more arguments than parameters (should not happen in well-formed code)
+    for (size_t i = funcType->getNumParams(); i < expr->args.size(); ++i) {
+        expr->args[i]->accept(this);
         args.push_back(current_value_);
     }
 
     current_value_ = builder_->CreateCall(func, args);
+    
+    std::cout << "[LLVM CodeGen] Function call " << expr->callee << " completed" << std::endl;
 }
 
 void LLVMCodeGenerator::visit(VariableExpr *expr)
@@ -1123,7 +1252,9 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                     
                     llvm::Value* newBoxed = nullptr;
                 if (valueType->isIntegerTy(32)) {
-                        newBoxed = createBoxedFromInt(value);
+                        // Convert int to double since all numbers are now double
+                        llvm::Value* doubleValue = builder_->CreateSIToFP(value, llvm::Type::getDoubleTy(*context_));
+                        newBoxed = createBoxedFromDouble(doubleValue);
                 } else if (valueType->isDoubleTy()) {
                         newBoxed = createBoxedFromDouble(value);
                 } else if (valueType->isIntegerTy(1)) {
@@ -1134,7 +1265,9 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                         // Unknown type, try to convert to int and box
                         std::cout << "[LLVM CodeGen] AssignExpr: Unknown type, converting to int" << std::endl;
                         llvm::Value* intValue = builder_->CreateBitCast(value, llvm::Type::getInt32Ty(*context_));
-                        newBoxed = createBoxedFromInt(intValue);
+                        // Convert int to double since all numbers are now double
+                        llvm::Value* doubleValue = builder_->CreateSIToFP(intValue, llvm::Type::getDoubleTy(*context_));
+                        newBoxed = createBoxedFromDouble(doubleValue);
                     }
                     
                 builder_->CreateStore(newBoxed, alloca);
@@ -1296,7 +1429,9 @@ void LLVMCodeGenerator::visit(IfExpr *expr)
         if (thenIsBoxed) {
             thenBoxed = thenValue;
         } else if (thenType->isIntegerTy(32)) {
-            thenBoxed = createBoxedFromInt(thenValue);
+            // Convert int to double since all numbers are now double
+            llvm::Value* doubleValue = builder_->CreateSIToFP(thenValue, llvm::Type::getDoubleTy(*context_));
+            thenBoxed = createBoxedFromDouble(doubleValue);
         } else if (thenType->isDoubleTy()) {
             thenBoxed = createBoxedFromDouble(thenValue);
         } else if (thenType->isIntegerTy(1)) {
@@ -1322,7 +1457,9 @@ void LLVMCodeGenerator::visit(IfExpr *expr)
                 // Último recurso: usar bitcast
                 intValue = builder_->CreateBitCast(thenValue, llvm::Type::getInt32Ty(*context_));
             }
-            thenBoxed = createBoxedFromInt(intValue);
+            // Convert int to double since all numbers are now double
+            llvm::Value* doubleValue = builder_->CreateSIToFP(intValue, llvm::Type::getDoubleTy(*context_));
+            thenBoxed = createBoxedFromDouble(doubleValue);
         }
 
         // Convertir else value a BoxedValue*
@@ -1330,7 +1467,9 @@ void LLVMCodeGenerator::visit(IfExpr *expr)
         if (elseIsBoxed) {
             elseBoxed = elseValue;
         } else if (elseType->isIntegerTy(32)) {
-            elseBoxed = createBoxedFromInt(elseValue);
+            // Convert int to double since all numbers are now double
+            llvm::Value* doubleValue = builder_->CreateSIToFP(elseValue, llvm::Type::getDoubleTy(*context_));
+            elseBoxed = createBoxedFromDouble(doubleValue);
         } else if (elseType->isDoubleTy()) {
             elseBoxed = createBoxedFromDouble(elseValue);
         } else if (elseType->isIntegerTy(1)) {
@@ -1356,7 +1495,9 @@ void LLVMCodeGenerator::visit(IfExpr *expr)
                 // Último recurso: usar bitcast
                 intValue = builder_->CreateBitCast(elseValue, llvm::Type::getInt32Ty(*context_));
             }
-            elseBoxed = createBoxedFromInt(intValue);
+            // Convert int to double since all numbers are now double
+            llvm::Value* doubleValue = builder_->CreateSIToFP(intValue, llvm::Type::getDoubleTy(*context_));
+            elseBoxed = createBoxedFromDouble(doubleValue);
         }
 
         // Volver al merge block y crear PHI con BoxedValue*
@@ -1441,46 +1582,357 @@ void LLVMCodeGenerator::visit(NewExpr *expr)
     // Get struct type
     llvm::StructType* structType = getOrCreateStructType(expr->typeName);
     
-    // Allocate memory
-    llvm::Value* size = llvm::ConstantExpr::getSizeOf(structType);
-    llvm::Function* mallocFunc = module_->getFunction("malloc");
-    if (!mallocFunc)
-    {
-        // Declare malloc if not already declared
-        llvm::FunctionType* mallocType = llvm::FunctionType::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
-                                                               {llvm::Type::getInt64Ty(*context_)}, false);
-        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    // Get constructor function
+    std::string constructorName = expr->typeName + "_constructor";
+    llvm::Function* constructor = module_->getFunction(constructorName);
+    
+    if (!constructor) {
+        std::cerr << "[LLVM CodeGen] Error: Constructor function " << constructorName << " not found" << std::endl;
+        
+        // Fallback: simple memory allocation
+        llvm::Value* size = llvm::ConstantExpr::getSizeOf(structType);
+        llvm::Function* mallocFunc = module_->getFunction("malloc");
+        if (!mallocFunc) {
+            llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
+                {llvm::Type::getInt64Ty(*context_)}, 
+                false
+            );
+            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+        }
+        
+        llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
+        current_value_ = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
+        return;
     }
     
-    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
-    current_value_ = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
+    // Prepare constructor arguments
+    std::vector<llvm::Value*> args;
+    
+    // Process constructor arguments - all must be BoxedValue*
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    
+    for (auto& arg : expr->args) {
+        arg->accept(this);
+        llvm::Value* argValue = current_value_;
+        
+        // Convert argument to BoxedValue* if needed (all constructor params are BoxedValue*)
+        llvm::Value* boxedArg = argValue;
+        if (argValue->getType() != boxedPtrTy) {
+            llvm::Type* valueType = argValue->getType();
+            if (valueType->isDoubleTy()) {
+                boxedArg = createBoxedFromDouble(argValue);
+            } else if (valueType->isIntegerTy(1)) {
+                boxedArg = createBoxedFromBool(argValue);
+            } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+                // Assume it's a string (i8*)
+                boxedArg = createBoxedFromString(argValue);
+            } else {
+                std::cerr << "[LLVM CodeGen] Warning: Unknown argument type for constructor, using as-is" << std::endl;
+                boxedArg = builder_->CreateBitCast(argValue, boxedPtrTy);
+            }
+        }
+        
+        args.push_back(boxedArg);
+    }
+    
+    // Call constructor
+    current_value_ = builder_->CreateCall(constructor, args);
+    
+    std::cout << "[LLVM CodeGen] NewExpr: Called constructor " << constructorName << " with " << args.size() << " arguments" << std::endl;
 }
 
 void LLVMCodeGenerator::visit(GetAttrExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing GetAttrExpr: " << expr->attrName << std::endl;
-    // Simplified implementation
-    current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+    
+    // Get the object
+    expr->object->accept(this);
+    llvm::Value* objectPtr = current_value_;
+    
+    if (!objectPtr) {
+        std::cerr << "[LLVM CodeGen] Error: Object pointer is null in GetAttrExpr" << std::endl;
+        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        return;
+    }
+    
+    // Get the object type name
+    std::string objectTypeName = getObjectTypeName(objectPtr);
+    if (objectTypeName.empty()) {
+        std::cerr << "[LLVM CodeGen] Error: Could not determine object type in GetAttrExpr" << std::endl;
+        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        return;
+    }
+    
+    // Get the struct type from our types map
+    auto typeIt = types_.find(objectTypeName);
+    if (typeIt == types_.end()) {
+        std::cerr << "[LLVM CodeGen] Error: Type " << objectTypeName << " not found in types map" << std::endl;
+        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        return;
+    }
+    
+    llvm::StructType* structType = typeIt->second;
+    
+    // Find the attribute index using our metadata
+    int attributeIndex = getAttributeIndex(structType, expr->attrName);
+    
+    if (attributeIndex < 0) {
+        std::cerr << "[LLVM CodeGen] Error: Attribute " << expr->attrName << " not found in type " << objectTypeName << std::endl;
+        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        return;
+    }
+    
+    // Get pointer to the attribute
+    llvm::Value* attrPtr = builder_->CreateStructGEP(structType, objectPtr, attributeIndex);
+    
+    // Load the attribute value - all attributes are BoxedValue*
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    current_value_ = builder_->CreateLoad(boxedPtrTy, attrPtr);
+    
+    std::cout << "[LLVM CodeGen] GetAttrExpr: Loaded attribute " << expr->attrName << " at index " << attributeIndex << " from type " << objectTypeName << std::endl;
 }
 
 void LLVMCodeGenerator::visit(SetAttrExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing SetAttrExpr: " << expr->attrName << std::endl;
-    // Simplified implementation
-    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    
+    // Get the object
+    expr->object->accept(this);
+    llvm::Value* objectPtr = current_value_;
+    
+    if (!objectPtr) {
+        std::cerr << "[LLVM CodeGen] Error: Object pointer is null in SetAttrExpr" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Get the new value
+    expr->value->accept(this);
+    llvm::Value* newValue = current_value_;
+    
+    if (!newValue) {
+        std::cerr << "[LLVM CodeGen] Error: New value is null in SetAttrExpr" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Get the object type name
+    std::string objectTypeName = getObjectTypeName(objectPtr);
+    if (objectTypeName.empty()) {
+        std::cerr << "[LLVM CodeGen] Error: Could not determine object type in SetAttrExpr" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Get the struct type from our types map
+    auto typeIt = types_.find(objectTypeName);
+    if (typeIt == types_.end()) {
+        std::cerr << "[LLVM CodeGen] Error: Type " << objectTypeName << " not found in types map" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    llvm::StructType* structType = typeIt->second;
+    
+    // Find the attribute index using our metadata
+    int attributeIndex = getAttributeIndex(structType, expr->attrName);
+    
+    if (attributeIndex < 0) {
+        std::cerr << "[LLVM CodeGen] Error: Attribute " << expr->attrName << " not found in type " << objectTypeName << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Get pointer to the attribute
+    llvm::Value* attrPtr = builder_->CreateStructGEP(structType, objectPtr, attributeIndex);
+    
+    // Convert new value to BoxedValue* if needed (all attributes are BoxedValue*)
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    llvm::Value* boxedValue = newValue;
+    
+    if (newValue->getType() != boxedPtrTy) {
+        // Box the value based on its type
+        llvm::Type* valueType = newValue->getType();
+        if (valueType->isDoubleTy()) {
+            boxedValue = createBoxedFromDouble(newValue);
+        } else if (valueType->isIntegerTy(1)) {
+            boxedValue = createBoxedFromBool(newValue);
+        } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+            // Assume it's a string (i8*)
+            boxedValue = createBoxedFromString(newValue);
+        } else {
+            std::cerr << "[LLVM CodeGen] Warning: Unknown type for attribute assignment, using as-is" << std::endl;
+            boxedValue = builder_->CreateBitCast(newValue, boxedPtrTy);
+        }
+    }
+    
+    // Store the boxed value
+    builder_->CreateStore(boxedValue, attrPtr);
+    
+    // Return the new value (assignment returns the assigned value)
+    current_value_ = newValue;
+    
+    std::cout << "[LLVM CodeGen] SetAttrExpr: Set attribute " << expr->attrName << " at index " << attributeIndex << " in type " << objectTypeName << std::endl;
 }
 
 void LLVMCodeGenerator::visit(MethodCallExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing MethodCallExpr: " << expr->methodName << std::endl;
-    // Simplified implementation
-    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    
+    // Get the object
+    expr->object->accept(this);
+    llvm::Value* objectPtr = current_value_;
+    
+    if (!objectPtr) {
+        std::cerr << "[LLVM CodeGen] Error: Object pointer is null in MethodCallExpr" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Get object type for static dispatch (fallback)
+    std::string objectTypeName = getObjectTypeName(objectPtr);
+    
+    // Try polymorphic dispatch first
+    if (!objectTypeName.empty()) {
+        // Load vtable from object (first field)
+        llvm::Value* vtablePtr = builder_->CreateStructGEP(
+            getOrCreateStructType(objectTypeName), 
+            objectPtr, 
+            0
+        );
+        llvm::Value* vtable = builder_->CreateLoad(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
+            vtablePtr
+        );
+        
+        // Find method index in vtable
+        auto methodsIt = type_methods_.find(objectTypeName);
+        if (methodsIt != type_methods_.end()) {
+            auto& methods = methodsIt->second;
+            auto methodIt = std::find(methods.begin(), methods.end(), expr->methodName);
+            
+            if (methodIt != methods.end()) {
+                int methodIndex = std::distance(methods.begin(), methodIt);
+                
+                std::cout << "[LLVM CodeGen] Polymorphic call to " << expr->methodName << " at vtable index " << methodIndex << std::endl;
+                
+                // Get method pointer from vtable
+                llvm::Value* methodPtrPtr = builder_->CreateGEP(
+                    llvm::Type::getInt8Ty(*context_), 
+                    vtable, 
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), methodIndex * 8)
+                );
+                
+                llvm::Value* methodPtr = builder_->CreateLoad(
+                    llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
+                    methodPtrPtr
+                );
+                
+                // Prepare arguments
+                std::vector<llvm::Value*> args;
+                args.push_back(objectPtr); // self
+                
+                // Box method arguments
+                llvm::StructType* boxedTy = getBoxedValueType();
+                llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+                
+                for (auto& arg : expr->args) {
+                    arg->accept(this);
+                    llvm::Value* argValue = current_value_;
+                    
+                    // Convert to BoxedValue* if needed
+                    llvm::Value* boxedArg = argValue;
+                    if (argValue->getType() != boxedPtrTy) {
+                        llvm::Type* valueType = argValue->getType();
+                        if (valueType->isDoubleTy()) {
+                            boxedArg = createBoxedFromDouble(argValue);
+                        } else if (valueType->isIntegerTy(1)) {
+                            boxedArg = createBoxedFromBool(argValue);
+                        } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+                            boxedArg = createBoxedFromString(argValue);
+                        } else {
+                            boxedArg = builder_->CreateBitCast(argValue, boxedPtrTy);
+                        }
+                    }
+                    args.push_back(boxedArg);
+                }
+                
+                // Create function type for the call
+                std::vector<llvm::Type*> paramTypes;
+                for (auto arg : args) {
+                    paramTypes.push_back(arg->getType());
+                }
+                
+                llvm::FunctionType* callType = llvm::FunctionType::get(boxedPtrTy, paramTypes, false);
+                llvm::Value* typedMethodPtr = builder_->CreateBitCast(methodPtr, llvm::PointerType::get(callType, 0));
+                
+                // Make the polymorphic call
+                current_value_ = builder_->CreateCall(callType, typedMethodPtr, args);
+                
+                std::cout << "[LLVM CodeGen] Polymorphic method call completed" << std::endl;
+                return;
+            }
+        }
+    }
+    
+    // Fallback to static dispatch
+    std::cout << "[LLVM CodeGen] Falling back to static dispatch for " << expr->methodName << std::endl;
+    
+    if (objectTypeName.empty()) {
+        std::cerr << "[LLVM CodeGen] Error: Could not determine object type for static dispatch" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Static method call
+    std::string methodFunctionName = objectTypeName + "_" + expr->methodName;
+    llvm::Function* methodFunc = module_->getFunction(methodFunctionName);
+    
+    if (!methodFunc) {
+        std::cerr << "[LLVM CodeGen] Error: Method function " << methodFunctionName << " not found" << std::endl;
+        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+        return;
+    }
+    
+    // Prepare arguments for static call
+    std::vector<llvm::Value*> args;
+    args.push_back(objectPtr);
+    
+    for (auto& arg : expr->args) {
+        arg->accept(this);
+        args.push_back(current_value_);
+    }
+    
+    current_value_ = builder_->CreateCall(methodFunc, args);
 }
 
 void LLVMCodeGenerator::visit(SelfExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing SelfExpr" << std::endl;
-    // Simplified implementation
+    
+    // Look up 'self' in the current scope
+    LLVMScope* scope = current_scope_;
+    while (scope) {
+        auto it = scope->variables.find("self");
+        if (it != scope->variables.end()) {
+            llvm::AllocaInst* selfAlloca = it->second;
+            llvm::Type* selfType = scope->variable_types["self"];
+            
+            // Load the self pointer
+            current_value_ = builder_->CreateLoad(selfType, selfAlloca);
+            
+            std::cout << "[LLVM CodeGen] SelfExpr: Found self variable in scope" << std::endl;
+            return;
+        }
+        scope = scope->parent;
+    }
+    
+    // If we reach here, 'self' was not found in any scope
+    std::cerr << "[LLVM CodeGen] Error: 'self' not found in current scope" << std::endl;
     current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
 }
 

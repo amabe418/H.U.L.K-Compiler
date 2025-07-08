@@ -1,4 +1,6 @@
 #include "llvm_codegen.hpp"
+#include <algorithm>
+#include <set>
 // Helper methods
 std::string LLVMCodeGenerator::generateUniqueName(const std::string &base)
 {
@@ -19,11 +21,14 @@ llvm::Type* LLVMCodeGenerator::getLLVMType(const TypeInfo &type)
     case TypeInfo::Kind::Void:
         return llvm::Type::getVoidTy(*context_);
     case TypeInfo::Kind::Object:
-        return llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0); // Simplified for now
+        // Object type is unknown at compile time, use BoxedValue*
+        return llvm::PointerType::get(getBoxedValueType(), 0);
     case TypeInfo::Kind::Unknown:
-        return llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0); // Simplified for now
+        // Unknown type should be handled as BoxedValue* for dynamic typing
+        return llvm::PointerType::get(getBoxedValueType(), 0);
     default:
-        return llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0);
+        // Any other unknown type should also be BoxedValue*
+        return llvm::PointerType::get(getBoxedValueType(), 0);
     }
 }
 
@@ -108,16 +113,589 @@ llvm::StructType* LLVMCodeGenerator::getOrCreateStructType(const std::string &na
     return structType;
 }
 
+int LLVMCodeGenerator::getAttributeIndex(llvm::StructType* structType, const std::string& attrName)
+{
+    // Find the type name from the struct
+    std::string typeName = "";
+    for (const auto& typeEntry : types_) {
+        if (typeEntry.second == structType) {
+            typeName = typeEntry.first;
+            break;
+        }
+    }
+    
+    if (typeName.empty()) {
+        std::cerr << "[LLVM CodeGen] Error: Could not find type name for struct" << std::endl;
+        return -1;
+    }
+    
+    // Look up attribute index
+    auto typeIt = type_attributes_.find(typeName);
+    if (typeIt == type_attributes_.end()) {
+        std::cerr << "[LLVM CodeGen] Error: No attribute metadata for type " << typeName << std::endl;
+        return -1;
+    }
+    
+    auto attrIt = typeIt->second.find(attrName);
+    if (attrIt == typeIt->second.end()) {
+        std::cerr << "[LLVM CodeGen] Error: Attribute " << attrName << " not found in type " << typeName << std::endl;
+        return -1;
+    }
+    
+    return attrIt->second;
+}
+
+void LLVMCodeGenerator::storeTypeMetadata(const std::string& typeName, const std::vector<std::string>& attrNames)
+{
+    std::unordered_map<std::string, int> attributes;
+    
+    // Check if this type has inheritance (if it has a base pointer field)
+    llvm::StructType* structType = types_[typeName];
+    int startIndex = 0;
+    
+    // If the struct has fields and the first field looks like a base pointer, skip it
+    if (structType && structType->getNumElements() > 0) {
+        llvm::Type* firstField = structType->getElementType(0);
+        if (firstField->isPointerTy() && attrNames.size() < structType->getNumElements()) {
+            startIndex = 1; // Skip base pointer
+        }
+    }
+    
+    int index = startIndex;
+    for (const auto& attrName : attrNames) {
+        attributes[attrName] = index;
+        index++;
+        std::cout << "[LLVM CodeGen] Stored attribute " << attrName << " at index " << (index-1) << " for type " << typeName << std::endl;
+    }
+    
+    type_attributes_[typeName] = attributes;
+}
+
+std::string LLVMCodeGenerator::getObjectTypeName(llvm::Value* objectPtr)
+{
+    if (!objectPtr || !objectPtr->getType()->isPointerTy()) {
+        return "";
+    }
+    
+    // In LLVM 19 with opaque pointers, we can't directly get the element type
+    // We need a different approach - use metadata or track types differently
+    
+    // For now, we'll use a simple heuristic based on the instruction that created this value
+    if (auto callInst = llvm::dyn_cast<llvm::CallInst>(objectPtr)) {
+        llvm::Function* calledFunc = callInst->getCalledFunction();
+        if (calledFunc) {
+            std::string funcName = calledFunc->getName().str();
+            // If it's a constructor call like "Point_constructor", extract "Point"
+            if (funcName.length() > 12 && funcName.substr(funcName.length() - 12) == "_constructor") {
+                return funcName.substr(0, funcName.length() - 12);
+            }
+        }
+    }
+    
+    // If we can't determine the type, we'll need to use dynamic type information
+    // For now, return empty string to indicate unknown type
+    std::cerr << "[LLVM CodeGen] Warning: Could not determine object type name for value" << std::endl;
+    return "";
+}
+
+void LLVMCodeGenerator::addBaseTypeFields(const std::string& baseTypeName, std::vector<llvm::Type*>& fieldTypes, std::vector<std::string>& attributeNames)
+{
+    if (baseTypeName == "Object") {
+        return; // Object has no fields beyond vtable
+    }
+    
+    // Get base type declaration
+    auto baseIt = type_declarations_.find(baseTypeName);
+    if (baseIt == type_declarations_.end()) {
+        std::cerr << "[LLVM CodeGen] Error: Base type " << baseTypeName << " not found in declarations" << std::endl;
+        return;
+    }
+    
+    TypeDecl* baseDecl = baseIt->second;
+    
+    // Recursively add fields from base's base type
+    if (baseDecl->baseType != "Object") {
+        addBaseTypeFields(baseDecl->baseType, fieldTypes, attributeNames);
+    }
+    
+    // Add base type's own attributes
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    
+    for (const auto& attr : baseDecl->attributes) {
+        fieldTypes.push_back(boxedPtrTy);
+        attributeNames.push_back(attr->name);
+        std::cout << "[LLVM CodeGen] Added inherited field: " << attr->name << " from " << baseTypeName << std::endl;
+    }
+}
+
+std::vector<std::string> LLVMCodeGenerator::getInheritanceChain(const std::string& typeName)
+{
+    std::vector<std::string> chain;
+    std::string current = typeName;
+    
+    while (current != "Object") {
+        chain.push_back(current);
+        
+        auto it = type_declarations_.find(current);
+        if (it == type_declarations_.end()) {
+            break;
+        }
+        
+        current = it->second->baseType;
+    }
+    
+    return chain;
+}
+
+std::vector<std::string> LLVMCodeGenerator::collectAllMethods(TypeDecl* typeDecl)
+{
+    std::vector<std::string> allMethods;
+    std::set<std::string> methodNames; // Para evitar duplicados
+    
+    // Collect methods from inheritance chain (bottom-up)
+    std::vector<std::string> chain = getInheritanceChain(typeDecl->name);
+    
+    // Reverse to go from base to derived
+    std::reverse(chain.begin(), chain.end());
+    
+    for (const std::string& typeName : chain) {
+        auto it = type_declarations_.find(typeName);
+        if (it != type_declarations_.end()) {
+            for (const auto& method : it->second->methods) {
+                if (methodNames.find(method->name) == methodNames.end()) {
+                    allMethods.push_back(method->name);
+                    methodNames.insert(method->name);
+                } else {
+                    // Method override - replace in the same position
+                    auto pos = std::find(allMethods.begin(), allMethods.end(), method->name);
+                    if (pos != allMethods.end()) {
+                        // Keep the same position for proper vtable layout
+                        std::cout << "[LLVM CodeGen] Method " << method->name << " overridden in " << typeName << std::endl;
+                    }
+                }
+            }
+        }
+    }
+    
+    return allMethods;
+}
+
+void LLVMCodeGenerator::generateVTable(TypeDecl* typeDecl)
+{
+    std::cout << "[LLVM CodeGen] Generating vtable for type: " << typeDecl->name << std::endl;
+    
+    // Collect all methods for this type (including inherited)
+    std::vector<std::string> allMethods = collectAllMethods(typeDecl);
+    
+    // Store method list for this type
+    type_methods_[typeDecl->name] = allMethods;
+    
+    // Create vtable type
+    std::vector<llvm::Type*> methodPtrTypes;
+    for (const std::string& methodName : allMethods) {
+        // All methods return BoxedValue* and take (self, ...params) as BoxedValue*
+        std::vector<llvm::Type*> params = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)}; // self
+        // Add actual method parameters (simplified for now)
+        llvm::FunctionType* methodType = llvm::FunctionType::get(
+            llvm::PointerType::get(getBoxedValueType(), 0), // return BoxedValue*
+            params, 
+            true // variadic for simplicity
+        );
+        methodPtrTypes.push_back(llvm::PointerType::get(methodType, 0));
+    }
+    
+    if (methodPtrTypes.empty()) {
+        // No methods, create empty vtable
+        methodPtrTypes.push_back(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+    }
+    
+    llvm::ArrayType* vtableType = llvm::ArrayType::get(
+        llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
+        methodPtrTypes.size()
+    );
+    
+    // Create vtable initializer
+    std::vector<llvm::Constant*> methodPointers;
+    for (const std::string& methodName : allMethods) {
+        std::string functionName = typeDecl->name + "_" + methodName;
+        llvm::Function* methodFunc = module_->getFunction(functionName);
+        
+        if (methodFunc) {
+            llvm::Constant* funcPtr = llvm::ConstantExpr::getBitCast(
+                methodFunc, 
+                llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)
+            );
+            methodPointers.push_back(funcPtr);
+        } else {
+            // Method not found, use null pointer
+            methodPointers.push_back(llvm::ConstantPointerNull::get(
+                llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)
+            ));
+            std::cerr << "[LLVM CodeGen] Warning: Method function " << functionName << " not found for vtable" << std::endl;
+        }
+    }
+    
+    if (methodPointers.empty()) {
+        methodPointers.push_back(llvm::ConstantPointerNull::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)
+        ));
+    }
+    
+    llvm::Constant* vtableInit = llvm::ConstantArray::get(vtableType, methodPointers);
+    
+    // Create global vtable
+    std::string vtableName = typeDecl->name + "_vtable";
+    llvm::GlobalVariable* vtable = new llvm::GlobalVariable(
+        *module_,
+        vtableType,
+        true,  // isConstant
+        llvm::GlobalValue::ExternalLinkage,
+        vtableInit,
+        vtableName
+    );
+    
+    vtables_[typeDecl->name] = vtable;
+    
+    std::cout << "[LLVM CodeGen] Created vtable " << vtableName << " with " << allMethods.size() << " methods" << std::endl;
+}
+
+llvm::GlobalVariable* LLVMCodeGenerator::getOrCreateVTable(const std::string& typeName)
+{
+    auto it = vtables_.find(typeName);
+    if (it != vtables_.end()) {
+        return it->second;
+    }
+    
+    std::cerr << "[LLVM CodeGen] Error: VTable for type " << typeName << " not found" << std::endl;
+    return nullptr;
+}
+
 void LLVMCodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
 {
     std::cout << "[LLVM CodeGen] Generating constructor function for type: " << typeDecl->name << std::endl;
-    // Simplified implementation for now
+    
+    // Get the struct type
+    llvm::StructType* structType = getOrCreateStructType(typeDecl->name);
+    
+    // Create constructor function signature - all parameters are BoxedValue*
+    std::vector<llvm::Type*> paramTypes;
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    
+    for (size_t i = 0; i < typeDecl->paramTypes.size(); i++) {
+        // All constructor parameters for user-defined types are BoxedValue*
+        paramTypes.push_back(boxedPtrTy);
+    }
+    
+    llvm::FunctionType* constructorType = llvm::FunctionType::get(
+        llvm::PointerType::get(structType, 0), 
+        paramTypes, 
+        false
+    );
+    
+    std::string constructorName = typeDecl->name + "_constructor";
+    llvm::Function* constructor = llvm::Function::Create(
+        constructorType,
+        llvm::Function::ExternalLinkage,
+        constructorName,
+        module_.get()
+    );
+    
+    // Save current context
+    llvm::Function* savedFunction = current_function_;
+    llvm::BasicBlock* savedBlock = current_block_;
+    
+    // Set up constructor function
+    current_function_ = constructor;
+    current_block_ = llvm::BasicBlock::Create(*context_, "entry", constructor);
+    builder_->SetInsertPoint(current_block_);
+    
+    // Enter new scope for constructor
+    enterScope();
+    
+    // Add constructor parameters to scope
+    size_t paramIndex = 0;
+    for (auto &arg : constructor->args()) {
+        if (paramIndex < typeDecl->params.size()) {
+            std::string paramName = typeDecl->params[paramIndex];
+            llvm::AllocaInst* alloca = builder_->CreateAlloca(arg.getType(), nullptr, paramName);
+            builder_->CreateStore(&arg, alloca);
+            current_scope_->variables[paramName] = alloca;
+            current_scope_->variable_types[paramName] = arg.getType();
+            paramIndex++;
+        }
+    }
+    
+    // Allocate memory for the new instance
+    llvm::Value* instanceSize = llvm::ConstantExpr::getSizeOf(structType);
+    llvm::Function* mallocFunc = module_->getFunction("malloc");
+    if (!mallocFunc) {
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
+            {llvm::Type::getInt64Ty(*context_)}, 
+            false
+        );
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    }
+    
+    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {instanceSize});
+    llvm::Value* instance = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
+    
+    // Initialize vtable pointer (first field)
+    llvm::GlobalVariable* vtable = getOrCreateVTable(typeDecl->name);
+    if (vtable) {
+        llvm::Value* vtablePtr = builder_->CreateStructGEP(structType, instance, 0);
+        llvm::Value* vtableCast = builder_->CreateBitCast(vtable, llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+        builder_->CreateStore(vtableCast, vtablePtr);
+        std::cout << "[LLVM CodeGen] Initialized vtable for " << typeDecl->name << std::endl;
+    }
+    
+    // Initialize attributes (start from index 1, vtable is at index 0)
+    int fieldIndex = 1;
+    
+    // Initialize inherited attributes with default values
+    std::vector<std::string> inheritanceChain = getInheritanceChain(typeDecl->name);
+    // Reverse to go from base to derived (excluding current type)
+    std::reverse(inheritanceChain.begin(), inheritanceChain.end());
+    inheritanceChain.pop_back(); // Remove current type
+    
+    for (const std::string& ancestorType : inheritanceChain) {
+        auto ancestorIt = type_declarations_.find(ancestorType);
+        if (ancestorIt != type_declarations_.end()) {
+            for (const auto& inheritedAttr : ancestorIt->second->attributes) {
+                std::cout << "[LLVM CodeGen] Initializing inherited attribute: " << inheritedAttr->name << " from " << ancestorType << std::endl;
+                
+                // Generate default value for inherited attribute
+                inheritedAttr->initializer->accept(this);
+                llvm::Value* initValue = current_value_;
+                
+                // Get field pointer
+                llvm::Value* fieldPtr = builder_->CreateStructGEP(structType, instance, fieldIndex);
+                
+                // Convert to BoxedValue* if needed
+                llvm::Value* boxedValue = initValue;
+                llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+                if (initValue->getType() != boxedPtrTy) {
+                    llvm::Type* valueType = initValue->getType();
+                    if (valueType->isDoubleTy()) {
+                        boxedValue = createBoxedFromDouble(initValue);
+                    } else if (valueType->isIntegerTy(1)) {
+                        boxedValue = createBoxedFromBool(initValue);
+                    } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+                        boxedValue = createBoxedFromString(initValue);
+                    } else {
+                        boxedValue = builder_->CreateBitCast(initValue, boxedPtrTy);
+                    }
+                }
+                
+                builder_->CreateStore(boxedValue, fieldPtr);
+                fieldIndex++;
+            }
+        }
+    }
+    
+    // Initialize own attributes - all are BoxedValue*
+    for (const auto& attr : typeDecl->attributes) {
+        std::cout << "[LLVM CodeGen] Initializing attribute: " << attr->name << std::endl;
+        
+        // Generate code for attribute initializer
+        attr->initializer->accept(this);
+        llvm::Value* initValue = current_value_;
+        
+        // Get field pointer
+        llvm::Value* fieldPtr = builder_->CreateStructGEP(structType, instance, fieldIndex);
+        
+        // Convert initValue to BoxedValue* if needed
+        llvm::Value* boxedValue = initValue;
+        llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+        if (initValue->getType() != boxedPtrTy) {
+            // Box the value based on its type
+            llvm::Type* valueType = initValue->getType();
+            if (valueType->isDoubleTy()) {
+                boxedValue = createBoxedFromDouble(initValue);
+            } else if (valueType->isIntegerTy(1)) {
+                boxedValue = createBoxedFromBool(initValue);
+            } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+                // Assume it's a string (i8*)
+                boxedValue = createBoxedFromString(initValue);
+            } else if (initValue->getType() == boxedPtrTy) {
+                // Already a BoxedValue*
+                boxedValue = initValue;
+            } else {
+                std::cerr << "[LLVM CodeGen] Warning: Unknown type for attribute initializer, using as-is" << std::endl;
+                boxedValue = builder_->CreateBitCast(initValue, boxedPtrTy);
+            }
+        }
+        
+        // Store the boxed value
+        builder_->CreateStore(boxedValue, fieldPtr);
+        fieldIndex++;
+    }
+    
+    // Return the initialized instance
+    builder_->CreateRet(instance);
+    
+    // Exit scope and restore context
+    exitScope();
+    current_function_ = savedFunction;
+    current_block_ = savedBlock;
+    if (current_function_ && current_block_) {
+        builder_->SetInsertPoint(current_block_);
+    }
+    
+    std::cout << "[LLVM CodeGen] Constructor function " << constructorName << " generated successfully" << std::endl;
 }
 
 void LLVMCodeGenerator::generateMethodFunction(MethodDecl *methodDecl)
 {
     std::cout << "[LLVM CodeGen] Generating method function: " << methodDecl->name << std::endl;
-    // Simplified implementation for now
+    
+    // Create method function signature
+    std::vector<llvm::Type*> paramTypes;
+    
+    // First parameter is always 'self' (pointer to the instance)
+    llvm::StructType* instanceType = getOrCreateStructType(current_type_);
+    paramTypes.push_back(llvm::PointerType::get(instanceType, 0));
+    
+    // Add method parameters - BoxedValue* for unknown types
+    llvm::StructType* boxedTy = getBoxedValueType();
+    llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+    
+    for (const auto& paramType : methodDecl->paramTypes) {
+        llvm::Type* llvmType = getLLVMType(*paramType);
+        // If the parameter type is unknown, use BoxedValue*
+        if (paramType->getKind() == TypeInfo::Kind::Unknown || 
+            paramType->getKind() == TypeInfo::Kind::Object) {
+            paramTypes.push_back(boxedPtrTy);
+        } else {
+            paramTypes.push_back(llvmType);
+        }
+    }
+    
+    // Get return type
+    llvm::Type* returnType = getLLVMType(*methodDecl->returnType);
+    
+    llvm::FunctionType* methodType = llvm::FunctionType::get(returnType, paramTypes, false);
+    
+    std::string methodName = current_type_ + "_" + methodDecl->name;
+    llvm::Function* method = llvm::Function::Create(
+        methodType,
+        llvm::Function::ExternalLinkage,
+        methodName,
+        module_.get()
+    );
+    
+    // Save current context
+    llvm::Function* savedFunction = current_function_;
+    llvm::BasicBlock* savedBlock = current_block_;
+    
+    // Set up method function
+    current_function_ = method;
+    current_block_ = llvm::BasicBlock::Create(*context_, "entry", method);
+    builder_->SetInsertPoint(current_block_);
+    
+    // Enter new scope for method
+    enterScope();
+    
+    // Add method parameters to scope
+    size_t argIndex = 0;
+    for (auto &arg : method->args()) {
+        if (argIndex == 0) {
+            // First argument is 'self'
+            llvm::AllocaInst* selfAlloca = builder_->CreateAlloca(arg.getType(), nullptr, "self");
+            builder_->CreateStore(&arg, selfAlloca);
+            current_scope_->variables["self"] = selfAlloca;
+            current_scope_->variable_types["self"] = arg.getType();
+        } else {
+            // Regular method parameters
+            size_t paramIndex = argIndex - 1;
+            if (paramIndex < methodDecl->params.size()) {
+                std::string paramName = methodDecl->params[paramIndex];
+                llvm::AllocaInst* alloca = builder_->CreateAlloca(arg.getType(), nullptr, paramName);
+                builder_->CreateStore(&arg, alloca);
+                current_scope_->variables[paramName] = alloca;
+                current_scope_->variable_types[paramName] = arg.getType();
+            }
+        }
+        argIndex++;
+    }
+    
+    // Generate method body
+    if (methodDecl->body) {
+        methodDecl->body->accept(this);
+        
+        // Add return statement if needed
+        if (returnType->isVoidTy()) {
+            builder_->CreateRetVoid();
+        } else if (current_value_) {
+            // Check if we need to convert the return value
+            llvm::Value* returnValue = current_value_;
+            if (returnValue->getType() != returnType) {
+                // Convert to appropriate type
+                if (returnType->isPointerTy()) {
+                    llvm::StructType* boxedTy = getBoxedValueType();
+                    llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
+                    
+                    if (returnType == boxedPtrTy && returnValue->getType() != boxedPtrTy) {
+                        // Box the return value
+                        llvm::Type* valueType = returnValue->getType();
+                        if (valueType->isDoubleTy()) {
+                            returnValue = createBoxedFromDouble(returnValue);
+                        } else if (valueType->isIntegerTy(1)) {
+                            returnValue = createBoxedFromBool(returnValue);
+                        } else if (valueType->isPointerTy()) {
+                            returnValue = createBoxedFromString(returnValue);
+                        }
+                    }
+                }
+                
+                // Cast if needed
+                if (returnValue->getType() != returnType && returnType->isPointerTy() && returnValue->getType()->isPointerTy()) {
+                    returnValue = builder_->CreateBitCast(returnValue, returnType);
+                }
+            }
+            builder_->CreateRet(returnValue);
+        } else {
+            // Default return value
+            if (returnType->isIntegerTy()) {
+                builder_->CreateRet(llvm::ConstantInt::get(returnType, 0));
+            } else if (returnType->isDoubleTy()) {
+                builder_->CreateRet(llvm::ConstantFP::get(returnType, 0.0));
+            } else if (returnType->isPointerTy()) {
+                llvm::StructType* boxedTy = getBoxedValueType();
+                llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
+                
+                if (returnType == boxedPtrTy) {
+                    // Return default boxed value (0.0)
+                    llvm::Value* defaultValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
+                    llvm::Value* boxedDefault = createBoxedFromDouble(defaultValue);
+                    builder_->CreateRet(boxedDefault);
+                } else {
+                    builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
+                }
+            } else {
+                builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
+            }
+        }
+    } else {
+        // No body, create default return
+        if (returnType->isVoidTy()) {
+            builder_->CreateRetVoid();
+        } else {
+            builder_->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0));
+        }
+    }
+    
+    // Exit scope and restore context
+    exitScope();
+    current_function_ = savedFunction;
+    current_block_ = savedBlock;
+    if (current_function_ && current_block_) {
+        builder_->SetInsertPoint(current_block_);
+    }
+    
+    std::cout << "[LLVM CodeGen] Method function " << methodName << " generated successfully" << std::endl;
 }
 
 void LLVMCodeGenerator::registerBuiltinFunctions()
@@ -125,36 +703,36 @@ void LLVMCodeGenerator::registerBuiltinFunctions()
     // Register printf
     std::vector<llvm::Type*> printfArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)};
     llvm::FunctionType* printfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), printfArgs, true);
-    llvm::Function* printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", module_.get());
+    (void)llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", module_.get());
 
     // Register malloc
     llvm::FunctionType* mallocType = llvm::FunctionType::get(
         llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
         {llvm::Type::getInt64Ty(*context_)}, false);
-    llvm::Function* mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    (void)llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
     
     // Register pow (math library)
     std::vector<llvm::Type*> powArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
     llvm::FunctionType* powType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), powArgs, false);
-    llvm::Function* powFunc = llvm::Function::Create(powType, llvm::Function::ExternalLinkage, "pow", module_.get());
+    (void)llvm::Function::Create(powType, llvm::Function::ExternalLinkage, "pow", module_.get());
     
     // Register sprintf (for string formatting)
     std::vector<llvm::Type*> sprintfArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
                                            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)};
     llvm::FunctionType* sprintfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), sprintfArgs, true);
-    llvm::Function* sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", module_.get());
+    (void)llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", module_.get());
     
     // Register strcpy (for string copying)
     std::vector<llvm::Type*> strcpyArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
                                           llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)};
     llvm::FunctionType* strcpyType = llvm::FunctionType::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), strcpyArgs, false);
-    llvm::Function* strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", module_.get());
+    (void)llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", module_.get());
     
     // Register strcat (for string concatenation)
     std::vector<llvm::Type*> strcatArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
                                           llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)};
     llvm::FunctionType* strcatType = llvm::FunctionType::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), strcatArgs, false);
-    llvm::Function* strcatFunc = llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", module_.get());
+    (void)llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", module_.get());
     
     // Create BoxedValue helper functions
     std::cout << "[LLVM CodeGen] Creating BoxedValue helper functions" << std::endl;
@@ -226,25 +804,26 @@ llvm::StructType* LLVMCodeGenerator::getBoxedValueType() {
     return boxedTy;
 }
 
-llvm::Value* LLVMCodeGenerator::createBoxedFromInt(llvm::Value* intVal) {
-    auto boxedTy = getBoxedValueType();
-    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-    llvm::Value* boxed = entryBuilder.CreateAlloca(boxedTy, nullptr, "boxed_int");
-    // type_tag = 1
-    builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), builder_->CreateStructGEP(boxedTy, boxed, 0));
-    // Guardar el int en los primeros 4 bytes de data
-    llvm::Value* dataPtr = builder_->CreateStructGEP(boxedTy, boxed, 1);
-    dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getInt32Ty(*context_), 0));
-    builder_->CreateStore(intVal, dataPtr);
-    return boxed;
-}
+// Removed createBoxedFromInt - all numbers are now double
 
 llvm::Value* LLVMCodeGenerator::createBoxedFromDouble(llvm::Value* doubleVal) {
     auto boxedTy = getBoxedValueType();
-    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-    llvm::Value* boxed = entryBuilder.CreateAlloca(boxedTy, nullptr, "boxed_double");
-    // type_tag = 2
-    builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), builder_->CreateStructGEP(boxedTy, boxed, 0));
+    
+    // Allocate memory on heap using malloc
+    llvm::Value* size = llvm::ConstantExpr::getSizeOf(boxedTy);
+    llvm::Function* mallocFunc = module_->getFunction("malloc");
+    if (!mallocFunc) {
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
+            {llvm::Type::getInt64Ty(*context_)}, false);
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    }
+    
+    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
+    llvm::Value* boxed = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(boxedTy, 0), "boxed_double");
+    
+    // type_tag = 1 (numbers are now always double)
+    builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), builder_->CreateStructGEP(boxedTy, boxed, 0));
     // Guardar el double en los primeros 8 bytes de data
     llvm::Value* dataPtr = builder_->CreateStructGEP(boxedTy, boxed, 1);
     dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getDoubleTy(*context_), 0));
@@ -254,8 +833,20 @@ llvm::Value* LLVMCodeGenerator::createBoxedFromDouble(llvm::Value* doubleVal) {
 
 llvm::Value* LLVMCodeGenerator::createBoxedFromBool(llvm::Value* boolVal) {
     auto boxedTy = getBoxedValueType();
-    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-    llvm::Value* boxed = entryBuilder.CreateAlloca(boxedTy, nullptr, "boxed_bool");
+    
+    // Allocate memory on heap using malloc
+    llvm::Value* size = llvm::ConstantExpr::getSizeOf(boxedTy);
+    llvm::Function* mallocFunc = module_->getFunction("malloc");
+    if (!mallocFunc) {
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
+            {llvm::Type::getInt64Ty(*context_)}, false);
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    }
+    
+    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
+    llvm::Value* boxed = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(boxedTy, 0), "boxed_bool");
+    
     // type_tag = 0
     builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), builder_->CreateStructGEP(boxedTy, boxed, 0));
     // Guardar el bool en los primeros 1 bytes de data
@@ -267,10 +858,22 @@ llvm::Value* LLVMCodeGenerator::createBoxedFromBool(llvm::Value* boolVal) {
 
 llvm::Value* LLVMCodeGenerator::createBoxedFromString(llvm::Value* strVal) {
     auto boxedTy = getBoxedValueType();
-    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-    llvm::Value* boxed = entryBuilder.CreateAlloca(boxedTy, nullptr, "boxed_str");
-    // type_tag = 3
-    builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3), builder_->CreateStructGEP(boxedTy, boxed, 0));
+    
+    // Allocate memory on heap using malloc
+    llvm::Value* size = llvm::ConstantExpr::getSizeOf(boxedTy);
+    llvm::Function* mallocFunc = module_->getFunction("malloc");
+    if (!mallocFunc) {
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
+            {llvm::Type::getInt64Ty(*context_)}, false);
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    }
+    
+    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
+    llvm::Value* boxed = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(boxedTy, 0), "boxed_str");
+    
+    // type_tag = 2 (simplified: 0=bool, 1=double, 2=string)
+    builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), builder_->CreateStructGEP(boxedTy, boxed, 0));
     // Guardar el puntero en los primeros 8 bytes de data
     llvm::Value* dataPtr = builder_->CreateStructGEP(boxedTy, boxed, 1);
     dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
@@ -282,7 +885,7 @@ llvm::Value* LLVMCodeGenerator::extractFromBoxed(llvm::Value* boxed, int type_ta
     auto boxedTy = getBoxedValueType();
     // Leer el type_tag
     llvm::Value* tagPtr = builder_->CreateStructGEP(boxedTy, boxed, 0);
-    llvm::Value* tag = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), tagPtr);
+    (void)builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), tagPtr);
     // Comparar con el esperado (eliminado cmp porque no se usa)
     // Extraer el valor según el tipo
     llvm::Value* dataPtr = builder_->CreateStructGEP(boxedTy, boxed, 1);
@@ -290,13 +893,10 @@ llvm::Value* LLVMCodeGenerator::extractFromBoxed(llvm::Value* boxed, int type_ta
         case 0: // bool
             dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getInt1Ty(*context_), 0));
             return builder_->CreateLoad(llvm::Type::getInt1Ty(*context_), dataPtr);
-        case 1: // int
-            dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getInt32Ty(*context_), 0));
-            return builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), dataPtr);
-        case 2: // double
+        case 1: // double
             dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getDoubleTy(*context_), 0));
             return builder_->CreateLoad(llvm::Type::getDoubleTy(*context_), dataPtr);
-        case 3: // string
+        case 2: // string
             dataPtr = builder_->CreatePointerCast(dataPtr, llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
             return builder_->CreateLoad(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), dataPtr);
         default:
@@ -533,18 +1133,16 @@ void LLVMCodeGenerator::createPrintBoxedFunction()
     llvm::Value* typeTag = printBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), typeTagPtr);
     
     // Create basic blocks for different types
-    llvm::BasicBlock* intBlock = llvm::BasicBlock::Create(*context_, "print_int", printBoxedFunc);
     llvm::BasicBlock* doubleBlock = llvm::BasicBlock::Create(*context_, "print_double", printBoxedFunc);
     llvm::BasicBlock* stringBlock = llvm::BasicBlock::Create(*context_, "print_string", printBoxedFunc);
     llvm::BasicBlock* boolBlock = llvm::BasicBlock::Create(*context_, "print_bool", printBoxedFunc);
     llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge", printBoxedFunc);
     
-    // Switch on type tag (similar to script.hulk.ll)
-    llvm::SwitchInst* switchInst = printBuilder.CreateSwitch(typeTag, intBlock, 4);
+    // Switch on type tag (simplified: 0=bool, 1=double, 2=string)
+    llvm::SwitchInst* switchInst = printBuilder.CreateSwitch(typeTag, doubleBlock, 3);
     switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), boolBlock);   // bool
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), intBlock);    // int
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), doubleBlock); // double
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3), stringBlock); // string
+    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), doubleBlock); // double
+    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), stringBlock); // string
     
     // Print boolean
     printBuilder.SetInsertPoint(boolBlock);
@@ -572,23 +1170,7 @@ void LLVMCodeGenerator::createPrintBoxedFunction()
     printBuilder.CreateCall(printfFunc, boolArgs);
     printBuilder.CreateBr(mergeBlock);
     
-    // Print int
-    printBuilder.SetInsertPoint(intBlock);
-    llvm::Value* intDataPtr = printBuilder.CreateStructGEP(boxedTy, boxedValue, 1);
-    intDataPtr = printBuilder.CreatePointerCast(intDataPtr, llvm::PointerType::get(llvm::Type::getInt32Ty(*context_), 0));
-    llvm::Value* intValue = printBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), intDataPtr);
-    
-    llvm::Value* intFormatStr = registerStringConstant("%d\n");
-    auto intFormatPtr = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        llvm::cast<llvm::GlobalVariable>(intFormatStr)->getValueType(), 
-        llvm::cast<llvm::GlobalVariable>(intFormatStr), 
-        llvm::ArrayRef<llvm::Constant*>{zero, zero}
-    );
-    std::vector<llvm::Value*> intArgs = {intFormatPtr, intValue};
-    printBuilder.CreateCall(printfFunc, intArgs);
-    printBuilder.CreateBr(mergeBlock);
-    
-    // Print double
+    // Print double (now handles all numeric values)
     printBuilder.SetInsertPoint(doubleBlock);
     llvm::Value* doubleDataPtr = printBuilder.CreateStructGEP(boxedTy, boxedValue, 1);
     doubleDataPtr = printBuilder.CreatePointerCast(doubleDataPtr, llvm::PointerType::get(llvm::Type::getDoubleTy(*context_), 0));
@@ -648,16 +1230,14 @@ void LLVMCodeGenerator::createUnboxFunction()
     
     // Create basic blocks for different types
     llvm::BasicBlock* boolBlock = llvm::BasicBlock::Create(*context_, "unbox_bool", unboxFunc);
-    llvm::BasicBlock* intBlock = llvm::BasicBlock::Create(*context_, "unbox_int", unboxFunc);
     llvm::BasicBlock* doubleBlock = llvm::BasicBlock::Create(*context_, "unbox_double", unboxFunc);
     llvm::BasicBlock* stringBlock = llvm::BasicBlock::Create(*context_, "unbox_string", unboxFunc);
     
-    // Switch on type tag
-    llvm::SwitchInst* switchInst = unboxBuilder.CreateSwitch(typeTag, boolBlock, 4);
+    // Switch on type tag (simplified: 0=bool, 1=double, 2=string)
+    llvm::SwitchInst* switchInst = unboxBuilder.CreateSwitch(typeTag, boolBlock, 3);
     switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), boolBlock);   // bool
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), intBlock);    // int
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), doubleBlock); // double
-    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3), stringBlock); // string
+    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), doubleBlock); // double
+    switchInst->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), stringBlock); // string
     
     // Unbox boolean
     unboxBuilder.SetInsertPoint(boolBlock);
@@ -667,15 +1247,7 @@ void LLVMCodeGenerator::createUnboxFunction()
     llvm::Value* boolResult = unboxBuilder.CreateIntToPtr(boolValue, llvm::Type::getInt8Ty(*context_)->getPointerTo());
     unboxBuilder.CreateRet(boolResult);
     
-    // Unbox int
-    unboxBuilder.SetInsertPoint(intBlock);
-    llvm::Value* intDataPtr = unboxBuilder.CreateStructGEP(boxedTy, boxedValue, 1);
-    intDataPtr = unboxBuilder.CreatePointerCast(intDataPtr, llvm::PointerType::get(llvm::Type::getInt32Ty(*context_), 0));
-    llvm::Value* intValue = unboxBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), intDataPtr);
-    llvm::Value* intResult = unboxBuilder.CreateIntToPtr(intValue, llvm::Type::getInt8Ty(*context_)->getPointerTo());
-    unboxBuilder.CreateRet(intResult);
-    
-    // Unbox double
+    // Unbox double (now handles all numeric values)
     unboxBuilder.SetInsertPoint(doubleBlock);
     llvm::Value* doubleDataPtr = unboxBuilder.CreateStructGEP(boxedTy, boxedValue, 1);
     doubleDataPtr = unboxBuilder.CreatePointerCast(doubleDataPtr, llvm::PointerType::get(llvm::Type::getDoubleTy(*context_), 0));
@@ -701,7 +1273,7 @@ void LLVMCodeGenerator::createTypeCheckFunctions()
     std::vector<llvm::Type*> funcArgs = {llvm::PointerType::get(boxedTy, 0)};
     llvm::FunctionType* funcType = llvm::FunctionType::get(llvm::Type::getInt1Ty(*context_), funcArgs, false);
     
-    // isInt
+    // isInt - now checks for double (tag 1)
     llvm::Function* isIntFunc = llvm::Function::Create(funcType, llvm::Function::InternalLinkage, "isInt", module_.get());
     llvm::BasicBlock* isIntEntry = llvm::BasicBlock::Create(*context_, "entry", isIntFunc);
     llvm::IRBuilder<> isIntBuilder(isIntEntry);
@@ -711,14 +1283,14 @@ void LLVMCodeGenerator::createTypeCheckFunctions()
     llvm::Value* cmp = isIntBuilder.CreateICmpEQ(tag, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
     isIntBuilder.CreateRet(cmp);
     
-    // isDouble
+    // isDouble - now also checks for tag 1 (same as isInt since all numbers are double)
     llvm::Function* isDoubleFunc = llvm::Function::Create(funcType, llvm::Function::InternalLinkage, "isDouble", module_.get());
     llvm::BasicBlock* isDoubleEntry = llvm::BasicBlock::Create(*context_, "entry", isDoubleFunc);
     llvm::IRBuilder<> isDoubleBuilder(isDoubleEntry);
     boxedValue = isDoubleFunc->getArg(0);
     tagPtr = isDoubleBuilder.CreateStructGEP(boxedTy, boxedValue, 0);
     tag = isDoubleBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), tagPtr);
-    cmp = isDoubleBuilder.CreateICmpEQ(tag, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2));
+    cmp = isDoubleBuilder.CreateICmpEQ(tag, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
     isDoubleBuilder.CreateRet(cmp);
     
     // isBool
@@ -738,7 +1310,7 @@ void LLVMCodeGenerator::createTypeCheckFunctions()
     boxedValue = isStringFunc->getArg(0);
     tagPtr = isStringBuilder.CreateStructGEP(boxedTy, boxedValue, 0);
     tag = isStringBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), tagPtr);
-    cmp = isStringBuilder.CreateICmpEQ(tag, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3));
+    cmp = isStringBuilder.CreateICmpEQ(tag, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2));
     isStringBuilder.CreateRet(cmp);
 }
 
@@ -749,7 +1321,7 @@ void LLVMCodeGenerator::createTypeSpecificUnboxFunctions()
     llvm::StructType* boxedTy = getBoxedValueType();
     std::vector<llvm::Type*> funcArgs = {llvm::PointerType::get(boxedTy, 0)};
     
-    // Create unboxInt function
+    // Create unboxInt function (now redirected to handle double since tag 1 is double)
     llvm::FunctionType* unboxIntType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), funcArgs, false);
     llvm::Function* unboxIntFunc = llvm::Function::Create(unboxIntType, llvm::Function::InternalLinkage, "unboxInt", module_.get());
     llvm::BasicBlock* unboxIntEntry = llvm::BasicBlock::Create(*context_, "entry", unboxIntFunc);
@@ -757,9 +1329,10 @@ void LLVMCodeGenerator::createTypeSpecificUnboxFunctions()
     
     llvm::Value* boxedValue = unboxIntFunc->getArg(0);
     llvm::Value* intDataPtr = unboxIntBuilder.CreateStructGEP(boxedTy, boxedValue, 1);
-    intDataPtr = unboxIntBuilder.CreatePointerCast(intDataPtr, llvm::PointerType::get(llvm::Type::getInt32Ty(*context_), 0));
-    llvm::Value* intValue = unboxIntBuilder.CreateLoad(llvm::Type::getInt32Ty(*context_), intDataPtr);
-    unboxIntBuilder.CreateRet(intValue);
+    intDataPtr = unboxIntBuilder.CreatePointerCast(intDataPtr, llvm::PointerType::get(llvm::Type::getDoubleTy(*context_), 0));
+    llvm::Value* intValue = unboxIntBuilder.CreateLoad(llvm::Type::getDoubleTy(*context_), intDataPtr);
+    llvm::Value* doubleAsInt = unboxIntBuilder.CreateFPToSI(intValue, llvm::Type::getInt32Ty(*context_));
+    unboxIntBuilder.CreateRet(doubleAsInt);
     
     // Create unboxDouble function
     llvm::FunctionType* unboxDoubleType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), funcArgs, false);
@@ -989,122 +1562,36 @@ llvm::Value* LLVMCodeGenerator::convertValue(llvm::Value* value, llvm::Type* tar
 llvm::Value* LLVMCodeGenerator::boxed_add(llvm::Value* left, llvm::Value* right) {
     std::cout << "[LLVM CodeGen] boxed_add(BoxedValue*, BoxedValue*)" << std::endl;
     
-    // Check types of both operands and extract values
-    llvm::Value* leftIsInt = isInt(left);
-    llvm::Value* leftIsDouble = isDouble(left);
-    llvm::Value* rightIsInt = isInt(right);
-    llvm::Value* rightIsDouble = isDouble(right);
-    
-    // Create basic blocks for different type combinations
-    llvm::BasicBlock* intIntBlock = llvm::BasicBlock::Create(*context_, "int_int", current_function_);
-    llvm::BasicBlock* intDoubleBlock = llvm::BasicBlock::Create(*context_, "int_double", current_function_);
-    llvm::BasicBlock* doubleIntBlock = llvm::BasicBlock::Create(*context_, "double_int", current_function_);
-    llvm::BasicBlock* doubleDoubleBlock = llvm::BasicBlock::Create(*context_, "double_double", current_function_);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge", current_function_);
-    
-    // Check left type first
-    llvm::BasicBlock* checkRightBlock = llvm::BasicBlock::Create(*context_, "check_right", current_function_);
-    builder_->CreateCondBr(leftIsInt, checkRightBlock, doubleDoubleBlock); // If left is not int, assume double
-    
-    // Check right type when left is int
-    builder_->SetInsertPoint(checkRightBlock);
-    builder_->CreateCondBr(rightIsInt, intIntBlock, intDoubleBlock);
-    
-    // int + int → int
-    builder_->SetInsertPoint(intIntBlock);
-    llvm::Value* leftIntVal = unboxInt(left);
-    llvm::Value* rightIntVal = unboxInt(right);
-    llvm::Value* intResult = builder_->CreateAdd(leftIntVal, rightIntVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // int + double → double
-    builder_->SetInsertPoint(intDoubleBlock);
-    leftIntVal = unboxInt(left);
-    llvm::Value* rightDoubleVal = unboxDouble(right);
-    llvm::Value* leftAsDouble = builder_->CreateSIToFP(leftIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* doubleResult1 = builder_->CreateFAdd(leftAsDouble, rightDoubleVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // double + double (also handles double + int case for simplicity)
-    builder_->SetInsertPoint(doubleDoubleBlock);
+    // Since all numbers are now double, just unbox both as double and add
     llvm::Value* leftDoubleVal = unboxDouble(left);
-    llvm::Value* rightVal = builder_->CreateSelect(rightIsInt, 
-        builder_->CreateSIToFP(unboxInt(right), llvm::Type::getDoubleTy(*context_)),
-        unboxDouble(right));
-    llvm::Value* doubleResult2 = builder_->CreateFAdd(leftDoubleVal, rightVal);
-    builder_->CreateBr(mergeBlock);
+    llvm::Value* rightDoubleVal = unboxDouble(right);
+    llvm::Value* result = builder_->CreateFAdd(leftDoubleVal, rightDoubleVal);
     
-    // Convert int result to double in the int block before branching
-    builder_->SetInsertPoint(intIntBlock->getTerminator());
-    llvm::Value* intResultAsDouble = builder_->CreateSIToFP(intResult, llvm::Type::getDoubleTy(*context_));
-    
-    // Merge results with PHI
-    builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 3, "add_result");
-    resultPhi->addIncoming(intResultAsDouble, intIntBlock);
-    resultPhi->addIncoming(doubleResult1, intDoubleBlock);
-    resultPhi->addIncoming(doubleResult2, doubleDoubleBlock);
-    
-    return resultPhi;
+    return result;
 }
 
 llvm::Value* LLVMCodeGenerator::boxed_add_native_left(llvm::Value* nativeVal, llvm::Value* boxed) {
     std::cout << "[LLVM CodeGen] boxed_add_native_left(native, BoxedValue*)" << std::endl;
     
     llvm::Type* nativeType = nativeVal->getType();
-    llvm::Value* boxedIsInt = isInt(boxed);
     
-    // Create blocks for different cases
-    llvm::BasicBlock* intCaseBlock = llvm::BasicBlock::Create(*context_, "int_case", current_function_);
-    llvm::BasicBlock* doubleCaseBlock = llvm::BasicBlock::Create(*context_, "double_case", current_function_);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge", current_function_);
-    
-    builder_->CreateCondBr(boxedIsInt, intCaseBlock, doubleCaseBlock);
-    
+    // Convert native value to double if needed
+    llvm::Value* nativeAsDouble;
     if (nativeType->isIntegerTy(32)) {
-        // Native int + BoxedValue
-        builder_->SetInsertPoint(intCaseBlock);
-        llvm::Value* boxedIntVal = unboxInt(boxed);
-        llvm::Value* intResult = builder_->CreateAdd(nativeVal, boxedIntVal);
-        builder_->CreateBr(mergeBlock);
-        
-        builder_->SetInsertPoint(doubleCaseBlock);
-        llvm::Value* boxedDoubleVal = unboxDouble(boxed);
-        llvm::Value* nativeAsDouble = builder_->CreateSIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
-        llvm::Value* doubleResult = builder_->CreateFAdd(nativeAsDouble, boxedDoubleVal);
-        builder_->CreateBr(mergeBlock);
-        
-        // Convert int result to double in the int block before branching
-        builder_->SetInsertPoint(intCaseBlock->getTerminator());
-        llvm::Value* intResultAsDouble = builder_->CreateSIToFP(intResult, llvm::Type::getDoubleTy(*context_));
-        
-        builder_->SetInsertPoint(mergeBlock);
-        llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 2, "add_result");
-        resultPhi->addIncoming(intResultAsDouble, intCaseBlock);
-        resultPhi->addIncoming(doubleResult, doubleCaseBlock);
-        return resultPhi;
+        nativeAsDouble = builder_->CreateSIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
     } else if (nativeType->isDoubleTy()) {
-        // Native double + BoxedValue → always double
-        builder_->SetInsertPoint(intCaseBlock);
-        llvm::Value* boxedIntVal = unboxInt(boxed);
-        llvm::Value* boxedAsDouble = builder_->CreateSIToFP(boxedIntVal, llvm::Type::getDoubleTy(*context_));
-        llvm::Value* doubleResult1 = builder_->CreateFAdd(nativeVal, boxedAsDouble);
-        builder_->CreateBr(mergeBlock);
-        
-        builder_->SetInsertPoint(doubleCaseBlock);
-        llvm::Value* boxedDoubleVal = unboxDouble(boxed);
-        llvm::Value* doubleResult2 = builder_->CreateFAdd(nativeVal, boxedDoubleVal);
-        builder_->CreateBr(mergeBlock);
-        
-        builder_->SetInsertPoint(mergeBlock);
-        llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 2, "add_result");
-        resultPhi->addIncoming(doubleResult1, intCaseBlock);
-        resultPhi->addIncoming(doubleResult2, doubleCaseBlock);
-        return resultPhi;
+        nativeAsDouble = nativeVal;
     } else {
-        // Fallback: treat as int
-        return boxed_add_native_left(builder_->CreatePtrToInt(nativeVal, llvm::Type::getInt32Ty(*context_)), boxed);
+        // Fallback: convert to int first, then to double
+        llvm::Value* nativeAsInt = builder_->CreatePtrToInt(nativeVal, llvm::Type::getInt32Ty(*context_));
+        nativeAsDouble = builder_->CreateSIToFP(nativeAsInt, llvm::Type::getDoubleTy(*context_));
     }
+    
+    // Since all numbers are now double, just unbox as double and add
+        llvm::Value* boxedDoubleVal = unboxDouble(boxed);
+    llvm::Value* result = builder_->CreateFAdd(nativeAsDouble, boxedDoubleVal);
+    
+    return result;
 }
 
 llvm::Value* LLVMCodeGenerator::boxed_add_native_right(llvm::Value* boxed, llvm::Value* nativeVal) {
@@ -1116,56 +1603,12 @@ llvm::Value* LLVMCodeGenerator::boxed_add_native_right(llvm::Value* boxed, llvm:
 llvm::Value* LLVMCodeGenerator::boxed_sub(llvm::Value* left, llvm::Value* right) {
     std::cout << "[LLVM CodeGen] boxed_sub(BoxedValue*, BoxedValue*)" << std::endl;
     
-    // Similar to boxed_add but with subtraction
-    llvm::Value* leftIsInt = isInt(left);
-    llvm::Value* rightIsInt = isInt(right);
-    
-    llvm::BasicBlock* intIntBlock = llvm::BasicBlock::Create(*context_, "int_int_sub", current_function_);
-    llvm::BasicBlock* intDoubleBlock = llvm::BasicBlock::Create(*context_, "int_double_sub", current_function_);
-    llvm::BasicBlock* doubleDoubleBlock = llvm::BasicBlock::Create(*context_, "double_double_sub", current_function_);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge_sub", current_function_);
-    
-    llvm::BasicBlock* checkRightBlock = llvm::BasicBlock::Create(*context_, "check_right_sub", current_function_);
-    builder_->CreateCondBr(leftIsInt, checkRightBlock, doubleDoubleBlock);
-    
-    builder_->SetInsertPoint(checkRightBlock);
-    builder_->CreateCondBr(rightIsInt, intIntBlock, intDoubleBlock);
-    
-    // int - int → int
-    builder_->SetInsertPoint(intIntBlock);
-    llvm::Value* leftIntVal = unboxInt(left);
-    llvm::Value* rightIntVal = unboxInt(right);
-    llvm::Value* intResult = builder_->CreateSub(leftIntVal, rightIntVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // int - double → double
-    builder_->SetInsertPoint(intDoubleBlock);
-    leftIntVal = unboxInt(left);
-    llvm::Value* rightDoubleVal = unboxDouble(right);
-    llvm::Value* leftAsDouble = builder_->CreateSIToFP(leftIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* doubleResult1 = builder_->CreateFSub(leftAsDouble, rightDoubleVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // double - ? → double
-    builder_->SetInsertPoint(doubleDoubleBlock);
+    // Since all numbers are now double, just unbox both as double and subtract
     llvm::Value* leftDoubleVal = unboxDouble(left);
-    llvm::Value* rightVal = builder_->CreateSelect(rightIsInt, 
-        builder_->CreateSIToFP(unboxInt(right), llvm::Type::getDoubleTy(*context_)),
-        unboxDouble(right));
-    llvm::Value* doubleResult2 = builder_->CreateFSub(leftDoubleVal, rightVal);
-    builder_->CreateBr(mergeBlock);
+    llvm::Value* rightDoubleVal = unboxDouble(right);
+    llvm::Value* result = builder_->CreateFSub(leftDoubleVal, rightDoubleVal);
     
-    // Convert int result to double in the int block before branching
-    builder_->SetInsertPoint(intIntBlock->getTerminator());
-    llvm::Value* intResultAsDouble = builder_->CreateSIToFP(intResult, llvm::Type::getDoubleTy(*context_));
-    
-    builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 3, "sub_result");
-    resultPhi->addIncoming(intResultAsDouble, intIntBlock);
-    resultPhi->addIncoming(doubleResult1, intDoubleBlock);
-    resultPhi->addIncoming(doubleResult2, doubleDoubleBlock);
-    
-    return resultPhi;
+    return result;
 }
 
 llvm::Value* LLVMCodeGenerator::boxed_sub_native_left(llvm::Value* nativeVal, llvm::Value* boxed) {
@@ -1280,58 +1723,12 @@ llvm::Value* LLVMCodeGenerator::boxed_sub_native_right(llvm::Value* boxed, llvm:
 llvm::Value* LLVMCodeGenerator::boxed_mul(llvm::Value* left, llvm::Value* right) {
     std::cout << "[LLVM CodeGen] boxed_mul(BoxedValue*, BoxedValue*)" << std::endl;
     
-    // Check types of both operands
-    llvm::Value* leftIsInt = isInt(left);
-    llvm::Value* rightIsInt = isInt(right);
-    
-    // Create basic blocks for different type combinations
-    llvm::BasicBlock* intIntBlock = llvm::BasicBlock::Create(*context_, "int_int_mul", current_function_);
-    llvm::BasicBlock* intDoubleBlock = llvm::BasicBlock::Create(*context_, "int_double_mul", current_function_);
-    llvm::BasicBlock* doubleDoubleBlock = llvm::BasicBlock::Create(*context_, "double_double_mul", current_function_);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge_mul", current_function_);
-    
-    // Check left type first
-    llvm::BasicBlock* checkRightBlock = llvm::BasicBlock::Create(*context_, "check_right_mul", current_function_);
-    builder_->CreateCondBr(leftIsInt, checkRightBlock, doubleDoubleBlock);
-    
-    // Check right type when left is int
-    builder_->SetInsertPoint(checkRightBlock);
-    builder_->CreateCondBr(rightIsInt, intIntBlock, intDoubleBlock);
-    
-    // int * int → int (promoted to double for consistency)
-    builder_->SetInsertPoint(intIntBlock);
-    llvm::Value* leftIntVal = unboxInt(left);
-    llvm::Value* rightIntVal = unboxInt(right);
-    llvm::Value* intResult = builder_->CreateMul(leftIntVal, rightIntVal);
-    // Convert int result to double in the int block before branching
-    llvm::Value* intResultAsDouble = builder_->CreateSIToFP(intResult, llvm::Type::getDoubleTy(*context_));
-    builder_->CreateBr(mergeBlock);
-    
-    // int * double → double
-    builder_->SetInsertPoint(intDoubleBlock);
-    leftIntVal = unboxInt(left);
-    llvm::Value* rightDoubleVal = unboxDouble(right);
-    llvm::Value* leftAsDouble = builder_->CreateSIToFP(leftIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* doubleResult1 = builder_->CreateFMul(leftAsDouble, rightDoubleVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // double * ? → double
-    builder_->SetInsertPoint(doubleDoubleBlock);
+    // Since all numbers are now double, just unbox both as double and multiply
     llvm::Value* leftDoubleVal = unboxDouble(left);
-    llvm::Value* rightVal = builder_->CreateSelect(rightIsInt, 
-        builder_->CreateSIToFP(unboxInt(right), llvm::Type::getDoubleTy(*context_)),
-        unboxDouble(right));
-    llvm::Value* doubleResult2 = builder_->CreateFMul(leftDoubleVal, rightVal);
-    builder_->CreateBr(mergeBlock);
+    llvm::Value* rightDoubleVal = unboxDouble(right);
+    llvm::Value* result = builder_->CreateFMul(leftDoubleVal, rightDoubleVal);
     
-    // Merge results with PHI
-    builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 3, "mul_result");
-    resultPhi->addIncoming(intResultAsDouble, intIntBlock);
-    resultPhi->addIncoming(doubleResult1, intDoubleBlock);
-    resultPhi->addIncoming(doubleResult2, doubleDoubleBlock);
-    
-    return resultPhi;
+    return result;
 }
 
 llvm::Value* LLVMCodeGenerator::boxed_mul_native_left(llvm::Value* nativeVal, llvm::Value* boxed) {
@@ -1400,58 +1797,12 @@ llvm::Value* LLVMCodeGenerator::boxed_mul_native_right(llvm::Value* boxed, llvm:
 llvm::Value* LLVMCodeGenerator::boxed_div(llvm::Value* left, llvm::Value* right) {
     std::cout << "[LLVM CodeGen] boxed_div(BoxedValue*, BoxedValue*)" << std::endl;
     
-    // Division always returns double (to handle fractional results)
-    llvm::Value* leftIsInt = isInt(left);
-    llvm::Value* rightIsInt = isInt(right);
-    
-    // Create basic blocks for different type combinations
-    llvm::BasicBlock* intIntBlock = llvm::BasicBlock::Create(*context_, "int_int_div", current_function_);
-    llvm::BasicBlock* intDoubleBlock = llvm::BasicBlock::Create(*context_, "int_double_div", current_function_);
-    llvm::BasicBlock* doubleDoubleBlock = llvm::BasicBlock::Create(*context_, "double_double_div", current_function_);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge_div", current_function_);
-    
-    // Check left type first
-    llvm::BasicBlock* checkRightBlock = llvm::BasicBlock::Create(*context_, "check_right_div", current_function_);
-    builder_->CreateCondBr(leftIsInt, checkRightBlock, doubleDoubleBlock);
-    
-    // Check right type when left is int
-    builder_->SetInsertPoint(checkRightBlock);
-    builder_->CreateCondBr(rightIsInt, intIntBlock, intDoubleBlock);
-    
-    // int / int → double (always promote to avoid integer division)
-    builder_->SetInsertPoint(intIntBlock);
-    llvm::Value* leftIntVal = unboxInt(left);
-    llvm::Value* rightIntVal = unboxInt(right);
-    llvm::Value* leftAsDouble = builder_->CreateSIToFP(leftIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* rightAsDouble = builder_->CreateSIToFP(rightIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* doubleResult1 = builder_->CreateFDiv(leftAsDouble, rightAsDouble);
-    builder_->CreateBr(mergeBlock);
-    
-    // int / double → double
-    builder_->SetInsertPoint(intDoubleBlock);
-    leftIntVal = unboxInt(left);
-    llvm::Value* rightDoubleVal = unboxDouble(right);
-    leftAsDouble = builder_->CreateSIToFP(leftIntVal, llvm::Type::getDoubleTy(*context_));
-    llvm::Value* doubleResult2 = builder_->CreateFDiv(leftAsDouble, rightDoubleVal);
-    builder_->CreateBr(mergeBlock);
-    
-    // double / ? → double
-    builder_->SetInsertPoint(doubleDoubleBlock);
+    // Since all numbers are now double, just unbox both as double and divide
     llvm::Value* leftDoubleVal = unboxDouble(left);
-    llvm::Value* rightVal = builder_->CreateSelect(rightIsInt, 
-        builder_->CreateSIToFP(unboxInt(right), llvm::Type::getDoubleTy(*context_)),
-        unboxDouble(right));
-    llvm::Value* doubleResult3 = builder_->CreateFDiv(leftDoubleVal, rightVal);
-    builder_->CreateBr(mergeBlock);
+    llvm::Value* rightDoubleVal = unboxDouble(right);
+    llvm::Value* result = builder_->CreateFDiv(leftDoubleVal, rightDoubleVal);
     
-    // Merge results with PHI (all are double)
-    builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getDoubleTy(*context_), 3, "div_result");
-    resultPhi->addIncoming(doubleResult1, intIntBlock);
-    resultPhi->addIncoming(doubleResult2, intDoubleBlock);
-    resultPhi->addIncoming(doubleResult3, doubleDoubleBlock);
-    
-    return resultPhi;
+    return result;
 }
 
 llvm::Value* LLVMCodeGenerator::boxed_div_native_left(llvm::Value* nativeVal, llvm::Value* boxed) {
@@ -2912,18 +3263,16 @@ llvm::Value* LLVMCodeGenerator::boxedValueToString(llvm::Value* boxed) {
     
     // Create basic blocks for different types
     llvm::BasicBlock* boolBlock = llvm::BasicBlock::Create(*context_, "bool_to_str", current_function_);
-    llvm::BasicBlock* intBlock = llvm::BasicBlock::Create(*context_, "int_to_str", current_function_);
     llvm::BasicBlock* doubleBlock = llvm::BasicBlock::Create(*context_, "double_to_str", current_function_);
     llvm::BasicBlock* stringBlock = llvm::BasicBlock::Create(*context_, "string_to_str", current_function_);
     llvm::BasicBlock* unknownBlock = llvm::BasicBlock::Create(*context_, "unknown_to_str", current_function_);
     llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge_to_str", current_function_);
     
-    // Create switch on type (0=bool, 1=int, 2=double, 3=string)
-    llvm::SwitchInst* typeSwitch = builder_->CreateSwitch(typeTag, unknownBlock, 4);
+    // Create switch on type (simplified: 0=bool, 1=double, 2=string)
+    llvm::SwitchInst* typeSwitch = builder_->CreateSwitch(typeTag, unknownBlock, 3);
     typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), boolBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), intBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), doubleBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3), stringBlock);
+    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), doubleBlock);
+    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), stringBlock);
     
     // Boolean to string
     builder_->SetInsertPoint(boolBlock);
@@ -2933,9 +3282,9 @@ llvm::Value* LLVMCodeGenerator::boxedValueToString(llvm::Value* boxed) {
     llvm::Value* boolResult = builder_->CreateSelect(boolVal, trueStr, falseStr);
     builder_->CreateBr(mergeBlock);
     
-    // Integer to string  
-    builder_->SetInsertPoint(intBlock);
-    llvm::Value* intVal = unboxInt(boxed);
+    // Double to string (now handles all numeric values)
+    builder_->SetInsertPoint(doubleBlock);
+    llvm::Value* doubleVal = unboxDouble(boxed);
     
     // Create sprintf function declaration
     llvm::Function* sprintfFunc = module_->getFunction("sprintf");
@@ -2945,18 +3294,6 @@ llvm::Value* LLVMCodeGenerator::boxedValueToString(llvm::Value* boxed) {
         llvm::FunctionType* sprintfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), sprintfArgs, true);
         sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", module_.get());
     }
-    
-    // Allocate buffer for integer string (32 chars should be enough)
-    llvm::Value* intBuffer = builder_->CreateAlloca(llvm::Type::getInt8Ty(*context_), 
-                                                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 32), "int_buffer");
-    llvm::Value* intFormat = registerStringConstant("%d");
-    std::vector<llvm::Value*> intArgs = {intBuffer, intFormat, intVal};
-    builder_->CreateCall(sprintfFunc, intArgs);
-    builder_->CreateBr(mergeBlock);
-    
-    // Double to string
-    builder_->SetInsertPoint(doubleBlock);
-    llvm::Value* doubleVal = unboxDouble(boxed);
     
     // Allocate buffer for double string (64 chars should be enough)
     llvm::Value* doubleBuffer = builder_->CreateAlloca(llvm::Type::getInt8Ty(*context_), 
@@ -2978,9 +3315,8 @@ llvm::Value* LLVMCodeGenerator::boxedValueToString(llvm::Value* boxed) {
     
     // Merge results
     builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 5, "str_result");
+    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 4, "str_result");
     resultPhi->addIncoming(boolResult, boolBlock);
-    resultPhi->addIncoming(intBuffer, intBlock);
     resultPhi->addIncoming(doubleBuffer, doubleBlock);
     resultPhi->addIncoming(stringResult, stringBlock);
     resultPhi->addIncoming(unknownResult, unknownBlock);
@@ -2989,27 +3325,6 @@ llvm::Value* LLVMCodeGenerator::boxedValueToString(llvm::Value* boxed) {
 }
 
 // Helper functions for converting specific types to strings
-llvm::Value* LLVMCodeGenerator::intToString(llvm::Value* intVal) {
-    std::cout << "[LLVM CodeGen] intToString()" << std::endl;
-    
-    // Create sprintf function declaration
-    llvm::Function* sprintfFunc = module_->getFunction("sprintf");
-    if (!sprintfFunc) {
-        std::vector<llvm::Type*> sprintfArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0),
-                                                llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)};
-        llvm::FunctionType* sprintfType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), sprintfArgs, true);
-        sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", module_.get());
-    }
-    
-    // Allocate buffer for integer string (32 chars should be enough)
-    llvm::Value* buffer = builder_->CreateAlloca(llvm::Type::getInt8Ty(*context_), 
-                                                 llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 32), "int_str_buffer");
-    llvm::Value* format = registerStringConstant("%d");
-    std::vector<llvm::Value*> args = {buffer, format, intVal};
-    builder_->CreateCall(sprintfFunc, args);
-    
-    return buffer;
-}
 
 llvm::Value* LLVMCodeGenerator::doubleToString(llvm::Value* doubleVal) {
     std::cout << "[LLVM CodeGen] doubleToString()" << std::endl;
@@ -3050,9 +3365,10 @@ llvm::Value* LLVMCodeGenerator::nativeValueToString(llvm::Value* nativeVal) {
     llvm::Type* nativeType = nativeVal->getType();
     
     if (nativeType->isIntegerTy(32)) {
-        // Convert i32 to string
-        std::cout << "[LLVM CodeGen] Converting i32 to string" << std::endl;
-        return intToString(nativeVal);
+        // Convert i32 to double first, then to string
+        std::cout << "[LLVM CodeGen] Converting i32 to double then string" << std::endl;
+        llvm::Value* doubleVal = builder_->CreateSIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
+        return doubleToString(doubleVal);
     } else if (nativeType->isDoubleTy()) {
         // Convert double to string
         std::cout << "[LLVM CodeGen] Converting double to string" << std::endl;
@@ -3071,20 +3387,20 @@ llvm::Value* LLVMCodeGenerator::nativeValueToString(llvm::Value* nativeVal) {
         llvm::Value* doubleVal = builder_->CreateFPExt(nativeVal, llvm::Type::getDoubleTy(*context_));
         return doubleToString(doubleVal);
     } else if (nativeType->isIntegerTy(8)) {
-        // Convert i8 to i32 first, then to string
-        std::cout << "[LLVM CodeGen] Converting i8 to string" << std::endl;
-        llvm::Value* intVal = builder_->CreateZExt(nativeVal, llvm::Type::getInt32Ty(*context_));
-        return intToString(intVal);
+        // Convert i8 to double first, then to string
+        std::cout << "[LLVM CodeGen] Converting i8 to double then string" << std::endl;
+        llvm::Value* doubleVal = builder_->CreateUIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
+        return doubleToString(doubleVal);
     } else if (nativeType->isIntegerTy(16)) {
-        // Convert i16 to i32 first, then to string
-        std::cout << "[LLVM CodeGen] Converting i16 to string" << std::endl;
-        llvm::Value* intVal = builder_->CreateZExt(nativeVal, llvm::Type::getInt32Ty(*context_));
-        return intToString(intVal);
+        // Convert i16 to double first, then to string
+        std::cout << "[LLVM CodeGen] Converting i16 to double then string" << std::endl;
+        llvm::Value* doubleVal = builder_->CreateUIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
+        return doubleToString(doubleVal);
     } else if (nativeType->isIntegerTy(64)) {
-        // Convert i64 to i32 first, then to string (truncating)
-        std::cout << "[LLVM CodeGen] Converting i64 to string" << std::endl;
-        llvm::Value* intVal = builder_->CreateTrunc(nativeVal, llvm::Type::getInt32Ty(*context_));
-        return intToString(intVal);
+        // Convert i64 to double first, then to string
+        std::cout << "[LLVM CodeGen] Converting i64 to double then string" << std::endl;
+        llvm::Value* doubleVal = builder_->CreateSIToFP(nativeVal, llvm::Type::getDoubleTy(*context_));
+        return doubleToString(doubleVal);
     } else {
         // Unknown type, return empty string
         std::cout << "[LLVM CodeGen] Unknown type, returning empty string" << std::endl;
@@ -3254,31 +3570,23 @@ llvm::Value* LLVMCodeGenerator::boxedValueToBool(llvm::Value* boxed) {
     
     // Create basic blocks for different types
     llvm::BasicBlock* boolBlock = llvm::BasicBlock::Create(*context_, "bool_to_bool", current_function_);
-    llvm::BasicBlock* intBlock = llvm::BasicBlock::Create(*context_, "int_to_bool", current_function_);
     llvm::BasicBlock* doubleBlock = llvm::BasicBlock::Create(*context_, "double_to_bool", current_function_);
     llvm::BasicBlock* stringBlock = llvm::BasicBlock::Create(*context_, "string_to_bool", current_function_);
     llvm::BasicBlock* unknownBlock = llvm::BasicBlock::Create(*context_, "unknown_to_bool", current_function_);
     llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(*context_, "merge_to_bool", current_function_);
     
-    // Create switch on type (0=bool, 1=int, 2=double, 3=string)
-    llvm::SwitchInst* typeSwitch = builder_->CreateSwitch(typeTag, unknownBlock, 4);
+    // Create switch on type (simplified: 0=bool, 1=double, 2=string)
+    llvm::SwitchInst* typeSwitch = builder_->CreateSwitch(typeTag, unknownBlock, 3);
     typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), boolBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), intBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), doubleBlock);
-    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 3), stringBlock);
+    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), doubleBlock);
+    typeSwitch->addCase(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 2), stringBlock);
     
     // Boolean (direct value)
     builder_->SetInsertPoint(boolBlock);
     llvm::Value* boolResult = unboxBool(boxed);
     builder_->CreateBr(mergeBlock);
     
-    // Integer (false if 0, true if != 0)
-    builder_->SetInsertPoint(intBlock);
-    llvm::Value* intVal = unboxInt(boxed);
-    llvm::Value* intResult = builder_->CreateICmpNE(intVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0));
-    builder_->CreateBr(mergeBlock);
-    
-    // Double (false if 0.0, true if != 0.0)
+    // Double (false if 0.0, true if != 0.0) - now handles all numeric values
     builder_->SetInsertPoint(doubleBlock);
     llvm::Value* doubleVal = unboxDouble(boxed);
     llvm::Value* doubleResult = builder_->CreateFCmpONE(doubleVal, llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0));
@@ -3307,9 +3615,8 @@ llvm::Value* LLVMCodeGenerator::boxedValueToBool(llvm::Value* boxed) {
     
     // Merge results
     builder_->SetInsertPoint(mergeBlock);
-    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getInt1Ty(*context_), 5, "bool_result");
+    llvm::PHINode* resultPhi = builder_->CreatePHI(llvm::Type::getInt1Ty(*context_), 4, "bool_result");
     resultPhi->addIncoming(boolResult, boolBlock);
-    resultPhi->addIncoming(intResult, intBlock);
     resultPhi->addIncoming(doubleResult, doubleBlock);
     resultPhi->addIncoming(stringResult, stringBlock);
     resultPhi->addIncoming(unknownResult, unknownBlock);

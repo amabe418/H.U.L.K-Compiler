@@ -54,6 +54,14 @@ private:
     // Type declarations
     std::unordered_map<std::string, llvm::StructType*> types_;
     
+    // Type metadata: maps type name to attribute name -> index
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> type_attributes_;
+    
+    // Inheritance and polymorphism metadata
+    std::unordered_map<std::string, TypeDecl*> type_declarations_;
+    std::unordered_map<std::string, llvm::GlobalVariable*> vtables_;
+    std::unordered_map<std::string, std::vector<std::string>> type_methods_;
+    
     // Scope management for variables
     LLVMScope* current_scope_;
     std::vector<std::unique_ptr<LLVMScope>> scopes_;
@@ -70,7 +78,7 @@ private:
      * type_tag: 0=bool, 1=int, 2=double, 3=string
      */
     llvm::StructType* getBoxedValueType();
-    llvm::Value* createBoxedFromInt(llvm::Value* intVal);
+    // Removed createBoxedFromInt - all numbers are now double
     llvm::Value* createBoxedFromDouble(llvm::Value* doubleVal);
     llvm::Value* createBoxedFromBool(llvm::Value* boolVal);
     llvm::Value* createBoxedFromString(llvm::Value* strVal);
@@ -155,7 +163,6 @@ private:
     llvm::Value* nativeValueToString(llvm::Value* nativeVal);
     
     // Helper functions for converting specific types to strings
-    llvm::Value* intToString(llvm::Value* intVal);
     llvm::Value* doubleToString(llvm::Value* doubleVal);
     llvm::Value* boolToString(llvm::Value* boolVal);
     
@@ -195,6 +202,16 @@ private:
     llvm::StructType* getOrCreateStructType(const std::string &name);
     void generateConstructorFunction(TypeDecl *typeDecl);
     void generateMethodFunction(MethodDecl *methodDecl);
+    int getAttributeIndex(llvm::StructType* structType, const std::string& attrName);
+    void storeTypeMetadata(const std::string& typeName, const std::vector<std::string>& attrNames);
+    std::string getObjectTypeName(llvm::Value* objectPtr);
+    
+    // Inheritance and polymorphism support
+    void addBaseTypeFields(const std::string& baseTypeName, std::vector<llvm::Type*>& fieldTypes, std::vector<std::string>& attributeNames);
+    void generateVTable(TypeDecl* typeDecl);
+    llvm::GlobalVariable* getOrCreateVTable(const std::string& typeName);
+    std::vector<std::string> collectAllMethods(TypeDecl* typeDecl);
+    std::vector<std::string> getInheritanceChain(const std::string& typeName);
     llvm::Value* toStringLLVM(llvm::Value* value);
     
     // Type conversion functions for destructive assignments
