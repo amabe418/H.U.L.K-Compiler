@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 #include "theoretical/Lexer/theoretical_lexer.hpp"
-#include "Parser/ll1_parser_generated.hpp"
+#include "Parser/ll1_parser.hpp"
 #include "PrintVisitor/print_visitor.hpp"
 #include "SemanticCheck/semantic_checker.hpp"
 #include "Codegen/codegen.hpp"
@@ -38,12 +38,21 @@ int main(int argc, char *argv[])
         std::cout << getTokenName(token.type) << " ('" << token.lexeme << "') en linea " << token.line << ", columna " << token.column << std::endl;
     }
 
-    // 4. Parsear con el parser generado
-    LL1ParserGenerated parser(tokens);
+    // 4. Parsear con el nuevo parser LL(1) que calcula FIRST/FOLLOW/LL1
+    std::cout << "\n=== Parsing con LL(1) ===" << std::endl;
+    LL1Parser parser("Parser/grammar.ll1", tokens);
     Program *program = nullptr;
     try
     {
-        program = parser.parse_Program();
+        auto [cst, ast] = parser.parse();
+        // program = ast;
+
+        // Mostrar información de debugging
+        // parser.printProductions();
+        // parser.printFirstSets();
+        // parser.printFollowSets();
+        // parser.printLL1Table();
+        // parser.printDerivationTree();
     }
     catch (const std::exception &ex)
     {
@@ -51,25 +60,25 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    // 5. Análisis semántico
-    if (program)
-    {
-        std::cout << "\nRealizando análisis semántico...\n";
-        SemanticAnalyzer semantic_analyzer;
-        semantic_analyzer.analyze(program);
+    // // 5. Análisis semántico
+    // if (program)
+    // {
+    //     std::cout << "\nRealizando análisis semántico...\n";
+    //     SemanticAnalyzer semantic_analyzer;
+    //     semantic_analyzer.analyze(program);
 
-        if (semantic_analyzer.hasErrors())
-        {
-            std::cerr << "\nErrores semánticos encontrados:\n";
-            semantic_analyzer.printErrors();
-            delete program;
-            return 3;
-        }
-        else
-        {
-            std::cout << "Análisis semántico completado sin errores.\n";
-        }
-    }
+    //     if (semantic_analyzer.hasErrors())
+    //     {
+    //         std::cerr << "\nErrores semánticos encontrados:\n";
+    //         semantic_analyzer.printErrors();
+    //         delete program;
+    //         return 3;
+    //     }
+    //     else
+    //     {
+    //         std::cout << "Análisis semántico completado sin errores.\n";
+    //     }
+    // }
 
     // // 6. Generación de código
     // if (program)

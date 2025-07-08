@@ -1,6 +1,6 @@
 Program      -> StmtList
-StmtList     -> Stmt StmtListTail | ε
-StmtListTail -> SEMICOLON StmtList | ε
+StmtList     -> TerminatedStmt StmtList | ε
+TerminatedStmt -> Stmt SEMICOLON
 Stmt         -> Expr | WhileStmt | ForStmt | BlockStmt | FunctionDef | TypeDef
 FunctionDef  -> FUNCTION IDENT LPAREN ArgIdList RPAREN FunctionBody
 TypeDef      -> TYPE IDENT TypeParams TypeInheritance LBRACE TypeBody RBRACE
@@ -14,7 +14,7 @@ AttributeDef -> IDENT ASSIGN Expr SEMICOLON
 MethodDef    -> IDENT LPAREN ArgIdList RPAREN FunctionBody
 ArgIdList    -> IDENT ArgIdListTail | ε
 ArgIdListTail-> COMMA IDENT ArgIdListTail | ε
-FunctionBody -> ARROW Expr SEMICOLON | BlockStmt
+FunctionBody -> ARROW Expr | BlockStmt
 WhileStmt    -> WHILE Expr WhileBody
 WhileBody    -> BlockStmt | Expr
 ForStmt      -> FOR LPAREN IDENT IN Expr RPAREN ForBody

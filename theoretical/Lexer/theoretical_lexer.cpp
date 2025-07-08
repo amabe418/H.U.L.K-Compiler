@@ -186,12 +186,16 @@ void TheoreticalLexer::skipWhitespace()
 
 void TheoreticalLexer::skipComments()
 {
-    if (currentPos < input.length() && input[currentPos] == '#')
+    // Comentarios que empiezan con //
+    if (currentPos < input.length() - 1 &&
+        input[currentPos] == '/' && input[currentPos + 1] == '/')
     {
+        // Saltar hasta el final de la línea
         while (currentPos < input.length() && input[currentPos] != '\n')
         {
             currentPos++;
         }
+        // Si encontramos un salto de línea, lo procesamos
         if (currentPos < input.length() && input[currentPos] == '\n')
         {
             currentLine++;
@@ -208,7 +212,8 @@ Token TheoreticalLexer::getNextToken()
     {
         skipWhitespace();
         skipComments();
-    } while (currentPos < input.length() && std::isspace(input[currentPos]));
+    } while (currentPos < input.length() && (std::isspace(input[currentPos]) ||
+                                             (currentPos < input.length() - 1 && input[currentPos] == '/' && input[currentPos + 1] == '/')));
 
     if (currentPos >= input.length())
     {

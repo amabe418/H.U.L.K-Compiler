@@ -1,21 +1,6 @@
-function a(x) => x;
-function fib(n) => if (n == 0 || n == 1) 1 else fib(n-1) + fib(n-2);
-function tan(x) => sin(x) / cos(x);
-function cot(x) => 1 / tan(x);
-print(tan(PI) ** 2 + cot(PI) ** 2);
-function operate(x, y) {
-    print(x + y);
-    print(x - y);
-    print(x * y);
-    print(x / y);
-};
-print(sin(90*3.14/180));
-function h(x,y) => x+y;
-function g(x,y)=> h(x,y);
-function f(x,y)=> g(x,y);
-
-let x = 2 in x;
+function f(x)=>x;
 let msg = "Hello World" in print(msg);
+
 let number = 42, text = "The meaning of life is" in
     print(text @ number);
 
@@ -27,27 +12,13 @@ let a = 5, b = 10, c = 20 in {
     print(c/a);
 };
 
-let a = 42 in if (a % 2 == 0) print("Even") else print("odd");
-let a = 42 in print(if (a % 2 == 0) "even" else "odd");
-let a = 42 in
-{
-    if (a % 2 == 0) {
-        print(a);
-        print("Even");
-    }
-    else print("Odd");
-};
+let a = (let b = 6 in b * 7) in print(a);
 
-let a = 42, mod = a % 3 in
-    print(
-        if (mod == 0) "Magic"
-        elif (mod % 3 == 1) "Woke"
-        else "Dumb"
-    );
+print(let b = 6 in b * 7);
 
 let a = 20 in {
-    print(a);
     let a = 42 in print(a);
+    print(a);
 };
 
 let a = 7, a = 7 * 6 in print(a);
@@ -62,40 +33,17 @@ let a = 0 in
     let b = a := 1 in {
         print(a);
         print(b);
-    };
+    }; 
 
 
-type Point {
-    x = 0;
-    y = 0;
-
-    getX() => self.x;
-    getY() => self.y;
-
-    setX(x) => self.x := x;
-    setY(y) => self.y := y;
-};
-
-
-type PolarPoint(phi, rho) inherits Point(rho * sin(phi), rho * cos(phi)){
-    rho() => sqrt(self.getX() ^ 2 + self.getY() ^ 2);
-   
-};
-
-let pt = new PolarPoint(3,4) in {
-    pt.setX(2);
-    pt.setY(4);
-    print("rho: " @ pt.rho());
-};
-type Person(firstname, lastname) {
-    firstname = firstname;
-    lastname = lastname;
-    name() => self.firstname @@ self.lastname;
-};
-
-type Knight inherits Person {
-    name() => "Sir" @@ base();
-};
-
-let p = new Knight("Phil", "Collins") in
-    print(p.name()); 
+// Este es un comentario de línea
+function f(x) => x; // Comentario al final de línea
+// Otro comentario
+let a = 5 in print(5); // Variable con comentario
+// Comentario antes de expresión
+let b = 10 in {
+    print(a + b); // Suma con comentario
+    // Comentario dentro del bloque
+    print(b * 2);
+}; // Comentario después del bloque
+// Comentario final 
