@@ -96,15 +96,12 @@
 //    setY(y) => self.y := y;
 //    norm() => (self.x^2 + self.y^2)^(1/2);
 //};
-//
-//type PolarPoint(phi, rho) inherits Point(rho * sin(phi), rho * cos(phi)){
+////
+//type PolarPoint inherits Point{
 //    rho() => sqrt(self.getX() ^ 2 + self.getY() ^ 2);
-//    // ...
 //};
 //let pt = new PolarPoint(3,4) in {
-//    pt.setX(2);
-//    pt.setY(4);
-//    print("rho: " @ pt.rho());
+//    print(pt.rho());
 //};
 //type Person(firstname, lastname) {
 //    firstname = firstname;
@@ -563,55 +560,69 @@
 //    print(a.norm());
 //};
 //
-//type Animal(name,age){
-//    name = name;
-//    age = age;
-//    speak() => "regular Animal noise";
-//    getName() => self.name;
-//    getAge() => self.age;
-//};
+type Animal(name,age){
+    name = name;
+    age = age;
+    speak() => "regular Animal noise";
+    getName() => self.name;
+    getAge() => self.age;
+};
+type Dog() inherits Animal{
+    bark() => "Woof, Woof!";
+};
+
+type Chihuahua() inherits Dog{
+    bark() => "Wiif, Wiif!";
+};
+
 //
 //
-//let a = new Animal("Amalia",1) in {
-//    print(a.speak());
-//    print(a.getName());
-//    print(a.getAge());
-//};
-//
-//type Dog() inherits Animal{
-//    bark() => "Woof, Woof!";
-//};
-//
-//let d = new Dog("Noel",2) in {
-//    print(d.speak());
-//    print(d.bark());
-//    print(d.getName());
-//};
-//
-//type Chihuahua() inherits Dog{
-//};
-//
-//
-//let c = new Chihuahua("Alejandro",3) in {
-//    print(c.speak());
-//    print(c.bark());
-//    print(c.getName());
-//};
+let a = new Animal("Amalia",1) in {
+    print(a.speak());
+    print(a.getName());
+    print(a.getAge());
+};
+
+
+let d = new Dog("Noel",2) in {
+    print(d.getName());
+    print(d.speak());
+    print(d.bark());
+};
+
+
+
+let c:Dog = new Chihuahua("Alejandro",3) in {
+    print(c.getName());
+    print(c.speak());
+    print(c.bark());
+};
+
 //
 //
 //let a = 42, b = true in print(a@b);
 //
 //
-//function kk(x:String,y:String) => x == y;
-//
-//
+
 //type A{
-//
-//};
-//
-//type B inherits A{
 //    f() => "A";
 //};
+//type B inherits A{
+//    //f() => "B";
+//};
 //
-//let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f());
-//    f() => "B";
+//let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f()); // should print B
+
+//function f(x:A) => print(x.f());
+//
+//let b = new B() in f(b);
+
+//type Animal{
+//    talk()=> "hola, soy un animal";
+//};
+//
+//type Perro inherits Animal{
+//    talk()=> "hola, soy un perro";
+//};
+//
+//let x: Animal = new Perro() in print(x.talk());
