@@ -272,7 +272,18 @@ Token TheoreticalLexer::getNextToken()
     std::string lexeme = remainingInput.substr(0, lastAcceptingPos + 1);
     TokenType tokenType = getTokenType(lastAcceptingState, lexeme);
 
-    Token token(static_cast<TokenType>(tokenType), lexeme, currentLine, currentColumn);
+    // Procesar el lexema según el tipo de token
+    std::string processedLexeme = lexeme;
+    if (tokenType == STRING)
+    {
+        // Quitar las comillas del inicio y final del string
+        if (lexeme.length() >= 2 && lexeme[0] == '"' && lexeme[lexeme.length() - 1] == '"')
+        {
+            processedLexeme = lexeme.substr(1, lexeme.length() - 2);
+        }
+    }
+
+    Token token(static_cast<TokenType>(tokenType), processedLexeme, currentLine, currentColumn);
 
     // Actualizar la posición
     currentPos += lexeme.length();
