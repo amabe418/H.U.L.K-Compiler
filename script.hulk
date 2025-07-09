@@ -4,6 +4,15 @@
 //42;
 //-42;
 //((((1 + 2) ^ 3) * 4) / 5);
+
+//let x = 80 in if(x<5){
+//    10;
+//} elif (x>5){
+//    20;
+//} else {
+//    30;
+//};
+let a: Number = 6 in a;
 //====================================================
 // =========== STRINGS ===============
 //====================================================
@@ -85,20 +94,20 @@
 //====================================================
 // Test file for type declaration semantic checking
 
-//type Point(x,y) {
-//    x = x;
-//    y = y;
+type Point(x,y) {
+    x = x;
+    y = y;
+
+    getX() => self.x;
+    getY() => self.y;
+
+    setX(x) => self.x := x;
+    setY(y) => self.y := y;
+    norm() => (self.x^2 + self.y^2)^(1/2);
+};
 //
-//    getX() => self.x;
-//    getY() => self.y;
-//
-//    setX(x) => self.x := x;
-//    setY(y) => self.y := y;
-//    norm() => (self.x^2 + self.y^2)^(1/2);
-//};
-////
 //type PolarPoint inherits Point{
-//    rho() => sqrt(self.getX() ^ 2 + self.getY() ^ 2);
+//    rho() => (self.getX() ^ 2 + self.getY() ^ 2)^(1/2);
 //};
 //let pt = new PolarPoint(3,4) in {
 //    print(pt.rho());
@@ -112,16 +121,12 @@
 //type Knight inherits Person {
 //    name() => "Sir" @@ base();
 //};
-//
 //let p = new Knight("Phil", "Collins") in
 //    print(p.name()); 
-//
-
 //
 //type vector (a:Number,b:Number) inherits Point {
 //
 //};
-
 //type Person(firstname, lastname) {
 //    firstname = firstname;
 //    lastname = lastname;
@@ -407,159 +412,145 @@
 //
 //
 ////  ===[CODEGEN TESTS]===
-//// [Programa Basico]
-//42;
-//3.2;
-//"Hello, World!";
-//true;
-//false;
-////[Imprimiendo tipos de datos basicos]
-//print(42);
-//print(3.2);
-//print("Hello, World!");
-//print(true);
-//print(false);
-//// [Imprimiendo Operaciones Aritmeticas]
-//print(42 + 1);  //   43
-//print(42 - 1);  //   41
-//print(2 - 3);   //   -1
-//print(2 * 3);   //   6
-//print(2.2 + 1); //   3.2
-//print(2/3);     //   0.666667
-//print(2^3);     //   8.000000
-//
-//// [Imprimiendo Operaciones de Comparacion]
-//print(5 == 5);                  // true
-//print(5 == 3);                  // false
-//print(3.14 == 3.14);            // true
-//print(3.14 == 2.5);             // false
-//print(true == true);            // true
-//print(true == false);           // false
-//print("hello" == "hello");      // true
-//print("hello" == "world");      // false
-//print(10 == 10.0);              // true
-//print(5 != 3);                  // true
-//print(3.14 != 2.5);             // true
-//print(true != false);           // true
-//print("hello" != "world");      // true
-//print(2^3 == 8.0);              // false
-//print(2 < 3);                   // true
-//print(2.2 == 2.3);              // false
-//print(5 >= 3);                  // true
-//print(6 <= 3);                  // false
-//
-////[Imprimiendo Operaciones Logicas]
-//print(true && false);                                         // false
-//print(false && true);                                         // false
-//print(true || true);                                          // true
-//print(true && true);                                          // true
-//print(false || true);                                         // true
-//print(2^(3+2)^2 == 2^25);                                     // true
-//print("Hello" @ " World");                                    // Hello, World
-//print(42 @ " is the answer");                                 // 42 is the answer
-//print("The value is: " @ 3.14);                               // The value is 3.14
-//print(true @ " is a boolean");                                // true is a boolean
-//print(10 @ " + " @ 5 @ " = " @ 15);                           // 10 + 5 = 15
-//print("Pi is " @ 3.14159 @ " and e is " @ 2.71828);           // Pi is 3.14159 and e is 2.718228
-//print(false @ " is not " @ true); 
-//
-//print("Probando declaracion de variables e impresion de valores");
-//let a = 2, b = 3, c = 4, d = 5 in {
-//    print("hello, world");
-//    print(a+b+c+d);
-//    print(a@b@c@d);
-//    print(true);
-//    print(false);
-//};
-//print("Probando declaracion de variables con condicionales e impresion de su valor:");
-//let a = if(3 > 4) "2" else true in {
-//    print(a);
-//    a := 4;
-//    print(a+1);
-//};
-//print("Probando bucle while");
-//let a = 5 in {
-//    while(a > 0){
-//        print(a);
-//        a := a - 1;
-//    };
-//};
-//
-//print("Probando funciones");
-//print("Sucesor de 0");
-//function successor(x) => x+1;
-//print(successor(0));
-//
-//print("Funcion que devuelve Hello, World!");
-//function hw() => "Hello, World";
-//print(hw());
-//
-//print("Probando recursividad");
-//print("n-esimo numero de fibonacci");
-//function fib(n) => if(n <= 1 ) 1 else fib(n-1) + fib(n-2);
-//print("fib(5)");
-//print(fib(5));
-//
-//print();
-//print("Probando funcion con parametros dinamicos");
-//function f(x,y) => "Hello, World";
-//print("f(x,y) => Hello, World!");
-//print("f(a,b), donde a y b son strings.");
-//print(f("a","b"));
-//print("f(2,3)");
-//print(f(2,3));
-//print("f(true,false)");
-//print(f(true,false));
-//print();
-//
-//print("Probando funcion con parametro dinamico y tipo de retorno desconocido");
-//function id(x) => x;
-//print(id("asd"));
-//print(id("true"));
-//print(id(true));
-//print(id(1));
-//
-//print("Probando otra funcion recursiva, suma recursiva hasta n");
-//function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
-//let b = sum_to(2) in let a = b in print(a);
-//print(sum_to(100));
-//
-//print("Probando for loops");
-//for(i in range(1,7)){
-//    print("El valor de i es " @ i);
-//    print("Moviendo i a " @ i + 1);  
-//};
-//
-//print();
-//print("Probando concatenaciones:");
-//print(true @ "false");
-//print("false" @ true);
-//print("Hola " @ "Mundo");
-//print("4"@2);
-//
-//function concat(x,y) => x @ y;
-//print(concat("Hola, ", "Mundo!"));
-//
-//print("Probando tipos");
-//
-//type Vector(x,y){
-//    x = x;
-//    y = y;
-//    getX() => self.x;
-//    getY() => self.y;
-//    setX(newX) => self.x := newX;
-//    setY(newY) => self.y := newY;
-//    norm() => (self.x^2 + self.y^2)^(1/2);
-//};
-//let a = new Vector(3,2) in {
-//    print(a.getX());
-//    print(a.getY());
-//    print(a.norm());
-//    a.setX(10);
-//    a.setY(10);
-//    print(a.norm());
-//};
-//
+// [Programa Basico]
+ 42;
+ 3.2;
+ "Hello, World!";
+ true;
+ false;
+ //[Imprimiendo tipos de datos basicos]
+ print(42);
+ print(3.2);
+ print("Hello, World!");
+ print(true);
+ print(false);
+ // [Imprimiendo Operaciones Aritmeticas]
+ print(42 + 1);  //   43
+ print(42 - 1);  //   41
+ print(2 - 3);   //   -1
+ print(2 * 3);   //   6
+ print(2.2 + 1); //   3.2
+ print(2/3);     //   0.666667
+ print(2^3);     //   8.00000
+ // [Imprimiendo Operaciones de Comparacion]
+ print(5 == 5);                  // true
+ print(5 == 3);                  // false
+ print(3.14 == 3.14);            // true
+ print(3.14 == 2.5);             // false
+ print(true == true);            // true
+ print(true == false);           // false
+ print("hello" == "hello");      // true
+ print("hello" == "world");      // false
+ print(10 == 10.0);              // true
+ print(5 != 3);                  // true
+ print(3.14 != 2.5);             // true
+ print(true != false);           // true
+ print("hello" != "world");      // true
+ print(2^3 == 8.0);              // false
+ print(2 < 3);                   // true
+ print(2.2 == 2.3);              // false
+ print(5 >= 3);                  // true
+ print(6 <= 3);                  // fals
+//[Imprimiendo Operaciones Logicas]
+ print(true && false);                                         // false
+ print(false && true);                                         // false
+ print(true || true);                                          // true
+ print(true && true);                                          // true
+ print(false || true);                                         // true
+ print(2^(3+2)^2 == 2^25);                                     // true
+ print("Hello" @ " World");                                    // Hello, World
+ print(42 @ " is the answer");                                 // 42 is the answer
+ print("The value is: " @ 3.14);                               // The value is 3.14
+ print(true @ " is a boolean");                                // true is a boolean
+ print(10 @ " + " @ 5 @ " = " @ 15);                           // 10 + 5 = 15
+ print("Pi is " @ 3.14159 @ " and e is " @ 2.71828);           // Pi is 3.14159 and e is 2.718228
+ print(false @ " is not " @ true);
+ print("Probando declaracion de variables e impresion de valores");
+ let a = 2, b = 3, c = 4, d = 5 in {
+     print("hello, world");
+     print(a+b+c+d);
+     print(a@b@c@d);
+     print(true);
+     print(false);
+ };
+ print("Probando declaracion de variables con condicionales e impresion de su valor:");
+let a = if(3 > 4) "2" else true in {
+    print(a);
+    a := 4;
+    print(a+1);
+};
+ print("Probando bucle while");
+ let a = 5 in {
+     while(a > 0){
+         print(a);
+         a := a - 1;
+     };
+ };
+ print("Probando funciones");
+ print("Sucesor de 0");
+ function successor(x) => x+1;
+ print(successor(0));
+ print("Funcion que devuelve Hello, World!");
+ function hw() => "Hello, World";
+ print(hw());
+ print("Probando recursividad");
+ print("n-esimo numero de fibonacci");
+ function fib(n) => if(n <= 1 ) 1 else fib(n-1) + fib(n-2);
+ print("fib(5)");
+ print(fib(5));
+ print();
+ print("Probando funcion con parametros dinamicos");
+ function f(x,y) => "Hello, World";
+ print("f(x,y) => Hello, World!");
+ print("f(a,b), donde a y b son strings.");
+ print(f("a","b"));
+ print("f(2,3)");
+ print(f(2,3));
+ print("f(true,false)");
+ print(f(true,false));
+ print();
+ print("Probando funcion con parametro dinamico y tipo de retorno desconocido");
+ function id(x) => x;
+ print(id("asd"));
+ print(id("true"));
+ print(id(true));
+ print(id(1));
+ print("Probando otra funcion recursiva, suma recursiva hasta n");
+ function sum_to(n) => if(n == 1) 0 else n + sum_to(n-1);
+ let b = sum_to(2) in let a = b in print(a);
+ print(sum_to(100));
+print("Probando for loops");
+for(i in range(1,7)){
+    print("El valor de i es " @ i);
+    print("Moviendo i a " @ i + 1);  
+};
+ print();
+ print("Probando concatenaciones:");
+ print(true @ "false");
+ print("false" @ true);
+ print("Hola " @ "Mundo");
+ print("4"@2);
+ function concat(x,y) => x @ y;
+ print(concat("Hola, ", "Mundo!"));
+ print("Probando tipos");
+ type Vector(x,y){
+     x = x;
+     y = y;
+     getX() => self.x;
+     getY() => self.y;
+     setX(newX) => self.x := newX;
+     setY(newY) => self.y := newY;
+     norm() => (self.x^2 + self.y^2)^(1/2);
+ };
+ let a = new Vector(3,2) in {
+     print(a.getX());
+     print(a.getY());
+     print(a.norm());
+     a.setX(10);
+     a.setY(10);
+     print(a.norm()+1);
+ };
+
 type Animal(name,age){
     name = name;
     age = age;
@@ -568,6 +559,7 @@ type Animal(name,age){
     getAge() => self.age;
 };
 type Dog() inherits Animal{
+    speak() => "regular Dog noise";
     bark() => "Woof, Woof!";
 };
 
@@ -575,54 +567,68 @@ type Chihuahua() inherits Dog{
     bark() => "Wiif, Wiif!";
 };
 
-//
-//
 let a = new Animal("Amalia",1) in {
     print(a.speak());
     print(a.getName());
     print(a.getAge());
 };
 
-
 let d = new Dog("Noel",2) in {
     print(d.getName());
+    print(d.getAge());
     print(d.speak());
     print(d.bark());
 };
 
-
-
 let c:Dog = new Chihuahua("Alejandro",3) in {
     print(c.getName());
+    print(c.getAge());
     print(c.speak());
     print(c.bark());
 };
 
-//
-//
-//let a = 42, b = true in print(a@b);
-//
-//
+function f(x:Animal) => x.speak();
+let d:Animal = new Dog("Rookie",4) in print(f(d));
 
-//type A{
-//    f() => "A";
-//};
-//type B inherits A{
-//    //f() => "B";
-//};
-//
-//let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f()); // should print B
+type A{
+    f() => 1;
+};
+type B inherits A{
+    f() => 2;
+};
 
-//function f(x:A) => print(x.f());
-//
-//let b = new B() in f(b);
 
-//type Animal{
-//    talk()=> "hola, soy un animal";
-//};
-//
-//type Perro inherits Animal{
-//    talk()=> "hola, soy un perro";
-//};
-//
-//let x: Animal = new Perro() in print(x.talk());
+function randObj() => if(rand() < 50) new A() else new B();
+print(randObj().f());
+
+type G{
+    foo() => "G";
+};
+
+type H inherits G{
+    foo() => "H";
+};
+
+type I inherits G{
+    foo() => "I";
+};
+
+type A inherits H{
+    foo() => "A";
+};
+
+type B inherits A{
+    foo() => "B";
+};
+
+type C inherits A{
+    foo() => "C";
+};
+
+type D inherits A{
+    foo() => "D";
+};
+
+function bar() => if(rand() < 50) new C() else new D();
+
+print(bar().foo());
