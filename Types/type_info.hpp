@@ -132,26 +132,8 @@ public:
      */
     bool isCompatibleWith(const TypeInfo &other) const
     {
-        if (kind_ == Kind::Unknown || other.kind_ == Kind::Unknown)
-        {
-            return true; // Unknown types are compatible with everything
-        }
-        if (kind_ == other.kind_)
-        {
-            if (kind_ == Kind::Object)
-            {
-                return typeName_ == other.typeName_;
-            }
-            return true;
-        }
-
-        // Special compatibility rules
-        if (kind_ == Kind::Null || other.kind_ == Kind::Null)
-        {
-            return true; // Null is compatible with any type
-        }
-
-        return false;
+        // Use conformsTo relationship for proper type compatibility
+        return conformsTo(other);
     }
 
     /**

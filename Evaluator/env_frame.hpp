@@ -24,20 +24,20 @@ struct EnvFrame
     Value
     get(const std::string &name) const
     {
-        std::cout << "[DEBUG] EnvFrame::get - looking for '" << name << "' in frame with " << locals.size() << " locals" << std::endl;
+        // std::cout << "[DEBUG] EnvFrame::get - looking for '" << name << "' in frame with " << locals.size() << " locals" << std::endl;
 
         auto it = locals.find(name);
         if (it != locals.end())
         {
-            std::cout << "[DEBUG] EnvFrame::get - found '" << name << "' in current frame" << std::endl;
+            // std::cout << "[DEBUG] EnvFrame::get - found '" << name << "' in current frame" << std::endl;
             return it->second;
         }
         if (parent)
         {
-            std::cout << "[DEBUG] EnvFrame::get - not found in current frame, searching parent" << std::endl;
+            // std::cout << "[DEBUG] EnvFrame::get - not found in current frame, searching parent" << std::endl;
             return parent->get(name);
         }
-        std::cout << "[DEBUG] EnvFrame::get - variable '" << name << "' not found in any frame" << std::endl;
+        // std::cout << "[DEBUG] EnvFrame::get - variable '" << name << "' not found in any frame" << std::endl;
         throw std::runtime_error("Variable no definida: " + name);
     }
 

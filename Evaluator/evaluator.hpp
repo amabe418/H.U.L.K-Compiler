@@ -42,14 +42,14 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(Program *p) override
     {
-        std::cout << "[DEBUG] Evaluator: Program starting, total statements: " << p->stmts.size() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: Program starting, total statements: " << p->stmts.size() << std::endl;
 
         // Primero registrar TODAS las funciones
         for (auto &s : p->stmts)
         {
             if (auto *fd = dynamic_cast<FunctionDecl *>(s.get()))
             {
-                std::cout << "[DEBUG] Evaluator: registering function " << fd->name << std::endl;
+                // std::cout << "[DEBUG] Evaluator: registering function " << fd->name << std::endl;
                 fd->accept(this); // esto registra la función en el mapa
             }
         }
@@ -59,17 +59,17 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         {
             if (!dynamic_cast<FunctionDecl *>(s.get()))
             {
-                std::cout << "[DEBUG] Evaluator: executing statement" << std::endl;
+                // std::cout << "[DEBUG] Evaluator: executing statement" << std::endl;
                 s->accept(this);
             }
         }
 
-        std::cout << "[DEBUG] Evaluator: Program finished, registered types: ";
-        for (const auto &type : types)
-        {
-            std::cout << type.first << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "[DEBUG] Evaluator: Program finished, registered types: ";
+        // for (const auto &type : types)
+        // {
+        //     std::cout << type.first << " ";
+        // }
+        // std::cout << std::endl;
     }
 
     // StmtVisitor:
@@ -114,9 +114,10 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         e->right->accept(this);
         Value r = lastValue;
 
-        // Debug: imprimir los valores de la expresión binaria
-        std::cout << "Debug: BinaryExpr " << l.toString() << " " << e->op << " " << r.toString()
-                  << std::endl;
+        // Debug:
+        //     imprimir los valores de la expresión binaria
+        // std::cout << "Debug: BinaryExpr " << l.toString() << " " << e->op << " " << r.toString()
+        // << std::endl;
 
         // Manejar comparación de instancias
         if (e->op == BinaryExpr::OP_EQ && l.isInstance() && r.isInstance())
@@ -149,9 +150,9 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             lastValue = Value(l.asNumber() + r.asNumber());
             break;
         case BinaryExpr::OP_SUB:
-            std::cout << "[DEBUG] BinaryExpr: OP_SUB" << std::endl;
-            std::cout << "[DEBUG] l: " << l.toString() << std::endl;
-            std::cout << "[DEBUG] r: " << r.toString() << std::endl;
+            // std::cout << "[DEBUG] BinaryExpr: OP_SUB" << std::endl;
+            // std::cout << "[DEBUG] l: " << l.toString() << std::endl;
+            // std::cout << "[DEBUG] r: " << r.toString() << std::endl;
             if (!l.isNumber() || !r.isNumber())
             {
                 throw std::runtime_error("ambos miembros en una resta deben ser numeros");
@@ -450,54 +451,54 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(VariableExpr *expr) override
     {
-        std::cout << "[DEBUG] Evaluator: VariableExpr looking for variable " << expr->name << std::endl;
-        std::cout << "[DEBUG] Evaluator: VariableExpr current env has " << env->locals.size() << " local variables" << std::endl;
+        // std::cout << "[DEBUG] Evaluator: VariableExpr looking for variable " << expr->name << std::endl;
+        // std::cout << "[DEBUG] Evaluator: VariableExpr current env has " << env->locals.size() << " local variables" << std::endl;
 
         // Mostrar qué variables están en el entorno actual
-        std::cout << "[DEBUG] Evaluator: VariableExpr current env variables: ";
-        for (const auto &pair : env->locals)
-        {
-            std::cout << pair.first << " ";
-        }
-        std::cout << std::endl;
+        // std::cout << "[DEBUG] Evaluator: VariableExpr current env variables: ";
+        // for (const auto &pair : env->locals)
+        // {
+        //     std::cout << pair.first << " ";
+        // }
+        // std::cout << std::endl;
 
         // get() buscará en este frame y en los padres
         lastValue = env->get(expr->name);
-        std::cout << "[DEBUG] Evaluator: VariableExpr found value: " << lastValue.toString() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: VariableExpr found value: " << lastValue.toString() << std::endl;
     }
 
     // let in expressions
     void
     visit(LetExpr *expr) override
     {
-        std::cout << "[DEBUG] Evaluator: LetExpr for variable " << expr->name << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr for variable " << expr->name << std::endl;
 
         // 1) Evaluar la expresión del inicializador
         expr->initializer->accept(this);
         Value initVal = lastValue;
-        std::cout << "[DEBUG] Evaluator: LetExpr initializer value: " << initVal.toString() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr initializer value: " << initVal.toString() << std::endl;
 
         // 2) Abrir un nuevo frame (scope hijo)
         auto oldEnv = env; // guardar el frame padre
         env = std::make_shared<EnvFrame>(oldEnv);
-        std::cout << "[DEBUG] Evaluator: LetExpr created new env frame" << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr created new env frame" << std::endl;
 
         // 3) Insertar la variable en el mapa local
         env->locals[expr->name] = initVal;
-        std::cout << "[DEBUG] Evaluator: LetExpr declared variable " << expr->name << " with value: " << initVal.toString() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr declared variable " << expr->name << " with value: " << initVal.toString() << std::endl;
 
         // 4) Evaluar el cuerpo (es un Stmt)
         expr->body->accept(static_cast<StmtVisitor *>(this));
         Value result = lastValue;
-        std::cout << "[DEBUG] Evaluator: LetExpr body evaluated, result: " << result.toString() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr body evaluated, result: " << result.toString() << std::endl;
 
         // 5) Al salir, restaurar el frame anterior
         env = std::move(oldEnv);
-        std::cout << "[DEBUG] Evaluator: LetExpr restored old env frame" << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr restored old env frame" << std::endl;
 
         // 6) El valor resultante de la expresión let es el valor devuelto
         lastValue = result;
-        std::cout << "[DEBUG] Evaluator: LetExpr result: " << result.toString() << std::endl;
+        // std::cout << "[DEBUG] Evaluator: LetExpr result: " << result.toString() << std::endl;
     }
 
     // destructive assignment
@@ -597,13 +598,13 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(TypeDecl *t) override
     {
-        std::cout << "[DEBUG] Evaluator: registering type " << t->name << std::endl;
+        // std::cout << "[DEBUG] Evaluator: registering type " << t->name << std::endl;
         if (types.count(t->name))
         {
             throw std::runtime_error("Tipo redefinido: " + t->name);
         }
         types[t->name] = t;
-        std::cout << "[DEBUG] Evaluator: type " << t->name << " registered successfully" << std::endl;
+        // std::cout << "[DEBUG] Evaluator: type " << t->name << " registered successfully" << std::endl;
     }
 
     void
@@ -615,7 +616,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(NewExpr *e) override
     {
-        std::cout << "[DEBUG] Evaluator: NewExpr creating instance of type " << e->typeName << std::endl;
+        // std::cout << "[DEBUG] Evaluator: NewExpr creating instance of type " << e->typeName << std::endl;
 
         // Guardar el entorno original
         auto originalEnv = env;
@@ -683,7 +684,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         // Restaurar el entorno original
         env = originalEnv;
 
-        std::cout << "[DEBUG] Evaluator: NewExpr created instance successfully" << std::endl;
+        // std::cout << "[DEBUG] Evaluator: NewExpr created instance successfully" << std::endl;
         lastValue = Value(instance);
     }
 
@@ -707,8 +708,8 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             try
             {
                 auto val = instance->attrs->get(e->attrName);
-                std::cout << "[DEBUG] GetAttrExpr: instance attr '" << e->attrName
-                          << "' = " << val.toString() << std::endl;
+                // std::cout << "[DEBUG] GetAttrExpr: instance attr '" << e->attrName
+                // << "' = " << val.toString() << std::endl;
                 lastValue = val;
             }
             catch (const std::runtime_error &)
@@ -723,8 +724,8 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             try
             {
                 auto val = currentSelf->attrs->get(e->attrName);
-                std::cout << "[DEBUG] GetAttrExpr: self attr '" << e->attrName
-                          << "' = " << val.toString() << std::endl;
+                // std::cout << "[DEBUG] GetAttrExpr: self attr '" << e->attrName
+                // << "' = " << val.toString() << std::endl;
                 lastValue = val;
             }
             catch (const std::runtime_error &)
@@ -755,14 +756,14 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
             throw std::runtime_error("SetAttrExpr: objeto no es una instancia válida");
 
         auto currentValue = instance->attrs->get(e->attrName);
-        std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
-                  << "' before = " << currentValue.toString() << std::endl;
+        // std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
+        // << "' before = " << currentValue.toString() << std::endl;
 
         if (newValue.isNumber())
         {
             instance->attrs->set(e->attrName, newValue);
-            std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
-                      << "' after = " << newValue.toString() << std::endl;
+            // std::cout << "[DEBUG] SetAttrExpr: instance attr '" << e->attrName
+            // << "' after = " << newValue.toString() << std::endl;
             lastValue = newValue;
         }
         else
@@ -774,7 +775,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(BaseCallExpr *e) override
     {
-        std::cout << "[DEBUG] BaseCallExpr: currentMethodName = '" << currentMethodName << "'" << std::endl;
+        // std::cout << "[DEBUG] BaseCallExpr: currentMethodName = '" << currentMethodName << "'" << std::endl;
 
         auto selfVal = env->get("self");
         if (!selfVal.isInstance())
@@ -850,7 +851,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
     void
     visit(MethodCallExpr *e) override
     {
-        std::cout << "[DEBUG] MethodCallExpr: calling method '" << e->methodName << "'" << std::endl;
+        // std::cout << "[DEBUG] MethodCallExpr: calling method '" << e->methodName << "'" << std::endl;
 
         // Evaluar el objeto de la llamada (ej: a.setx() → 'a')
         e->object->accept(this);
@@ -890,7 +891,7 @@ struct EvaluatorVisitor : StmtVisitor, ExprVisitor
         currentMethodName = e->methodName;     // Set current method name
         env->locals["self"] = Value(instance); // Add self to environment
 
-        std::cout << "[DEBUG] MethodCallExpr: set currentMethodName to '" << currentMethodName << "'" << std::endl;
+        // std::cout << "[DEBUG] MethodCallExpr: set currentMethodName to '" << currentMethodName << "'" << std::endl;
 
         // Inyectar argumentos como variables locales
         for (size_t i = 0; i < method->params.size(); ++i)

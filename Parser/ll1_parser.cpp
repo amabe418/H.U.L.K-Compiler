@@ -277,42 +277,42 @@ std::pair<DerivationNodePtr, Program *> LL1Parser::parse()
     std::cout << "Construyendo tabla LL(1)..." << std::endl;
     ll1_table = buildLL1Table(productions, first_sets, follow_sets);
 
-    // Debug: imprimir información específica para StmtList
-    std::cout << "\n=== Debug StmtList ===" << std::endl;
-    if (first_sets.find("StmtList") != first_sets.end())
-    {
-        std::cout << "FIRST(StmtList) = { ";
-        for (const auto &symbol : first_sets["StmtList"])
-        {
-            std::cout << symbol << " ";
-        }
-        std::cout << "}" << std::endl;
-    }
+    // // Debug: imprimir información específica para StmtList
+    // std::cout << "\n=== Debug StmtList ===" << std::endl;
+    // if (first_sets.find("StmtList") != first_sets.end())
+    // {
+    //     std::cout << "FIRST(StmtList) = { ";
+    //     for (const auto &symbol : first_sets["StmtList"])
+    //     {
+    //         std::cout << symbol << " ";
+    //     }
+    //     std::cout << "}" << std::endl;
+    // }
 
-    if (follow_sets.find("StmtList") != follow_sets.end())
-    {
-        std::cout << "FOLLOW(StmtList) = { ";
-        for (const auto &symbol : follow_sets["StmtList"])
-        {
-            std::cout << symbol << " ";
-        }
-        std::cout << "}" << std::endl;
-    }
+    // if (follow_sets.find("StmtList") != follow_sets.end())
+    // {
+    //     std::cout << "FOLLOW(StmtList) = { ";
+    //     for (const auto &symbol : follow_sets["StmtList"])
+    //     {
+    //         std::cout << symbol << " ";
+    //     }
+    //     std::cout << "}" << std::endl;
+    // }
 
-    if (ll1_table.find("StmtList") != ll1_table.end())
-    {
-        std::cout << "Entradas en tabla para StmtList:" << std::endl;
-        for (const auto &[terminal, production] : ll1_table["StmtList"])
-        {
-            std::cout << "  " << terminal << " -> ";
-            for (const auto &symbol : production)
-            {
-                std::cout << symbol << " ";
-            }
-            std::cout << std::endl;
-        }
-    }
-    std::cout << "==========================" << std::endl;
+    // if (ll1_table.find("StmtList") != ll1_table.end())
+    // {
+    //     std::cout << "Entradas en tabla para StmtList:" << std::endl;
+    //     for (const auto &[terminal, production] : ll1_table["StmtList"])
+    //     {
+    //         std::cout << "  " << terminal << " -> ";
+    //         for (const auto &symbol : production)
+    //         {
+    //             std::cout << symbol << " ";
+    //         }
+    //         std::cout << std::endl;
+    //     }
+    // }
+    // std::cout << "==========================" << std::endl;
 
     // Validar que se construyó la tabla LL(1)
     if (ll1_table.empty())

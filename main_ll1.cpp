@@ -6,7 +6,7 @@
 #include "Parser/ll1_parser.hpp"
 #include "PrintVisitor/print_visitor.hpp"
 #include "SemanticCheck/semantic_checker.hpp"
-#include "Codegen/codegen.hpp"
+#include "Codegen/llvm_codegen.hpp"
 #include "Evaluator/evaluator.hpp"
 
 int main(int argc, char *argv[])
@@ -94,41 +94,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    // // 6. Generación de código
-    // if (program)
-    // {
-    //     std::cout << "\nGenerando código LLVM...\n";
-    //     CodeGenerator codegen;
-    //     codegen.initialize("hulk_module");
-    //     codegen.generateCode(program);
-
-    //     std::cout << "Código LLVM generado:\n";
-    //     codegen.printIR();
-
-    //     // Opcional: guardar el código IR en un archivo
-    //     std::string output_filename = std::string(argv[1]) + ".ll";
-    //     codegen.writeIRToFile(output_filename);
-    //     std::cout << "Código IR guardado en: " << output_filename << std::endl;
-    // }
-
-    // 7. Evaluación del programa
-    // if (program)
-    // {
-    //     std::cout << "\nEjecutando programa...\n";
-    //     try
-    //     {
-    //         EvaluatorVisitor evaluator;
-    //         program->accept(&evaluator);
-    //         std::cout << "Programa ejecutado exitosamente.\n";
-    //     }
-    //     catch (const std::exception &ex)
-    //     {
-    //         std::cerr << "Error durante la ejecución: " << ex.what() << std::endl;
-    //         delete program;
-    //         return 4;
-    //     }
-    // }
-
     // 8. Imprimir el AST
     if (program)
     {
@@ -141,6 +106,41 @@ int main(int argc, char *argv[])
     else
     {
         std::cout << "No se generó AST." << std::endl;
+    }
+
+    // 6. Generación de código
+    if (program)
+    {
+        std::cout << "\nGenerando código LLVM...\n";
+        LLVMCodeGenerator codegen;
+        codegen.initialize("hulk_module");
+        codegen.generateCode(program);
+
+        std::cout << "Código LLVM generado:\n";
+        codegen.printIR();
+
+        // Opcional: guardar el código IR en un archivo
+        std::string output_filename = std::string(argv[1]) + ".ll";
+        codegen.writeIRToFile(output_filename);
+        std::cout << "Código IR guardado en: " << output_filename << std::endl;
+    }
+
+    // 7. Evaluación del programa
+    if (program)
+    {
+        std::cout << "\nEjecutando programa...\n";
+        try
+        {
+            EvaluatorVisitor evaluator;
+            program->accept(&evaluator);
+            std::cout << "Programa ejecutado exitosamente.\n";
+        }
+        catch (const std::exception &ex)
+        {
+            std::cerr << "Error durante la ejecución: " << ex.what() << std::endl;
+            delete program;
+            return 4;
+        }
     }
 
     delete program;
