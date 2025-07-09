@@ -229,7 +229,7 @@ stmt:
             param_types.push_back(param.second);
         }
         
-        // Crear un bloque de expresiones y envolverlo en un ExprStmt
+        // Create ExprBlock wrapped in ExprStmt instead of Program
         auto exprBlock = new ExprBlock(std::move(*$9));
         auto exprStmt = new ExprStmt(ExprPtr(exprBlock));
         
@@ -254,14 +254,15 @@ stmt:
             param_types.push_back(param.second);
         }
         
-        auto block = std::make_unique<Program>();
-        block->stmts = std::move(*$7);
+        // Create ExprBlock wrapped in ExprStmt instead of Program
+        auto exprBlock = new ExprBlock(std::move(*$7));
+        auto exprStmt = new ExprStmt(ExprPtr(exprBlock));
         delete $7;
         
         (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
             std::string($2), 
             std::move(params), 
-            std::move(block), 
+            StmtPtr(exprStmt), 
             std::move(param_types)
         ));
         delete $4;
@@ -358,20 +359,38 @@ stmt:
         std::vector<std::string> params;
         std::vector<std::shared_ptr<TypeInfo>> param_types;
         
-        auto block = std::make_unique<Program>();
-        block->stmts = std::move(*$8);
+        // Create ExprBlock wrapped in ExprStmt instead of Program
+        auto exprBlock = new ExprBlock(std::move(*$8));
+        auto exprStmt = new ExprStmt(ExprPtr(exprBlock));
         delete $8;
         
         auto funcDecl = static_cast<Stmt*>(new FunctionDecl(
             std::string($2), 
             std::move(params), 
-            std::move(block), 
+            StmtPtr(exprStmt), 
             std::move(param_types),
             *$6
         ));
         setStmtLocation(funcDecl, @2);
         (yyval.stmt) = funcDecl;
         delete $6;
+        free($2);
+    }
+    | FUNCTION IDENT LPAREN RPAREN LBRACE stmt_list RBRACE {
+        std::vector<std::string> params;
+        std::vector<std::shared_ptr<TypeInfo>> param_types;
+        
+        // Create ExprBlock wrapped in ExprStmt instead of Program
+        auto exprBlock = new ExprBlock(std::move(*$6));
+        auto exprStmt = new ExprStmt(ExprPtr(exprBlock));
+        delete $6;
+        
+        (yyval.stmt) = static_cast<Stmt*>(new FunctionDecl(
+            std::string($2), 
+            std::move(params), 
+            StmtPtr(exprStmt), 
+            std::move(param_types)
+        ));
         free($2);
     }
 
