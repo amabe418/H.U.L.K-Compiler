@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     try
     {
         auto [cst, ast] = parser.parse();
-        // program = ast;
+        program = ast;
 
         // Mostrar información de debugging
         // parser.printProductions();
@@ -119,8 +119,10 @@ int main(int argc, char *argv[])
     if (program)
     {
         std::cout << "\nAST:\n";
+        std::cout << "DEBUG: AST tiene " << program->stmts.size() << " statements" << std::endl;
         PrintVisitor printer;
         program->accept(&printer);
+        std::cout << "DEBUG: AST impreso" << std::endl;
     }
     else
     {

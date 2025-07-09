@@ -1,4 +1,6 @@
 #include "ll1_parser.hpp"
+#include "../PrintVisitor/print_visitor.hpp"
+#include "cst_to_ast.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
@@ -334,13 +336,11 @@ std::pair<DerivationNodePtr, Program *> LL1Parser::parse()
     }
 
     // Imprimir el árbol ANTES de moverlo
-    printDerivationTree();
+    // printDerivationTree();
 
     // 5. Construir el AST a partir del CST
-    // Program *ast = buildAST(cst_root);
-
-    // Por ahora, crear un AST vacío para testing
-    auto ast = new Program();
+    Program *ast = buildAST(cst_root);
+    // printAST(ast);
 
     std::cout << "Parsing completado exitosamente" << std::endl;
     return {std::move(cst_root), ast};
@@ -430,7 +430,11 @@ void LL1Parser::printAST(Program *ast) const
     {
         std::cout << "\n=== Árbol de Sintaxis Abstracta (AST) ===" << std::endl;
         std::cout << "Program con " << ast->stmts.size() << " statements" << std::endl;
-        // Aquí podrías agregar un visitor para imprimir el AST de forma más detallada
+
+        // Usar PrintVisitor para mostrar el AST de forma detallada
+        PrintVisitor visitor;
+        ast->accept(&visitor);
+
         std::cout << "=========================================" << std::endl;
     }
     else
@@ -488,6 +492,10 @@ std::string LL1Parser::tokenTypeToSymbol(TokenType type) const
         return "LET";
     case FUNCTION:
         return "FUNCTION";
+    case IS:
+        return "IS";
+    case AS:
+        return "AS";
     case LPAREN:
         return "LPAREN";
     case RPAREN:
@@ -500,6 +508,8 @@ std::string LL1Parser::tokenTypeToSymbol(TokenType type) const
         return "SEMICOLON";
     case COMMA:
         return "COMMA";
+    case COLON:
+        return "COLON";
     case PLUS:
         return "PLUS";
     case MINUS:
@@ -585,6 +595,10 @@ TokenType LL1Parser::symbolToTokenType(const std::string &symbol) const
         return LET;
     if (symbol == "FUNCTION")
         return FUNCTION;
+    if (symbol == "IS")
+        return IS;
+    if (symbol == "AS")
+        return AS;
     if (symbol == "LPAREN")
         return LPAREN;
     if (symbol == "RPAREN")
@@ -597,6 +611,8 @@ TokenType LL1Parser::symbolToTokenType(const std::string &symbol) const
         return SEMICOLON;
     if (symbol == "COMMA")
         return COMMA;
+    if (symbol == "COLON")
+        return COLON;
     if (symbol == "PLUS")
         return PLUS;
     if (symbol == "MINUS")
@@ -1150,8 +1166,37 @@ DerivationNodePtr LL1Parser::buildDerivationTree()
 
 Program *LL1Parser::buildAST(const DerivationNodePtr &cst_root)
 {
-    // TODO: Implementar construcción de AST
-    return new Program();
+    std::cout << "=== Árbol de Sintaxis Abstracta (AST) ===" << std::endl;
+
+    if (!cst_root)
+    {
+        std::cout << "CST root es null" << std::endl;
+        return new Program();
+    }
+
+    try
+    {
+        CSTToASTConverter converter;
+        auto ast = converter.convertToAST(cst_root.get());
+
+        if (ast)
+        {
+            std::cout << "Program con " << ast->stmts.size() << " statements" << std::endl;
+            // Convertir unique_ptr a raw pointer para mantener compatibilidad
+            Program *raw_program = ast.release();
+            return raw_program;
+        }
+        else
+        {
+            std::cout << "Error: No se pudo convertir CST a AST" << std::endl;
+            return new Program();
+        }
+    }
+    catch (const std::exception &e)
+    {
+        std::cout << "Error durante la conversión CST a AST: " << e.what() << std::endl;
+        return new Program();
+    }
 }
 
 std::vector<StmtPtr> LL1Parser::buildStmtListFromCST(const DerivationNodePtr &cst_node)

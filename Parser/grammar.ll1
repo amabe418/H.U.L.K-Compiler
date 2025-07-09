@@ -2,18 +2,19 @@ Program      -> StmtList
 StmtList     -> TerminatedStmt StmtList | ε
 TerminatedStmt -> Stmt SEMICOLON
 Stmt         -> Expr | WhileStmt | ForStmt | BlockStmt | FunctionDef | TypeDef
-FunctionDef  -> FUNCTION IDENT LPAREN ArgIdList RPAREN FunctionBody
+FunctionDef  -> FUNCTION IDENT LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody
 TypeDef      -> TYPE IDENT TypeParams TypeInheritance LBRACE TypeBody RBRACE
 TypeParams   -> LPAREN ArgIdList RPAREN | ε
 TypeInheritance -> INHERITS IDENT TypeBaseArgs | ε
 TypeBaseArgs -> LPAREN ArgList RPAREN | ε
 TypeBody     -> TypeMember TypeBody | ε
 TypeMember   -> IDENT TypeMemberTail
-TypeMemberTail -> ASSIGN Expr SEMICOLON | LPAREN ArgIdList RPAREN FunctionBody
+TypeMemberTail -> TypeAnnotation ASSIGN Expr SEMICOLON | LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody SEMICOLON
 AttributeDef -> IDENT ASSIGN Expr SEMICOLON
 MethodDef    -> IDENT LPAREN ArgIdList RPAREN FunctionBody
-ArgIdList    -> IDENT ArgIdListTail | ε
-ArgIdListTail-> COMMA IDENT ArgIdListTail | ε
+ArgIdList    -> ArgId ArgIdListTail | ε
+ArgIdListTail-> COMMA ArgId ArgIdListTail | ε
+ArgId        -> IDENT TypeAnnotation
 FunctionBody -> ARROW Expr | BlockStmt
 WhileStmt    -> WHILE Expr WhileBody
 WhileBody    -> BlockStmt | Expr
@@ -22,10 +23,11 @@ ForBody      -> BlockStmt | Expr
 BlockStmt    -> LBRACE StmtList RBRACE
 Expr         -> OrExpr | IfExpr | LetExpr
 LetExpr      -> LET VarBindingList IN LetBody
-LetBody      -> BlockStmt | Expr
+LetBody      -> Expr | WhileStmt | ForStmt | BlockStmt
 VarBindingList -> VarBinding VarBindingListTail
 VarBindingListTail -> COMMA VarBinding VarBindingListTail | ε
-VarBinding   -> IDENT ASSIGN Expr
+VarBinding   -> IDENT TypeAnnotation ASSIGN Expr
+TypeAnnotation -> COLON IDENT | ε
 IfExpr       -> IF LPAREN Expr RPAREN IfBody ElifList ELSE IfBody
 ElifList     -> ElifBranch ElifList | ε
 ElifBranch   -> ELIF LPAREN Expr RPAREN IfBody
@@ -41,6 +43,7 @@ CmpExpr'     -> LESS_THAN ConcatExpr CmpExpr'
               | GE ConcatExpr CmpExpr'
               | EQ ConcatExpr CmpExpr'
               | NEQ ConcatExpr CmpExpr'
+              | IS IDENT CmpExpr'
               | ε
 ConcatExpr   -> AddExpr ConcatExpr'
 ConcatExpr'  -> CONCAT AddExpr ConcatExpr'
@@ -60,7 +63,8 @@ Factor'      -> POW Power Factor'
               | ε
 Power        -> Unary
 Unary        -> MINUS Unary
-              | Primary
+              | Primary AsExpr
+AsExpr       -> AS IDENT AsExpr | ε
 Primary      -> NUMBER
               | STRING
               | TRUE
@@ -68,7 +72,7 @@ Primary      -> NUMBER
               | IDENT PrimaryTail
               | LPAREN Expr RPAREN
               | NEW IDENT LPAREN ArgList RPAREN
-              | SELF
+              | SELF PrimaryTail
               | BASE LPAREN ArgList RPAREN
 PrimaryTail  -> LPAREN ArgList RPAREN PrimaryTail
               | DOT IDENT PrimaryTail

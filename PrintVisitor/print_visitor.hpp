@@ -143,7 +143,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
 
         // 1) Mostrar subárbol del inicializador
         printIndent();
-        std::cout << "|_ Initializer: " << getTypeString(expr->initializer->inferredType) << "\n";
+        std::cout << "|_ Initializer: " << getTypeString(expr->declaredType) << "\n";
         indentLevel++;
         expr->initializer->accept(this);
         indentLevel--;
@@ -279,7 +279,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
         for (auto &attr : t->attributes)
         {
             printIndent();
-            std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->inferredType) << "\n";
+            std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->declaredType) << "\n";
         }
 
         for (auto &method : t->methods)
@@ -293,7 +293,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     visit(MethodDecl *m) override
     {
         printIndent();
-        std::cout << "|_ Method: " << m->name << " " << getTypeString(m->inferredType) << "\n";
+        std::cout << "|_ Method: " << m->name << " " << getTypeString(m->returnType) << "\n";
         indentLevel++;
         m->body->accept(this);
         indentLevel--;
@@ -355,7 +355,7 @@ struct PrintVisitor : StmtVisitor, ExprVisitor
     void visit(AttributeDecl *attr) override
     {
         printIndent();
-        std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->inferredType) << "\n";
+        std::cout << "|_ Attribute: " << attr->name << " " << getTypeString(attr->declaredType) << "\n";
         indentLevel++;
         attr->initializer->accept(this);
         indentLevel--;

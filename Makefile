@@ -5,7 +5,7 @@ CXXFLAGS = -std=c++17 -Wall -I. -Itheoretical/Lexer -Itheoretical/Parser -IPrint
 LDFLAGS =
 
 # Archivos fuente
-SOURCES = main_ll1.cpp theoretical/Lexer/theoretical_lexer.cpp theoretical/token.cpp theoretical/automata/dfa.cpp theoretical/automata/nfa.cpp theoretical/automata/nfa_to_dfa.cpp Types/type_info.cpp SemanticCheck/semantic_checker.cpp Codegen/codegen.cpp Codegen/builtin.cpp Parser/ll1_parser.cpp
+SOURCES = main_ll1.cpp theoretical/Lexer/theoretical_lexer.cpp theoretical/token.cpp theoretical/automata/dfa.cpp theoretical/automata/nfa.cpp theoretical/automata/nfa_to_dfa.cpp Types/type_info.cpp SemanticCheck/semantic_checker.cpp Codegen/codegen.cpp Codegen/builtin.cpp Parser/ll1_parser.cpp Parser/cst_to_ast.cpp
 TARGET = main_ll1
 
 # Gramática
