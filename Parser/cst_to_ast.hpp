@@ -123,4 +123,9 @@ private:
     DerivationNode *findChild(DerivationNode *node, const std::string &symbol);
     std::vector<DerivationNode *> findChildren(DerivationNode *node, const std::string &symbol);
     bool isEpsilon(DerivationNode *node);
+
+    // Helper functions for line and column information
+    std::pair<int, int> getLineColumn(DerivationNode *node);
+    void setLineColumn(Expr *expr, DerivationNode *node);
+    void setLineColumn(Stmt *stmt, DerivationNode *node);
 };

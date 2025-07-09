@@ -100,31 +100,41 @@ std::unique_ptr<Stmt> CSTToASTConverter::convertStmt(DerivationNode *node)
         std::string childSymbol = child->getSymbol();
         std::cout << "DEBUG: convertStmt - primer hijo es " << childSymbol << std::endl;
 
+        std::unique_ptr<Stmt> result = nullptr;
+
         if (childSymbol == "Expr")
         {
             std::cout << "DEBUG: convertStmt - convirtiendo Expr" << std::endl;
-            return std::make_unique<ExprStmt>(convertExpr(child));
+            result = std::make_unique<ExprStmt>(convertExpr(child));
         }
-        if (childSymbol == "FunctionDef")
+        else if (childSymbol == "FunctionDef")
         {
-            return convertFunctionDef(child);
+            result = convertFunctionDef(child);
         }
-        if (childSymbol == "TypeDef")
+        else if (childSymbol == "TypeDef")
         {
-            return convertTypeDef(child);
+            result = convertTypeDef(child);
         }
-        if (childSymbol == "WhileStmt")
+        else if (childSymbol == "WhileStmt")
         {
-            return std::make_unique<ExprStmt>(convertWhileExpr(child));
+            result = std::make_unique<ExprStmt>(convertWhileExpr(child));
         }
-        if (childSymbol == "ForStmt")
+        else if (childSymbol == "ForStmt")
         {
-            return std::make_unique<ExprStmt>(convertForExpr(child));
+            result = std::make_unique<ExprStmt>(convertForExpr(child));
         }
-        if (childSymbol == "BlockStmt")
+        else if (childSymbol == "BlockStmt")
         {
-            return std::make_unique<ExprStmt>(convertBlockStmt(child));
+            result = std::make_unique<ExprStmt>(convertBlockStmt(child));
         }
+
+        // Set line and column information
+        if (result)
+        {
+            setLineColumn(result.get(), node);
+        }
+
+        return result;
     }
 
     std::cout << "DEBUG: convertStmt - no se pudo convertir el statement" << std::endl;
@@ -157,10 +167,12 @@ std::unique_ptr<Expr> CSTToASTConverter::convertExpr(DerivationNode *node)
             std::string childSymbol = child->getSymbol();
             std::cout << "DEBUG: convertExpr - procesando hijo de tipo " << childSymbol << std::endl;
 
+            std::unique_ptr<Expr> result = nullptr;
+
             if (childSymbol == "OrExpr")
             {
-                auto expr = convertOrExpr(child);
-                if (expr)
+                result = convertOrExpr(child);
+                if (result)
                 {
                     std::cout << "DEBUG: convertExpr - OrExpr convertido exitosamente" << std::endl;
                 }
@@ -168,17 +180,24 @@ std::unique_ptr<Expr> CSTToASTConverter::convertExpr(DerivationNode *node)
                 {
                     std::cout << "DEBUG: convertExpr - error al convertir OrExpr" << std::endl;
                 }
-                return expr;
             }
-            if (childSymbol == "IfExpr")
+            else if (childSymbol == "IfExpr")
             {
-                return convertIfExpr(child);
+                result = convertIfExpr(child);
             }
-            if (childSymbol == "LetExpr")
+            else if (childSymbol == "LetExpr")
             {
                 std::cout << "DEBUG: convertExpr - convirtiendo LetExpr" << std::endl;
-                return convertLetExpr(child);
+                result = convertLetExpr(child);
             }
+
+            // Set line and column information
+            if (result)
+            {
+                setLineColumn(result.get(), node);
+            }
+
+            return result;
         }
         else
         {
@@ -424,6 +443,7 @@ std::unique_ptr<Expr> CSTToASTConverter::convertTermPrime(std::unique_ptr<Expr> 
 
         BinaryExpr::Op op = convertBinaryOp(opNode->getSymbol());
         auto temp = std::make_unique<BinaryExpr>(op, std::move(inherited), std::move(rightFactor));
+        setLineColumn(temp.get(), opNode);
         return convertTermPrime(std::move(temp), node->children[2].get());
     }
 
@@ -459,6 +479,7 @@ std::unique_ptr<Expr> CSTToASTConverter::convertFactorPrime(std::unique_ptr<Expr
     {
         auto rightPower = convertPower(node->children[1].get());
         auto temp = std::make_unique<BinaryExpr>(BinaryExpr::OP_POW, std::move(inherited), std::move(rightPower));
+        setLineColumn(temp.get(), node->children[0].get());
         return convertFactorPrime(std::move(temp), node->children[2].get());
     }
 
@@ -554,23 +575,31 @@ std::unique_ptr<Expr> CSTToASTConverter::convertPrimary(DerivationNode *node)
     if (childSymbol == "NUMBER")
     {
         std::string value = getTokenValue(firstChild);
-        return std::make_unique<NumberExpr>(std::stod(value));
+        auto result = std::make_unique<NumberExpr>(std::stod(value));
+        setLineColumn(result.get(), firstChild);
+        return result;
     }
 
     if (childSymbol == "STRING")
     {
         std::string value = getTokenValue(firstChild);
-        return std::make_unique<StringExpr>(value);
+        auto result = std::make_unique<StringExpr>(value);
+        setLineColumn(result.get(), firstChild);
+        return result;
     }
 
     if (childSymbol == "TRUE")
     {
-        return std::make_unique<BooleanExpr>(true);
+        auto result = std::make_unique<BooleanExpr>(true);
+        setLineColumn(result.get(), firstChild);
+        return result;
     }
 
     if (childSymbol == "FALSE")
     {
-        return std::make_unique<BooleanExpr>(false);
+        auto result = std::make_unique<BooleanExpr>(false);
+        setLineColumn(result.get(), firstChild);
+        return result;
     }
 
     if (childSymbol == "IDENT")
@@ -583,15 +612,37 @@ std::unique_ptr<Expr> CSTToASTConverter::convertPrimary(DerivationNode *node)
             auto primaryTail = node->children[1].get();
             if (primaryTail)
             {
-                return convertPrimaryTail(std::make_unique<VariableExpr>(name), primaryTail);
+                auto result = convertPrimaryTail(std::make_unique<VariableExpr>(name), primaryTail);
+                if (result)
+                {
+                    setLineColumn(result.get(), firstChild);
+                }
+                return result;
             }
         }
 
-        return std::make_unique<VariableExpr>(name);
+        auto result = std::make_unique<VariableExpr>(name);
+        setLineColumn(result.get(), firstChild);
+        return result;
     }
 
     if (childSymbol == "SELF")
     {
+        // Manejar PrimaryTail si existe
+        if (node->children.size() >= 2)
+        {
+            auto primaryTail = node->children[1].get();
+            if (primaryTail)
+            {
+                auto result = convertPrimaryTail(std::make_unique<SelfExpr>(), primaryTail);
+                if (result)
+                {
+                    setLineColumn(result.get(), firstChild);
+                }
+                return result;
+            }
+        }
+
         return std::make_unique<SelfExpr>();
     }
 
@@ -716,12 +767,14 @@ std::unique_ptr<FunctionDecl> CSTToASTConverter::convertFunctionDef(DerivationNo
         }
 
         std::cout << "DEBUG: convertFunctionDef - creando FunctionDecl" << std::endl;
-        return std::make_unique<FunctionDecl>(
+        auto result = std::make_unique<FunctionDecl>(
             name,
             std::move(params),
             std::move(body),
             std::move(paramTypes),
             std::move(returnType));
+        setLineColumn(result.get(), node->children[0].get());
+        return result;
     }
 
     std::cout << "DEBUG: convertFunctionDef - estructura inválida" << std::endl;
@@ -797,7 +850,7 @@ std::unique_ptr<TypeDecl> CSTToASTConverter::convertTypeDef(DerivationNode *node
         }
 
         std::cout << "DEBUG: convertTypeDef - creando TypeDecl" << std::endl;
-        return std::make_unique<TypeDecl>(
+        auto result = std::make_unique<TypeDecl>(
             name,
             std::move(params),
             std::move(paramTypes),
@@ -805,6 +858,8 @@ std::unique_ptr<TypeDecl> CSTToASTConverter::convertTypeDef(DerivationNode *node
             std::move(methods),
             std::move(baseType),
             std::move(baseArgs));
+        setLineColumn(result.get(), node->children[0].get());
+        return result;
     }
 
     std::cout << "DEBUG: convertTypeDef - estructura inválida" << std::endl;
@@ -1824,27 +1879,39 @@ std::unique_ptr<Expr> CSTToASTConverter::convertPrimaryTail(std::unique_ptr<Expr
                 args = convertArgList(argList);
             }
 
-            // Crear CallExpr
-            std::string calleeName;
-            if (auto varExpr = dynamic_cast<VariableExpr *>(base.get()))
+            // Distinguir entre CallExpr y MethodCallExpr
+            std::unique_ptr<Expr> result = nullptr;
+
+            if (auto getAttrExpr = dynamic_cast<GetAttrExpr *>(base.get()))
             {
-                calleeName = varExpr->name;
+                // Es un método: a.b() → MethodCallExpr
+                std::cout << "DEBUG: convertPrimaryTail - creando MethodCallExpr para " << getAttrExpr->attrName << std::endl;
+                result = std::make_unique<MethodCallExpr>(
+                    std::move(getAttrExpr->object),
+                    getAttrExpr->attrName,
+                    std::move(args));
+            }
+            else if (auto varExpr = dynamic_cast<VariableExpr *>(base.get()))
+            {
+                // Es una función: a() → CallExpr
+                std::cout << "DEBUG: convertPrimaryTail - creando CallExpr para " << varExpr->name << std::endl;
+                result = std::make_unique<CallExpr>(varExpr->name, std::move(args));
             }
             else
             {
-                std::cout << "DEBUG: convertPrimaryTail - error: base no es VariableExpr" << std::endl;
+                std::cout << "DEBUG: convertPrimaryTail - error: base no es VariableExpr ni GetAttrExpr para LPAREN" << std::endl;
                 return base;
             }
 
-            auto callExpr = std::make_unique<CallExpr>(calleeName, std::move(args));
+            setLineColumn(result.get(), firstChild);
 
             // Procesar recursivamente el PrimaryTail
             if (primaryTail)
             {
-                return convertPrimaryTail(std::move(callExpr), primaryTail);
+                return convertPrimaryTail(std::move(result), primaryTail);
             }
 
-            return callExpr;
+            return result;
         }
     }
 
@@ -1863,6 +1930,7 @@ std::unique_ptr<Expr> CSTToASTConverter::convertPrimaryTail(std::unique_ptr<Expr
 
             std::string attrName = getTokenValue(ident);
             auto getAttrExpr = std::make_unique<GetAttrExpr>(std::move(base), attrName);
+            setLineColumn(getAttrExpr.get(), ident);
 
             // Procesar recursivamente el PrimaryTail
             if (primaryTail)
@@ -1891,19 +1959,33 @@ std::unique_ptr<Expr> CSTToASTConverter::convertPrimaryTail(std::unique_ptr<Expr
                 return base;
             }
 
+            // Verificar si el base es un GetAttrExpr (acceso a atributo)
+            if (auto getAttrExpr = dynamic_cast<GetAttrExpr *>(base.get()))
+            {
+                std::cout << "DEBUG: convertPrimaryTail - creando SetAttrExpr para " << getAttrExpr->attrName << std::endl;
+                auto setAttrExpr = std::make_unique<SetAttrExpr>(
+                    std::move(getAttrExpr->object),
+                    getAttrExpr->attrName,
+                    std::move(valueExpr));
+                setLineColumn(setAttrExpr.get(), node->children[0].get());
+                return setAttrExpr;
+            }
+
+            // Si es una variable simple, crear AssignExpr
             std::string varName;
             if (auto varExpr = dynamic_cast<VariableExpr *>(base.get()))
             {
                 varName = varExpr->name;
+                std::cout << "DEBUG: convertPrimaryTail - creando AssignExpr para " << varName << std::endl;
+                auto assignExpr = std::make_unique<AssignExpr>(varName, std::move(valueExpr));
+                setLineColumn(assignExpr.get(), node->children[0].get());
+                return assignExpr;
             }
             else
             {
-                std::cout << "DEBUG: convertPrimaryTail - error: base no es VariableExpr para ASSIGN" << std::endl;
+                std::cout << "DEBUG: convertPrimaryTail - error: base no es VariableExpr ni GetAttrExpr para ASSIGN" << std::endl;
                 return base;
             }
-
-            std::cout << "DEBUG: convertPrimaryTail - creando AssignExpr para " << varName << std::endl;
-            return std::make_unique<AssignExpr>(varName, std::move(valueExpr));
         }
     }
 
@@ -2310,8 +2392,8 @@ std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> CSTToASTC
 
     std::cout << "DEBUG: convertTypeMemberTail - procesando con " << node->children.size() << " hijos" << std::endl;
 
-    // TypeMemberTail → TypeAnnotation ASSIGN Expr SEMICOLON | LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody SEMICOLON
-    if (node->children.size() >= 4)
+    // TypeMemberTail → TypeAnnotation TypeMemberTail' | LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody SEMICOLON
+    if (node->children.size() >= 2)
     {
         auto firstChild = node->children[0].get();
         if (!firstChild)
@@ -2323,24 +2405,42 @@ std::pair<std::unique_ptr<AttributeDecl>, std::unique_ptr<MethodDecl>> CSTToASTC
 
         if (firstSymbol == "TypeAnnotation")
         {
-            // TypeAnnotation ASSIGN Expr SEMICOLON (Attribute)
-            if (node->children.size() >= 4)
+            // TypeAnnotation TypeMemberTail' (Attribute)
+            auto typeAnnotation = node->children[0].get();
+            auto typeMemberTailPrime = node->children[1].get();
+
+            std::shared_ptr<TypeInfo> type = nullptr;
+            if (typeAnnotation)
             {
-                auto typeAnnotation = node->children[0].get();
-                auto expr = node->children[2].get();
+                type = convertTypeAnnotation(typeAnnotation);
+            }
 
-                if (expr)
+            if (typeMemberTailPrime && typeMemberTailPrime->getSymbol() == "TypeMemberTail'")
+            {
+                // TypeMemberTail' → SEMICOLON | ASSIGN Expr SEMICOLON
+                if (typeMemberTailPrime->children.size() >= 1)
                 {
-                    auto exprNode = convertExpr(expr);
-                    if (exprNode)
+                    auto firstPrimeChild = typeMemberTailPrime->children[0].get();
+                    if (firstPrimeChild && firstPrimeChild->getSymbol() == "SEMICOLON")
                     {
-                        std::shared_ptr<TypeInfo> type = nullptr;
-                        if (typeAnnotation)
+                        // SEMICOLON - atributo sin inicialización
+                        attribute = std::make_unique<AttributeDecl>(memberName, nullptr, std::move(type));
+                    }
+                    else if (firstPrimeChild && firstPrimeChild->getSymbol() == "ASSIGN")
+                    {
+                        // ASSIGN Expr SEMICOLON - atributo con inicialización
+                        if (typeMemberTailPrime->children.size() >= 3)
                         {
-                            type = convertTypeAnnotation(typeAnnotation);
+                            auto expr = typeMemberTailPrime->children[1].get();
+                            if (expr)
+                            {
+                                auto exprNode = convertExpr(expr);
+                                if (exprNode)
+                                {
+                                    attribute = std::make_unique<AttributeDecl>(memberName, std::move(exprNode), std::move(type));
+                                }
+                            }
                         }
-
-                        attribute = std::make_unique<AttributeDecl>(memberName, std::move(exprNode), std::move(type));
                     }
                 }
             }
@@ -2551,4 +2651,52 @@ std::unique_ptr<ExprBlock> CSTToASTConverter::convertExprBlock(DerivationNode *n
     }
 
     return nullptr;
+}
+
+// Helper functions to get line and column information from CST nodes
+std::pair<int, int> CSTToASTConverter::getLineColumn(DerivationNode *node)
+{
+    if (!node)
+        return {0, 0};
+
+    // If the node has a token, use its line/column info
+    if (node->token.has_value())
+    {
+        return {node->token->line, node->token->column};
+    }
+
+    // Otherwise, try to find the first child with line/column info
+    for (const auto &child : node->children)
+    {
+        if (child)
+        {
+            auto childInfo = getLineColumn(child.get());
+            if (childInfo.first > 0 || childInfo.second > 0)
+            {
+                return childInfo;
+            }
+        }
+    }
+
+    return {node->line_number, node->column_number};
+}
+
+void CSTToASTConverter::setLineColumn(Expr *expr, DerivationNode *node)
+{
+    if (!expr || !node)
+        return;
+
+    auto [line, col] = getLineColumn(node);
+    expr->line_number = line;
+    expr->column_number = col;
+}
+
+void CSTToASTConverter::setLineColumn(Stmt *stmt, DerivationNode *node)
+{
+    if (!stmt || !node)
+        return;
+
+    auto [line, col] = getLineColumn(node);
+    stmt->line_number = line;
+    stmt->column_number = col;
 }

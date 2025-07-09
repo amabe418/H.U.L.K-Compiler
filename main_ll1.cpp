@@ -60,25 +60,39 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    // // 5. Análisis semántico
-    // if (program)
-    // {
-    //     std::cout << "\nRealizando análisis semántico...\n";
-    //     SemanticAnalyzer semantic_analyzer;
-    //     semantic_analyzer.analyze(program);
+    // 8. Imprimir el AST
+    if (program)
+    {
+        std::cout << "\nAST:\n";
+        std::cout << "DEBUG: AST tiene " << program->stmts.size() << " statements" << std::endl;
+        PrintVisitor printer;
+        program->accept(&printer);
+        std::cout << "DEBUG: AST impreso" << std::endl;
+    }
+    else
+    {
+        std::cout << "No se generó AST." << std::endl;
+    }
 
-    //     if (semantic_analyzer.hasErrors())
-    //     {
-    //         std::cerr << "\nErrores semánticos encontrados:\n";
-    //         semantic_analyzer.printErrors();
-    //         delete program;
-    //         return 3;
-    //     }
-    //     else
-    //     {
-    //         std::cout << "Análisis semántico completado sin errores.\n";
-    //     }
-    // }
+    // 5. Análisis semántico
+    if (program)
+    {
+        std::cout << "\nRealizando análisis semántico...\n";
+        SemanticAnalyzer semantic_analyzer;
+        semantic_analyzer.analyze(program);
+
+        if (semantic_analyzer.hasErrors())
+        {
+            std::cerr << "\nErrores semánticos encontrados:\n";
+            semantic_analyzer.printErrors();
+            delete program;
+            return 3;
+        }
+        else
+        {
+            std::cout << "Análisis semántico completado sin errores.\n";
+        }
+    }
 
     // // 6. Generación de código
     // if (program)

@@ -9,7 +9,8 @@ TypeInheritance -> INHERITS IDENT TypeBaseArgs | ε
 TypeBaseArgs -> LPAREN ArgList RPAREN | ε
 TypeBody     -> TypeMember TypeBody | ε
 TypeMember   -> IDENT TypeMemberTail
-TypeMemberTail -> TypeAnnotation ASSIGN Expr SEMICOLON | LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody SEMICOLON
+TypeMemberTail -> TypeAnnotation TypeMemberTail' | LPAREN ArgIdList RPAREN TypeAnnotation FunctionBody SEMICOLON
+TypeMemberTail' -> SEMICOLON | ASSIGN Expr SEMICOLON
 AttributeDef -> IDENT ASSIGN Expr SEMICOLON
 MethodDef    -> IDENT LPAREN ArgIdList RPAREN FunctionBody
 ArgIdList    -> ArgId ArgIdListTail | ε

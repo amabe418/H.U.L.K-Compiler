@@ -190,23 +190,23 @@ let pt = new PolarPoint(3,4) in {
 //    print("x: " @ pt.getX() @ "; y: " @ pt.getY());
 //
 //// Type with typed parameters
-type Point(x: Number, y: Number) {
-    // Attributes with explicit types
-    x: Number = x;
-    y: Number = y;
-    
-    // Method with typed parameters and return type
-    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
-    
-    // Method with typed parameters but inferred return type
-    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
-    
-    // Method with no parameters and explicit return type
-    magnitude() : Number => sqrt(self.x^2 + self.y^2);
-    
-    // Method with no parameters and inferred return type
-    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
-};
+//type Point(x: Number, y: Number) {
+//    // Attributes with explicit types
+//    x: Number = x;
+//    y: Number = y;
+//    
+//    // Method with typed parameters and return type
+//    distance(other: Point) : Number => sqrt((self.x - other.x)^2 + (self.y - other.y)^2);
+//    
+//    // Method with typed parameters but inferred return type
+//    add(other: Point) => new Point(self.x + other.x, self.y + other.y);
+//    
+//    // Method with no parameters and explicit return type
+//    magnitude() : Number => sqrt(self.x^2 + self.y^2);
+//    
+//    // Method with no parameters and inferred return type
+//    toString() => "Point(" @ self.x @ ", " @ self.y @ ")";
+//};
 //
 //// Type with inheritance and typed parameters
 //type Circle(center: Point, radius: Number) inherits Object {
@@ -497,11 +497,11 @@ let a = 2, b = 3, c = 4, d = 5 in {
     print(false);
 };
 print("Probando declaracion de variables con condicionales e impresion de su valor:");
-let a = if(3 > 4) "2" else true in {
-    print(a);
-    a := 4;
-    print(a+1);
-};
+//let a = if(3 > 4) "2" else true in {
+//    print(a);
+//    a := 4;
+//    print(a+1);
+//};
 print("Probando bucle while");
 let a = 5 in {
     while(a > 0){
@@ -635,16 +635,16 @@ type B inherits A{
     //f() => "B";
 };
 
-let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f()); // should print 
-function f(x:A) => print(x.f());
+//let x = -5 in let y = if(x > 0) new A() else new B() in print(y.f()); // should print 
+function fa(x:A) => print(x.f());
 
-let b = new B() in f(b);
-type Animal{
-    talk()=> "hola, soy un animal";
-};
+let b = new A() in fa(b);
+//type Animal{
+//    talk()=> "hola, soy un animal";
+//};
+//
+//type Perro inherits Animal{
+//    talk()=> "hola, soy un perro";
+//};
 
-type Perro inherits Animal{
-    talk()=> "hola, soy un perro";
-};
-
-let x: Animal = new Perro() in print(x.talk());
+//let x: Animal = new Perro() in print(x.talk());
