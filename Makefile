@@ -1,79 +1,25 @@
-# Existing variables
-SRC_DIR = src
-OBJ_DIR = obj
-BIN_DIR = hulk
-
-# Archivos fuente del parser y lexer
-PARSER_Y = $(SRC_DIR)/Parser/parser.y
-PARSER_CPP = $(SRC_DIR)/Parser/parser.tab.cpp
-PARSER_HPP = $(SRC_DIR)/Parser/parser.tab.hpp
-
-LEXER_L = $(SRC_DIR)/Lexer/lexer.l
-LEXER_CPP = $(SRC_DIR)/Lexer/lex.yy.cpp
-
-# Generados por Bison y Flex
-$(PARSER_CPP): $(PARSER_Y)
-	bison -d -o $(PARSER_CPP) $(PARSER_Y)
-
-$(LEXER_CPP): $(LEXER_L)
-	flex -o $(LEXER_CPP) $(LEXER_L)
-
-
-# Otros archivos fuente
-OTHER_SRCS = $(wildcard $(SRC_DIR)/AST/*.cpp) \
-             $(wildcard $(SRC_DIR)/NameResolver/*.cpp) \
-             $(wildcard $(SRC_DIR)/Scope/*.cpp) \
-             $(wildcard $(SRC_DIR)/SymbolTable/*.cpp) \
-             $(wildcard $(SRC_DIR)/Types/*.cpp) \
-             $(wildcard $(SRC_DIR)/SemanticCheck/*.cpp) \
-             $(wildcard $(SRC_DIR)/Codegen/*.cpp) \
-             $(wildcard $(SRC_DIR)/Runtime/*.cpp) \
-             $(SRC_DIR)/Parser/parser_globals.cpp \
-             $(SRC_DIR)/main.cpp
-
-# Todos los archivos fuente
-SRCS = $(PARSER_CPP) $(LEXER_CPP) $(OTHER_SRCS)
-
-# Objetos
-OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
+.PHONY: all compile execute clean
 
 CXX = g++
-LLVM_CXXFLAGS = $(shell llvm-config --cxxflags)
-LLVM_LDFLAGS = $(shell llvm-config --ldflags)
-LLVM_LIBS = $(shell llvm-config --libs)
-CXXFLAGS = -std=c++17 -Wall -g -I$(SRC_DIR) -DYYDEBUG=1 -fexceptions $(filter-out -fno-exceptions,$(LLVM_CXXFLAGS))
-LDFLAGS = $(LLVM_LDFLAGS)
-LIBS = $(LLVM_LIBS)
+CXXFLAGS = -std=c++17 -Wall -I. -Itheoretical/Lexer -Itheoretical/Parser -IPrintVisitor -IAST -Itheoretical/automata -IValue -ISymbolTable -IEvaluator -ISemanticCheck -IScope -ITypes -ICodegen
+LDFLAGS =
 
-TARGET = $(BIN_DIR)/hulk_executable
-INPUT_FILE ?= script.hulk
+# Archivos fuente
+SOURCES = main_ll1.cpp theoretical/Lexer/theoretical_lexer.cpp theoretical/token.cpp theoretical/automata/dfa.cpp theoretical/automata/nfa.cpp theoretical/automata/nfa_to_dfa.cpp Types/type_info.cpp SemanticCheck/semantic_checker.cpp Codegen/codegen.cpp Codegen/builtin.cpp Parser/ll1_parser.cpp Parser/cst_to_ast.cpp
+TARGET = main_ll1
 
-.PHONY: all clean compile execute debug
+# Gramática
+GRAMMAR = Parser/grammar.ll1
 
-all: $(TARGET)
+FILE ?= script.hulk
 
-# Compilar binario final
-$(TARGET): $(OBJS)
-	@mkdir -p $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@
+all: compile
 
-# Compilar archivos .o
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-compile: $(PARSER_CPP) $(LEXER_CPP) $(TARGET)
+compile:
+	$(CXX) $(CXXFLAGS) $(SOURCES) -o $(TARGET) $(LDFLAGS)
 
 execute: compile
-	./$(TARGET) $(INPUT_FILE)
-
-debug: compile
-	@echo "=== DEBUGGING PARSER ==="
-	./$(TARGET) $(INPUT_FILE)
+	@./$(TARGET) $(FILE)
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) \
-	       $(PARSER_CPP) $(PARSER_HPP) \
-	       $(LEXER_CPP) \
-		   script.hulk.ll
-
+	rm -f $(TARGET) *.o theoretical/Lexer/*.o theoretical/automata/*.o Codegen/*.o Parser/*.o 
