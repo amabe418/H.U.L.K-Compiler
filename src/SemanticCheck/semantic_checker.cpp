@@ -800,6 +800,8 @@ void SemanticAnalyzer::visit(AssignExpr *expr)
 
 void SemanticAnalyzer::visit(IfExpr *expr)
 {
+    std::cout << "[DEBUG] Processing IfExpr" << std::endl;
+    
     // Check condition type
     expr->condition->accept(this);
     if (!current_type_.isBoolean())
@@ -812,12 +814,133 @@ void SemanticAnalyzer::visit(IfExpr *expr)
     // Visit then branch
     expr->thenBranch->accept(this);
     TypeInfo thenType = current_type_;
+    std::cout << "[DEBUG] IfExpr then branch type: " << thenType.toString() << std::endl;
 
-    // Visit else branch
-    expr->elseBranch->accept(this);
-    TypeInfo elseType = current_type_;
+    // Visit else branch (if exists)
+    TypeInfo elseType;
+    if (expr->elseBranch) {
+        expr->elseBranch->accept(this);
+        elseType = current_type_;
+        std::cout << "[DEBUG] IfExpr else branch type: " << elseType.toString() << std::endl;
+    } else {
+        elseType = TypeInfo(TypeInfo::Kind::Void);
+        std::cout << "[DEBUG] IfExpr no else branch, using Void" << std::endl;
+    }
 
-    expr->inferredType = std::make_shared<TypeInfo>(TypeInfo::Kind::Void);
+    // Compute the unified type (LCA - Lowest Common Ancestor)
+    TypeInfo unifiedType = computeUnifiedType(thenType, elseType);
+    std::cout << "[DEBUG] IfExpr unified type: " << unifiedType.toString() << std::endl;
+    
+    current_type_ = unifiedType;
+    expr->inferredType = std::make_shared<TypeInfo>(unifiedType);
+}
+
+TypeInfo SemanticAnalyzer::computeUnifiedType(const TypeInfo& type1, const TypeInfo& type2)
+{
+    std::cout << "[DEBUG] Computing unified type between " << type1.toString() << " and " << type2.toString() << std::endl;
+    
+    // If both types are the same, return that type
+    if (type1.toString() == type2.toString()) {
+        std::cout << "[DEBUG] Types are identical, returning " << type1.toString() << std::endl;
+        return type1;
+    }
+    
+    // If one is Void, return the other
+    if (type1.getKind() == TypeInfo::Kind::Void) {
+        std::cout << "[DEBUG] Type1 is Void, returning " << type2.toString() << std::endl;
+        return type2;
+    }
+    if (type2.getKind() == TypeInfo::Kind::Void) {
+        std::cout << "[DEBUG] Type2 is Void, returning " << type1.toString() << std::endl;
+        return type1;
+    }
+    
+    // If both are objects, find their LCA in the inheritance hierarchy
+    if (type1.isObject() && type2.isObject()) {
+        std::string lca = findLowestCommonAncestor(type1.getTypeName(), type2.getTypeName());
+        std::cout << "[DEBUG] LCA of " << type1.getTypeName() << " and " << type2.getTypeName() << " is " << lca << std::endl;
+        return TypeInfo(TypeInfo::Kind::Object, lca);
+    }
+    
+    // If both are primitive types of the same kind
+    if (type1.getKind() == type2.getKind()) {
+        std::cout << "[DEBUG] Both are same primitive type, returning " << type1.toString() << std::endl;
+        return type1;
+    }
+    
+    // If one is Number and the other is compatible, return Number
+    if ((type1.isNumeric() && type2.isNumeric()) || 
+        (type1.isNumeric() && type2.isCompatibleWith(type1)) ||
+        (type2.isNumeric() && type1.isCompatibleWith(type2))) {
+        std::cout << "[DEBUG] Numeric compatibility, returning Number" << std::endl;
+        return TypeInfo(TypeInfo::Kind::Number);
+    }
+    
+    // Default: return Object as the most general type
+    std::cout << "[DEBUG] No specific unification, returning Object" << std::endl;
+    return TypeInfo(TypeInfo::Kind::Object, "Object");
+}
+
+std::string SemanticAnalyzer::findLowestCommonAncestor(const std::string& type1, const std::string& type2)
+{
+    std::cout << "[DEBUG] Finding LCA of " << type1 << " and " << type2 << std::endl;
+    
+    // If types are the same, return that type
+    if (type1 == type2) {
+        std::cout << "[DEBUG] Types are identical, LCA is " << type1 << std::endl;
+        return type1;
+    }
+    
+    // Get inheritance chains for both types
+    std::vector<std::string> chain1 = getInheritanceChain(type1);
+    std::vector<std::string> chain2 = getInheritanceChain(type2);
+    
+    std::cout << "[DEBUG] Inheritance chain for " << type1 << ": ";
+    for (const auto& t : chain1) std::cout << t << " ";
+    std::cout << std::endl;
+    
+    std::cout << "[DEBUG] Inheritance chain for " << type2 << ": ";
+    for (const auto& t : chain2) std::cout << t << " ";
+    std::cout << std::endl;
+    
+    // Find the first common ancestor
+    for (const auto& ancestor1 : chain1) {
+        for (const auto& ancestor2 : chain2) {
+            if (ancestor1 == ancestor2) {
+                std::cout << "[DEBUG] Found common ancestor: " << ancestor1 << std::endl;
+                return ancestor1;
+            }
+        }
+    }
+    
+    // If no common ancestor found, return Object as fallback
+    std::cout << "[DEBUG] No common ancestor found, returning Object" << std::endl;
+    return "Object";
+}
+
+std::vector<std::string> SemanticAnalyzer::getInheritanceChain(const std::string& typeName)
+{
+    std::vector<std::string> chain;
+    std::string current = typeName;
+    
+    while (current != "Object") {
+        chain.push_back(current);
+        
+        // Get the base type
+        auto typeDecl = symbol_table_.getTypeDeclaration(current);
+        if (!typeDecl) {
+            std::cout << "[DEBUG] Warning: Type declaration not found for " << current << std::endl;
+            break;
+        }
+        
+        current = typeDecl->baseType;
+        if (current.empty()) {
+            current = "Object";
+        }
+    }
+    
+    chain.push_back("Object");  // Always add Object as the root
+    return chain;
 }
 
 void SemanticAnalyzer::visit(ExprBlock *expr)

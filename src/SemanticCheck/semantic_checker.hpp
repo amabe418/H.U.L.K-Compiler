@@ -160,4 +160,19 @@ private:
      * @brief Convert TypeInfo to string representation
      */
     std::string typeToString(const TypeInfo &type);
+
+    /**
+     * @brief Compute the unified type (LCA) between two types
+     */
+    TypeInfo computeUnifiedType(const TypeInfo& type1, const TypeInfo& type2);
+
+    /**
+     * @brief Find the lowest common ancestor of two types in the inheritance hierarchy
+     */
+    std::string findLowestCommonAncestor(const std::string& type1, const std::string& type2);
+
+    /**
+     * @brief Get the inheritance chain for a type (from child to Object)
+     */
+    std::vector<std::string> getInheritanceChain(const std::string& typeName);
 };
