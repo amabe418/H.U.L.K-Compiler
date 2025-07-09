@@ -1,70 +1,25 @@
-SRC_DIR = src
-OBJ_DIR = obj
-BIN_DIR = hulk
+.PHONY: all compile execute clean
 
-# Archivos fuente del parser y lexer
-PARSER_Y = $(SRC_DIR)/Parser/parser.y
-PARSER_CPP = $(SRC_DIR)/Parser/parser.tab.cpp
-PARSER_HPP = $(SRC_DIR)/Parser/parser.tab.hpp
+CXX = clang++
+CXXFLAGS = -std=c++17 -Wall -I. -Itheoretical/Lexer -Itheoretical/Parser -IPrintVisitor -IAST -Itheoretical/automata -IValue -ISymbolTable -IEvaluator -ISemanticCheck -IScope -ITypes -ICodegen $(shell llvm-config --cxxflags) -fexceptions
+LDFLAGS = $(shell llvm-config --ldflags --libs)
 
-LEXER_L = $(SRC_DIR)/Lexer/lexer.l
-LEXER_CPP = $(SRC_DIR)/Lexer/lex.yy.cpp
+# Archivos fuente
+SOURCES = main_ll1.cpp theoretical/Lexer/theoretical_lexer.cpp theoretical/token.cpp theoretical/automata/dfa.cpp theoretical/automata/nfa.cpp theoretical/automata/nfa_to_dfa.cpp Types/type_info.cpp SemanticCheck/semantic_checker.cpp Codegen/llvm_codegen.cpp Codegen/llvm_aux.cpp Parser/ll1_parser.cpp Parser/cst_to_ast.cpp
+TARGET = main_ll1
 
-# Generados por Bison y Flex
-$(PARSER_CPP): $(PARSER_Y)
-	bison -d -o $(PARSER_CPP) $(PARSER_Y)
+# Gramática
+GRAMMAR = Parser/grammar.ll1
 
-$(LEXER_CPP): $(LEXER_L)
-	flex -o $(LEXER_CPP) $(LEXER_L)
+FILE ?= script.hulk
 
+all: compile
 
-# Otros archivos fuente
-OTHER_SRCS = $(wildcard $(SRC_DIR)/AST/*.cpp) \
-             $(wildcard $(SRC_DIR)/NameResolver/*.cpp) \
-             $(wildcard $(SRC_DIR)/Scope/*.cpp) \
-             $(wildcard $(SRC_DIR)/SymbolTable/*.cpp) \
-             $(wildcard $(SRC_DIR)/Types/*.cpp) \
-             $(wildcard $(SRC_DIR)/SemanticCheck/*.cpp) \
-             $(wildcard $(SRC_DIR)/Codegen/*.cpp) \
-             $(SRC_DIR)/Parser/parser_globals.cpp \
-             $(SRC_DIR)/main.cpp
-
-# Todos los archivos fuente
-SRCS = $(PARSER_CPP) $(LEXER_CPP) $(OTHER_SRCS)
-
-# Objetos
-OBJS = $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
-
-CXX = g++
-CXXFLAGS = -std=c++17 -Wall -g -I$(SRC_DIR) -DYYDEBUG=1
-
-TARGET = $(BIN_DIR)/hulk_executable
-INPUT_FILE ?= script.hulk
-
-.PHONY: all clean compile execute debug
-
-all: $(TARGET)
-
-# Compilar binario final
-$(TARGET): $(OBJS)
-	@mkdir -p $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
-# Compilar archivos .o
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-compile: $(PARSER_CPP) $(LEXER_CPP) $(TARGET)
+compile:
+	$(CXX) $(CXXFLAGS) $(SOURCES) -o $(TARGET) $(LDFLAGS)
 
 execute: compile
-	./$(TARGET) $(INPUT_FILE)
-
-debug: compile
-	@echo "=== DEBUGGING PARSER ==="
-	./$(TARGET) $(INPUT_FILE)
+	@./$(TARGET) $(FILE)
 
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR) \
-	       $(PARSER_CPP) $(PARSER_HPP) \
-	       $(LEXER_CPP)
+	rm -f $(TARGET) *.o theoretical/Lexer/*.o theoretical/automata/*.o Codegen/*.o Parser/*.o 
