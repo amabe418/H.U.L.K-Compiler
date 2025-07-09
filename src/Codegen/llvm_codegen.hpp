@@ -231,6 +231,7 @@ private:
     
     // Special function handlers
     void handlePrintFunction(CallExpr *expr);
+    void handleRandFunction(CallExpr *expr);
 
     // Runtime type tracking for LLVM 19 opaque pointers
     std::unordered_map<llvm::Value*, std::string> value_type_map_; // Track value -> type name

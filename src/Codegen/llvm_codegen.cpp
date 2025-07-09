@@ -85,6 +85,26 @@ void LLVMCodeGenerator::visit(Program *stmt)
     current_block_ = llvm::BasicBlock::Create(*context_, "entry", current_function_);
     builder_->SetInsertPoint(current_block_);
 
+    // Initialize random number generator with current time
+    std::cout << "[LLVM CodeGen] Initializing random number generator with srand(time(NULL))" << std::endl;
+    llvm::Function* timeFunc = module_->getFunction("time");
+    llvm::Function* srandFunc = module_->getFunction("srand");
+    
+    if (timeFunc && srandFunc) {
+        // Call time(NULL) to get current time
+        llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt64Ty(*context_), 0));
+        llvm::Value* currentTime = builder_->CreateCall(timeFunc, {nullPtr});
+        
+        // Convert time_t (int64) to int32 for srand
+        llvm::Value* seed = builder_->CreateTrunc(currentTime, llvm::Type::getInt32Ty(*context_));
+        
+        // Call srand(seed)
+        builder_->CreateCall(srandFunc, {seed});
+        std::cout << "[LLVM CodeGen] Random number generator initialized successfully" << std::endl;
+    } else {
+        std::cout << "[LLVM CodeGen] Warning: Could not initialize random number generator (time or srand not found)" << std::endl;
+    }
+
     // Save the main entry block
     llvm::BasicBlock* mainBlock = current_block_;
     
@@ -281,17 +301,17 @@ void LLVMCodeGenerator::visit(TypeDecl *stmt)
     }
     storeTypeMetadata(stmt->name, userAttributeNames);
 
-    // Generate constructor
-    generateConstructorFunction(stmt);
-
-    // Process methods
+    // Process methods first
     for (const auto &method : stmt->methods)
     {
         method->accept(this);
     }
     
-    // Generate vtable for this type
+    // Generate vtable for this type (before constructor so it's available)
     generateVTable(stmt);
+
+    // Generate constructor (after vtable so it can initialize it)
+    generateConstructorFunction(stmt);
 
     current_type_ = "";
 }
@@ -948,6 +968,13 @@ void LLVMCodeGenerator::visit(CallExpr *expr)
     if (expr->callee == "print" && expr->args.size() == 1)
     {
         handlePrintFunction(expr);
+        return;
+    }
+    
+    // Special handling for rand function - convert int to normalized double
+    if (expr->callee == "rand" && expr->args.size() == 0)
+    {
+        handleRandFunction(expr);
         return;
     }
 
@@ -1878,6 +1905,20 @@ void LLVMCodeGenerator::visit(MethodCallExpr *expr)
     
     std::cout << "[LLVM CodeGen] getObjectTypeName returned: '" << objectTypeName << "'" << std::endl;
     
+    // If getObjectTypeName failed, try to use the semantic type information
+    if (objectTypeName.empty()) {
+        std::cout << "[LLVM CodeGen] getObjectTypeName failed, trying semantic type information..." << std::endl;
+        
+        // Check if the object expression has type information from semantic analysis
+        if (expr->object && expr->object->inferredType && expr->object->inferredType->isObject()) {
+            objectTypeName = expr->object->inferredType->getTypeName();
+            std::cout << "[LLVM CodeGen] Found semantic type: '" << objectTypeName << "'" << std::endl;
+            
+            // Track this value type for future reference
+            trackValueType(objectPtr, objectTypeName);
+        }
+    }
+    
     // If we can't determine the type statically, we need to add runtime type information
     if (objectTypeName.empty()) {
         std::cerr << "[LLVM CodeGen] Warning: Cannot determine object type for method call to " << expr->methodName << std::endl;
@@ -1895,9 +1936,149 @@ void LLVMCodeGenerator::visit(MethodCallExpr *expr)
     
     std::cout << "[LLVM CodeGen] Final object type: " << objectTypeName << std::endl;
     
-    // Use static dispatch for reliability
+    // Check if we need dynamic dispatch (for polymorphic calls)
+    bool needsDynamicDispatch = false;
+    
+    // CRITICAL: Always use dynamic dispatch when object type is not statically known
+    // This happens when the object comes from a function that can return multiple types
+    if (!objectTypeName.empty()) {
+        // Check if this type or any derived types exist (indicating potential polymorphism)
+        bool hasPolymorphism = false;
+        
+        // Check if there are any types that inherit from this objectTypeName
+        for (const auto& typePair : type_declarations_) {
+            if (typePair.second && typePair.second->baseType == objectTypeName) {
+                hasPolymorphism = true;
+                std::cout << "[LLVM CodeGen] Found derived type " << typePair.first << " from " << objectTypeName << std::endl;
+                break;
+            }
+        }
+        
+        // Also check if this type itself has inheritance
+        auto typeIt = type_declarations_.find(objectTypeName);
+        if (typeIt != type_declarations_.end() && typeIt->second->baseType != "Object") {
+            hasPolymorphism = true;
+            std::cout << "[LLVM CodeGen] Type " << objectTypeName << " has base type " << typeIt->second->baseType << std::endl;
+        }
+        
+        // FORCE dynamic dispatch for any polymorphic hierarchy
+        if (hasPolymorphism) {
+            needsDynamicDispatch = true;
+            std::cout << "[LLVM CodeGen] FORCING dynamic dispatch for polymorphic type hierarchy involving " << objectTypeName << std::endl;
+        }
+    }
+    
+    if (needsDynamicDispatch && !objectTypeName.empty()) {
+        std::cout << "[LLVM CodeGen] Using dynamic dispatch via vtable for method: " << expr->methodName << std::endl;
+        
+        // Find the base type that defines this method to get consistent vtable indices
+        std::string baseTypeForMethod = objectTypeName;
+        
+        // Find which type in the hierarchy first defines this method
+        std::string current = objectTypeName;
+        while (current != "Object") {
+            auto methodsIt = type_methods_.find(current);
+            if (methodsIt != type_methods_.end()) {
+                auto& methods = methodsIt->second;
+                bool hasMethod = false;
+                for (const auto& method : methods) {
+                    if (method == expr->methodName) {
+                        hasMethod = true;
+                        break;
+                    }
+                }
+                if (hasMethod) {
+                    baseTypeForMethod = current;
+                }
+            }
+            
+            // Move to base type
+            auto typeIt = type_declarations_.find(current);
+            if (typeIt != type_declarations_.end()) {
+                current = typeIt->second->baseType;
+            } else {
+                break;
+            }
+        }
+        
+        std::cout << "[LLVM CodeGen] Using base type " << baseTypeForMethod << " for vtable index lookup" << std::endl;
+        
+        // Get method index in vtable using the base type
+        auto methodsIt = type_methods_.find(baseTypeForMethod);
+        if (methodsIt != type_methods_.end()) {
+            auto& methods = methodsIt->second;
+            int methodIndex = -1;
+            for (size_t i = 0; i < methods.size(); i++) {
+                if (methods[i] == expr->methodName) {
+                    methodIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            
+            if (methodIndex >= 0) {
+                std::cout << "[LLVM CodeGen] Found method " << expr->methodName << " at vtable index " << methodIndex << std::endl;
+                
+                // Get the struct type for this object
+                auto typeIt = types_.find(objectTypeName);
+                if (typeIt == types_.end()) {
+                    std::cout << "[LLVM CodeGen] Error: Could not find struct type for " << objectTypeName << std::endl;
+                    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+                    return;
+                }
+                llvm::StructType* structType = typeIt->second;
+                
+                // Load vtable from object (first field)
+                llvm::Value* vtablePtr = builder_->CreateStructGEP(structType, objectPtr, 0, "vtable_ptr");
+                llvm::Value* vtable = builder_->CreateLoad(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), vtablePtr, "vtable");
+                
+                // Get the vtable global to know its structure
+                auto vtableIt = vtables_.find(objectTypeName);
+                if (vtableIt == vtables_.end()) {
+                    std::cout << "[LLVM CodeGen] Error: Could not find vtable for " << objectTypeName << std::endl;
+                    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+                    return;
+                }
+                llvm::GlobalVariable* vtableGlobal = vtableIt->second;
+                llvm::Type* vtableType = vtableGlobal->getValueType();
+                
+                // Cast vtable pointer to correct type
+                llvm::Value* typedVtable = builder_->CreateBitCast(vtable, llvm::PointerType::get(vtableType, 0));
+                
+                // Get function pointer from vtable array
+                std::vector<llvm::Value*> indices = {
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),        // array base
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), methodIndex) // method index
+                };
+                llvm::Value* funcPtrPtr = builder_->CreateGEP(vtableType, typedVtable, indices, "method_ptr_ptr");
+                llvm::Value* funcPtr = builder_->CreateLoad(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), funcPtrPtr, "method_ptr");
+                
+                // Create function type for the method (BoxedValue* methodName(ObjectType* self))
+                std::vector<llvm::Type*> paramTypes = {llvm::PointerType::get(structType, 0)}; // typed self pointer
+                llvm::FunctionType* methodType = llvm::FunctionType::get(
+                    llvm::PointerType::get(getBoxedValueType(), 0), // return BoxedValue*
+                    paramTypes, false
+                );
+                
+                // Cast function pointer to correct type
+                llvm::Value* typedFuncPtr = builder_->CreateBitCast(funcPtr, llvm::PointerType::get(methodType, 0));
+                
+                // Prepare arguments
+                std::vector<llvm::Value*> args = {objectPtr};
+                
+                // Make dynamic call
+                current_value_ = builder_->CreateCall(methodType, typedFuncPtr, args, "dynamic_call_result");
+                
+                std::cout << "[LLVM CodeGen] Dynamic method call completed successfully" << std::endl;
+                return;
+            }
+        }
+        
+        std::cout << "[LLVM CodeGen] Failed to find method in vtable, falling back to static dispatch" << std::endl;
+    }
+    
+    // Fallback to static dispatch
     std::string methodFunctionName = objectTypeName + "_" + expr->methodName;
-    std::cout << "[LLVM CodeGen] Looking for method function: " << methodFunctionName << std::endl;
+    std::cout << "[LLVM CodeGen] Using static dispatch for method function: " << methodFunctionName << std::endl;
     
     llvm::Function* methodFunc = module_->getFunction(methodFunctionName);
     

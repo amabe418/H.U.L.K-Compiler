@@ -387,24 +387,38 @@ std::vector<std::string> LLVMCodeGenerator::collectAllMethods(TypeDecl* typeDecl
     // Reverse to go from base to derived
     std::reverse(chain.begin(), chain.end());
     
+    std::cout << "[LLVM CodeGen] Collecting methods for " << typeDecl->name << " from inheritance chain: ";
+    for (const auto& t : chain) {
+        std::cout << t << " ";
+    }
+    std::cout << std::endl;
+    
     for (const std::string& typeName : chain) {
         auto it = type_declarations_.find(typeName);
         if (it != type_declarations_.end()) {
+            std::cout << "[LLVM CodeGen] Processing methods from type: " << typeName << std::endl;
             for (const auto& method : it->second->methods) {
                 if (methodNames.find(method->name) == methodNames.end()) {
+                    // New method - add to end
                     allMethods.push_back(method->name);
                     methodNames.insert(method->name);
+                    std::cout << "[LLVM CodeGen] Added new method: " << method->name << " at index " << (allMethods.size() - 1) << std::endl;
                 } else {
-                    // Method override - replace in the same position
+                    // Method override - keep same position for vtable compatibility
                     auto pos = std::find(allMethods.begin(), allMethods.end(), method->name);
                     if (pos != allMethods.end()) {
-                        // Keep the same position for proper vtable layout
-                        std::cout << "[LLVM CodeGen] Method " << method->name << " overridden in " << typeName << std::endl;
+                        std::cout << "[LLVM CodeGen] Method " << method->name << " overridden in " << typeName << " (keeping same vtable position)" << std::endl;
                     }
                 }
             }
         }
     }
+    
+    std::cout << "[LLVM CodeGen] Final method list for " << typeDecl->name << ": ";
+    for (size_t i = 0; i < allMethods.size(); i++) {
+        std::cout << i << ":" << allMethods[i] << " ";
+    }
+    std::cout << std::endl;
     
     return allMethods;
 }
@@ -446,8 +460,30 @@ void LLVMCodeGenerator::generateVTable(TypeDecl* typeDecl)
     // Create vtable initializer
     std::vector<llvm::Constant*> methodPointers;
     for (const std::string& methodName : allMethods) {
-        std::string functionName = typeDecl->name + "_" + methodName;
-        llvm::Function* methodFunc = module_->getFunction(functionName);
+        llvm::Function* methodFunc = nullptr;
+        std::string functionName;
+        
+        // Try to find the method in current type first
+        functionName = typeDecl->name + "_" + methodName;
+        methodFunc = module_->getFunction(functionName);
+        
+        if (!methodFunc) {
+            // Method not found in current type, search in inheritance chain
+            std::vector<std::string> chain = getInheritanceChain(typeDecl->name);
+            // Reverse to go from base to derived (excluding current type which we already checked)
+            std::reverse(chain.begin(), chain.end());
+            
+            for (const std::string& ancestorType : chain) {
+                if (ancestorType == typeDecl->name) continue; // Skip current type
+                
+                functionName = ancestorType + "_" + methodName;
+                methodFunc = module_->getFunction(functionName);
+                if (methodFunc) {
+                    std::cout << "[LLVM CodeGen] Found inherited method " << functionName << " for " << typeDecl->name << std::endl;
+                    break;
+                }
+            }
+        }
         
         if (methodFunc) {
             llvm::Constant* funcPtr = llvm::ConstantExpr::getBitCast(
@@ -455,12 +491,13 @@ void LLVMCodeGenerator::generateVTable(TypeDecl* typeDecl)
                 llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)
             );
             methodPointers.push_back(funcPtr);
+            std::cout << "[LLVM CodeGen] Added method " << functionName << " to vtable for " << typeDecl->name << std::endl;
         } else {
-            // Method not found, use null pointer
+            // Method not found in entire hierarchy, use null pointer
             methodPointers.push_back(llvm::ConstantPointerNull::get(
                 llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)
             ));
-            std::cerr << "[LLVM CodeGen] Warning: Method function " << functionName << " not found for vtable" << std::endl;
+            std::cerr << "[LLVM CodeGen] Error: Method " << methodName << " not found in entire hierarchy for " << typeDecl->name << std::endl;
         }
     }
     
@@ -577,6 +614,8 @@ void LLVMCodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
         llvm::Value* vtableCast = builder_->CreateBitCast(vtable, llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
         builder_->CreateStore(vtableCast, vtablePtr);
         std::cout << "[LLVM CodeGen] Initialized vtable for " << typeDecl->name << std::endl;
+    } else {
+        std::cout << "[LLVM CodeGen] Error: VTable for type " << typeDecl->name << " not found" << std::endl;
     }
     
     // Initialize attributes (start from index 1, vtable is at index 0)
@@ -701,8 +740,9 @@ void LLVMCodeGenerator::generateMethodFunction(MethodDecl *methodDecl)
         }
     }
     
-    // Get return type
-    llvm::Type* returnType = getLLVMType(*methodDecl->returnType);
+    // CRITICAL FIX: All method functions must return BoxedValue* for dynamic dispatch compatibility
+    // regardless of the actual return type in HULK source
+    llvm::Type* returnType = llvm::PointerType::get(boxedTy, 0);  // Always BoxedValue*
     
     llvm::FunctionType* methodType = llvm::FunctionType::get(returnType, paramTypes, false);
     
@@ -753,58 +793,53 @@ void LLVMCodeGenerator::generateMethodFunction(MethodDecl *methodDecl)
     if (methodDecl->body) {
         methodDecl->body->accept(this);
         
-        // Add return statement if needed
-        if (returnType->isVoidTy()) {
-            builder_->CreateRetVoid();
-        } else if (current_value_) {
-            // Check if we need to convert the return value
+        // Add return statement - CRITICAL FIX: Always convert to BoxedValue*
+        if (current_value_) {
             llvm::Value* returnValue = current_value_;
+            
+            // ALWAYS convert to BoxedValue* since all method functions return BoxedValue*
             if (returnValue->getType() != returnType) {
-                // Convert to appropriate type
-                if (returnType->isPointerTy()) {
-                    llvm::StructType* boxedTy = getBoxedValueType();
-                    llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
-                    
-                    if (returnType == boxedPtrTy && returnValue->getType() != boxedPtrTy) {
-                        // Box the return value
-                        llvm::Type* valueType = returnValue->getType();
-                        if (valueType->isDoubleTy()) {
-                            returnValue = createBoxedFromDouble(returnValue);
-                        } else if (valueType->isIntegerTy(1)) {
-                            returnValue = createBoxedFromBool(returnValue);
-                        } else if (valueType->isPointerTy()) {
-                            returnValue = createBoxedFromString(returnValue);
+                llvm::Type* valueType = returnValue->getType();
+                if (valueType->isDoubleTy()) {
+                    returnValue = createBoxedFromDouble(returnValue);
+                    std::cout << "[LLVM CodeGen] Boxing double return value for method" << std::endl;
+                } else if (valueType->isIntegerTy(1)) {
+                    returnValue = createBoxedFromBool(returnValue);
+                    std::cout << "[LLVM CodeGen] Boxing bool return value for method" << std::endl;
+                } else if (valueType->isPointerTy() && valueType != returnType) {
+                    // Check if it's a string
+                    if (valueType == llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0)) {
+                        returnValue = createBoxedFromString(returnValue);
+                        std::cout << "[LLVM CodeGen] Boxing string return value for method" << std::endl;
+                    } else {
+                        // If already BoxedValue*, use as-is
+                        if (valueType == returnType) {
+                            // Already correct type
+                            std::cout << "[LLVM CodeGen] Return value already BoxedValue*" << std::endl;
+                        } else {
+                            // Cast to BoxedValue*
+                            returnValue = builder_->CreateBitCast(returnValue, returnType);
+                            std::cout << "[LLVM CodeGen] Casting return value to BoxedValue*" << std::endl;
                         }
                     }
-                }
-                
-                // Cast if needed
-                if (returnValue->getType() != returnType && returnType->isPointerTy() && returnValue->getType()->isPointerTy()) {
-                    returnValue = builder_->CreateBitCast(returnValue, returnType);
+                } else if (valueType->isIntegerTy(32)) {
+                    // Convert int to double then box
+                    llvm::Value* doubleValue = builder_->CreateSIToFP(returnValue, llvm::Type::getDoubleTy(*context_));
+                    returnValue = createBoxedFromDouble(doubleValue);
+                    std::cout << "[LLVM CodeGen] Boxing int->double return value for method" << std::endl;
+                } else {
+                    std::cout << "[LLVM CodeGen] Warning: Unknown return value type, creating default boxed value" << std::endl;
+                    llvm::Value* defaultValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
+                    returnValue = createBoxedFromDouble(defaultValue);
                 }
             }
             builder_->CreateRet(returnValue);
         } else {
-            // Default return value
-            if (returnType->isIntegerTy()) {
-                builder_->CreateRet(llvm::ConstantInt::get(returnType, 0));
-            } else if (returnType->isDoubleTy()) {
-                builder_->CreateRet(llvm::ConstantFP::get(returnType, 0.0));
-            } else if (returnType->isPointerTy()) {
-                llvm::StructType* boxedTy = getBoxedValueType();
-                llvm::Type* boxedPtrTy = boxedTy->getPointerTo();
-                
-                if (returnType == boxedPtrTy) {
-                    // Return default boxed value (0.0)
-                    llvm::Value* defaultValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
-                    llvm::Value* boxedDefault = createBoxedFromDouble(defaultValue);
-                    builder_->CreateRet(boxedDefault);
-                } else {
-                    builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
-                }
-            } else {
-                builder_->CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(returnType)));
-            }
+            // No return value - create default BoxedValue* (0.0)
+            std::cout << "[LLVM CodeGen] Creating default BoxedValue* return value (0.0) for method" << std::endl;
+            llvm::Value* defaultValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
+            llvm::Value* boxedDefault = createBoxedFromDouble(defaultValue);
+            builder_->CreateRet(boxedDefault);
         }
     } else {
         // No body, create default return
@@ -843,6 +878,31 @@ void LLVMCodeGenerator::registerBuiltinFunctions()
     std::vector<llvm::Type*> powArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
     llvm::FunctionType* powType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), powArgs, false);
     (void)llvm::Function::Create(powType, llvm::Function::ExternalLinkage, "pow", module_.get());
+    
+    // Register mathematical functions (sin, cos, sqrt, etc.)
+    std::vector<llvm::Type*> mathSingleArgs = {llvm::Type::getDoubleTy(*context_)};
+    llvm::FunctionType* mathSingleType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), mathSingleArgs, false);
+    
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "sin", module_.get());
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "cos", module_.get());
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "sqrt", module_.get());
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "log", module_.get());
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "exp", module_.get());
+    
+    // Register standard rand function - no parameters, returns int
+    std::vector<llvm::Type*> stdRandArgs = {}; // No parameters  
+    llvm::FunctionType* stdRandType = llvm::FunctionType::get(llvm::Type::getInt32Ty(*context_), stdRandArgs, false);
+    (void)llvm::Function::Create(stdRandType, llvm::Function::ExternalLinkage, "rand", module_.get());
+    
+    // Register srand function - takes int seed, returns void
+    std::vector<llvm::Type*> srandArgs = {llvm::Type::getInt32Ty(*context_)};
+    llvm::FunctionType* srandType = llvm::FunctionType::get(llvm::Type::getVoidTy(*context_), srandArgs, false);
+    (void)llvm::Function::Create(srandType, llvm::Function::ExternalLinkage, "srand", module_.get());
+    
+    // Register time function - takes pointer to time_t (can be null), returns time_t (long/int64)
+    std::vector<llvm::Type*> timeArgs = {llvm::PointerType::get(llvm::Type::getInt64Ty(*context_), 0)};
+    llvm::FunctionType* timeType = llvm::FunctionType::get(llvm::Type::getInt64Ty(*context_), timeArgs, false);
+    (void)llvm::Function::Create(timeType, llvm::Function::ExternalLinkage, "time", module_.get());
     
     // Register sprintf (for string formatting)
     std::vector<llvm::Type*> sprintfArgs = {llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
@@ -3991,4 +4051,36 @@ std::string LLVMCodeGenerator::getTrackedVariableType(const std::string& varName
         return it->second;
     }
     return "";
+}
+
+void LLVMCodeGenerator::handleRandFunction(CallExpr *expr)
+{
+    std::cout << "[LLVM CodeGen] Handling rand function" << std::endl;
+    
+    // Call the standard rand() function which returns int
+    llvm::Function* randFunc = module_->getFunction("rand");
+    if (!randFunc) {
+        std::cerr << "[LLVM CodeGen] Error: rand function not found" << std::endl;
+        current_value_ = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 0.0);
+        return;
+    }
+    
+    // Call rand() - no arguments
+    llvm::Value* randResult = builder_->CreateCall(randFunc, {});
+    
+    // Limit to range 0-100 using modulo 101
+    llvm::Value* modValue = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 101);
+    llvm::Value* randLimited = builder_->CreateSRem(randResult, modValue);
+    
+    // Ensure positive result (in case of negative numbers, though rand() shouldn't return them)
+    llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    llvm::Value* isNegative = builder_->CreateICmpSLT(randLimited, zero);
+    llvm::Value* positiveResult = builder_->CreateSelect(isNegative, 
+                                                         builder_->CreateAdd(randLimited, modValue), 
+                                                         randLimited);
+    
+    // Convert int result to double (HULK uses Number = double)
+    current_value_ = builder_->CreateSIToFP(positiveResult, llvm::Type::getDoubleTy(*context_));
+    
+    std::cout << "[LLVM CodeGen] rand() function processed successfully - returns integer between 0 and 100" << std::endl;
 }
