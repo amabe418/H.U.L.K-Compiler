@@ -621,81 +621,76 @@ void LLVMCodeGenerator::generateConstructorFunction(TypeDecl *typeDecl)
     // Initialize attributes (start from index 1, vtable is at index 0)
     int fieldIndex = 1;
     
-    // Initialize inherited attributes with default values
-    std::vector<std::string> inheritanceChain = getInheritanceChain(typeDecl->name);
-    // Reverse to go from base to derived (excluding current type)
-    std::reverse(inheritanceChain.begin(), inheritanceChain.end());
-    inheritanceChain.pop_back(); // Remove current type
-    
-    for (const std::string& ancestorType : inheritanceChain) {
-        auto ancestorIt = type_declarations_.find(ancestorType);
-        if (ancestorIt != type_declarations_.end()) {
-            for (const auto& inheritedAttr : ancestorIt->second->attributes) {
-                std::cout << "[LLVM CodeGen] Initializing inherited attribute: " << inheritedAttr->name << " from " << ancestorType << std::endl;
-                
-                // Generate default value for inherited attribute
-                inheritedAttr->initializer->accept(this);
-                llvm::Value* initValue = current_value_;
-                
-                // Get field pointer
-                llvm::Value* fieldPtr = builder_->CreateStructGEP(structType, instance, fieldIndex);
-                
-                // Convert to BoxedValue* if needed
-                llvm::Value* boxedValue = initValue;
-                llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
-                if (initValue->getType() != boxedPtrTy) {
-                    llvm::Type* valueType = initValue->getType();
-                    if (valueType->isDoubleTy()) {
-                        boxedValue = createBoxedFromDouble(initValue);
-                    } else if (valueType->isIntegerTy(1)) {
-                        boxedValue = createBoxedFromBool(initValue);
-                    } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
-                        boxedValue = createBoxedFromString(initValue);
-                    } else {
-                        boxedValue = builder_->CreateBitCast(initValue, boxedPtrTy);
+    // --- INICIALIZACIÓN DE ATRIBUTOS HEREDADOS ---
+    // Recorre la cadena de herencia desde la base más lejana hasta la más cercana
+    if (typeDecl->baseType != "Object") {
+        std::vector<std::string> inheritanceChain = getInheritanceChain(typeDecl->name);
+        std::reverse(inheritanceChain.begin(), inheritanceChain.end()); // base primero
+        inheritanceChain.pop_back(); // quitamos el tipo actual
+
+        size_t baseArgIdx = 0;
+        for (const std::string& ancestorType : inheritanceChain) {
+            auto ancestorIt = type_declarations_.find(ancestorType);
+            if (ancestorIt != type_declarations_.end()) {
+                const auto& baseAttributes = ancestorIt->second->attributes;
+                for (size_t i = 0; i < baseAttributes.size(); ++i) {
+                    Expr* expr = nullptr;
+                    // Si hay baseArgs, usa el mapping; si no, usa el parámetro correspondiente
+                    if (baseArgIdx < typeDecl->baseArgs.size()) {
+                        expr = typeDecl->baseArgs[baseArgIdx].get();
+                    } else if (baseArgIdx < typeDecl->params.size()) {
+                        expr = new VariableExpr(typeDecl->params[baseArgIdx]);
                     }
+                    if (expr) {
+                        expr->accept(this);
+                        llvm::Value* initValue = current_value_;
+                        llvm::Value* fieldPtr = builder_->CreateStructGEP(structType, instance, fieldIndex);
+                        llvm::Value* boxedValue = initValue;
+                        llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
+                        if (initValue->getType() != boxedPtrTy) {
+                            llvm::Type* valueType = initValue->getType();
+                            if (valueType->isDoubleTy()) {
+                                boxedValue = createBoxedFromDouble(initValue);
+                            } else if (valueType->isIntegerTy(1)) {
+                                boxedValue = createBoxedFromBool(initValue);
+                            } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
+                                boxedValue = createBoxedFromString(initValue);
+                            } else {
+                                boxedValue = builder_->CreateBitCast(initValue, boxedPtrTy);
+                            }
+                        }
+                        builder_->CreateStore(boxedValue, fieldPtr);
+                        fieldIndex++;
+                    }
+                    baseArgIdx++;
                 }
-                
-                builder_->CreateStore(boxedValue, fieldPtr);
-                fieldIndex++;
             }
         }
     }
-    
-    // Initialize own attributes - all are BoxedValue*
+
+    // --- INICIALIZACIÓN DE ATRIBUTOS PROPIOS ---
     for (const auto& attr : typeDecl->attributes) {
         std::cout << "[LLVM CodeGen] Initializing attribute: " << attr->name << std::endl;
-        
-        // Generate code for attribute initializer
         attr->initializer->accept(this);
         llvm::Value* initValue = current_value_;
-        
-        // Get field pointer
         llvm::Value* fieldPtr = builder_->CreateStructGEP(structType, instance, fieldIndex);
-        
-        // Convert initValue to BoxedValue* if needed
         llvm::Value* boxedValue = initValue;
         llvm::Type* boxedPtrTy = llvm::PointerType::get(boxedTy, 0);
         if (initValue->getType() != boxedPtrTy) {
-            // Box the value based on its type
             llvm::Type* valueType = initValue->getType();
             if (valueType->isDoubleTy()) {
                 boxedValue = createBoxedFromDouble(initValue);
             } else if (valueType->isIntegerTy(1)) {
                 boxedValue = createBoxedFromBool(initValue);
             } else if (valueType->isPointerTy() && !valueType->getPointerAddressSpace()) {
-                // Assume it's a string (i8*)
                 boxedValue = createBoxedFromString(initValue);
             } else if (initValue->getType() == boxedPtrTy) {
-                // Already a BoxedValue*
                 boxedValue = initValue;
             } else {
                 std::cerr << "[LLVM CodeGen] Warning: Unknown type for attribute initializer, using as-is" << std::endl;
                 boxedValue = builder_->CreateBitCast(initValue, boxedPtrTy);
             }
         }
-        
-        // Store the boxed value
         builder_->CreateStore(boxedValue, fieldPtr);
         fieldIndex++;
     }
@@ -886,8 +881,13 @@ void LLVMCodeGenerator::registerBuiltinFunctions()
     (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "sin", module_.get());
     (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "cos", module_.get());
     (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "sqrt", module_.get());
-    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "log", module_.get());
     (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "exp", module_.get());
+    
+    // Register log function - needs natural logarithm for internal calculations
+    (void)llvm::Function::Create(mathSingleType, llvm::Function::ExternalLinkage, "log", module_.get());
+    
+    // Note: log(base, argument) will be handled specially in handleLogFunction
+    // using the formula: log_base(argument) = ln(argument) / ln(base)
     
     // Register standard rand function - no parameters, returns int
     std::vector<llvm::Type*> stdRandArgs = {}; // No parameters  
@@ -929,7 +929,43 @@ void LLVMCodeGenerator::registerBuiltinFunctions()
     createTypeCheckFunctions();
     createTypeSpecificUnboxFunctions();
     
-    std::cout << "[LLVM CodeGen] All built-in and BoxedValue functions registered" << std::endl;
+    // Register mathematical constants
+    registerMathematicalConstants();
+    
+    std::cout << "[LLVM CodeGen] All built-in functions and constants registered" << std::endl;
+}
+
+void LLVMCodeGenerator::registerMathematicalConstants()
+{
+    std::cout << "[LLVM CodeGen] Registering mathematical constants PI and E" << std::endl;
+    
+    // Create global constant for PI (3.14159265359)
+    llvm::Constant* piValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 3.14159265359);
+    llvm::GlobalVariable* piGlobal = new llvm::GlobalVariable(
+        *module_,
+        llvm::Type::getDoubleTy(*context_),
+        true, // isConstant
+        llvm::GlobalValue::ExternalLinkage,
+        piValue,
+        "PI"
+    );
+    piGlobal->setAlignment(llvm::MaybeAlign(8));
+    global_constants_["PI"] = piGlobal;
+    
+    // Create global constant for E (2.71828182846)
+    llvm::Constant* eValue = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), 2.71828182846);
+    llvm::GlobalVariable* eGlobal = new llvm::GlobalVariable(
+        *module_,
+        llvm::Type::getDoubleTy(*context_),
+        true, // isConstant
+        llvm::GlobalValue::ExternalLinkage,
+        eValue,
+        "E"
+    );
+    eGlobal->setAlignment(llvm::MaybeAlign(8));
+    global_constants_["E"] = eGlobal;
+    
+    std::cout << "[LLVM CodeGen] Constants PI and E registered successfully" << std::endl;
 }
 
 // Convierte cualquier valor LLVM a string (puntero a i8) usando sprintf y buffer temporal
@@ -4083,4 +4119,50 @@ void LLVMCodeGenerator::handleRandFunction(CallExpr *expr)
     current_value_ = builder_->CreateSIToFP(positiveResult, llvm::Type::getDoubleTy(*context_));
     
     std::cout << "[LLVM CodeGen] rand() function processed successfully - returns integer between 0 and 100" << std::endl;
+}
+
+void LLVMCodeGenerator::handleLogFunction(CallExpr *expr)
+{
+    std::cout << "[LLVM CodeGen] Handling log function with base and argument" << std::endl;
+    
+    // Verify we have exactly 2 arguments
+    if (expr->args.size() != 2) {
+        std::cerr << "Error: log function expects exactly 2 arguments (base, argument)" << std::endl;
+        current_value_ = nullptr;
+        return;
+    }
+    
+    // Evaluate the base (first argument)
+    expr->args[0]->accept(this);
+    llvm::Value* base = current_value_;
+    
+    // Evaluate the argument (second argument)
+    expr->args[1]->accept(this);
+    llvm::Value* argument = current_value_;
+    
+    // Convert both to double if they aren't already
+    if (!base->getType()->isDoubleTy()) {
+        base = convertToDouble(base);
+    }
+    if (!argument->getType()->isDoubleTy()) {
+        argument = convertToDouble(argument);
+    }
+    
+    // Get the natural logarithm function
+    llvm::Function* logFunc = module_->getFunction("log");
+    if (!logFunc) {
+        std::cerr << "Error: log function not found in module" << std::endl;
+        current_value_ = nullptr;
+        return;
+    }
+    
+    // Calculate ln(argument) and ln(base)
+    llvm::Value* lnArgument = builder_->CreateCall(logFunc, {argument}, "ln_argument");
+    llvm::Value* lnBase = builder_->CreateCall(logFunc, {base}, "ln_base");
+    
+    // Calculate log_base(argument) = ln(argument) / ln(base)
+    llvm::Value* result = builder_->CreateFDiv(lnArgument, lnBase, "log_base_result");
+    
+    current_value_ = result;
+    std::cout << "[LLVM CodeGen] log(base, argument) function result: double" << std::endl;
 }

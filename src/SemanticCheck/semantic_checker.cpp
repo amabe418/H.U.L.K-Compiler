@@ -11,13 +11,16 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     std::vector<TypeInfo> printParams = {TypeInfo(TypeInfo::Kind::Unknown)};
     symbol_table_.declareFunction("print", printParams, TypeInfo(TypeInfo::Kind::Void));
 
-    // Register mathematical functions
+    // Register mathematical functions (single parameter)
     std::vector<TypeInfo> mathParams = {TypeInfo(TypeInfo::Kind::Number)};
     symbol_table_.declareFunction("sin", mathParams, TypeInfo(TypeInfo::Kind::Number));
     symbol_table_.declareFunction("cos", mathParams, TypeInfo(TypeInfo::Kind::Number));
     symbol_table_.declareFunction("sqrt", mathParams, TypeInfo(TypeInfo::Kind::Number));
-    symbol_table_.declareFunction("log", mathParams, TypeInfo(TypeInfo::Kind::Number));
     symbol_table_.declareFunction("exp", mathParams, TypeInfo(TypeInfo::Kind::Number));
+    
+    // Register log function (two parameters: base, argument)
+    std::vector<TypeInfo> logParams = {TypeInfo(TypeInfo::Kind::Number), TypeInfo(TypeInfo::Kind::Number)};
+    symbol_table_.declareFunction("log", logParams, TypeInfo(TypeInfo::Kind::Number));
 
     // Register rand function - no parameters, returns number
     std::vector<TypeInfo> randParams = {};

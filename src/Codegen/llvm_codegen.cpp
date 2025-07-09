@@ -263,7 +263,7 @@ void LLVMCodeGenerator::visit(TypeDecl *stmt)
     std::cout << "[LLVM CodeGen] Processing TypeDecl: " << stmt->name << std::endl;
 
     current_type_ = stmt->name;
-    
+
     // Store type declaration for inheritance processing
     type_declarations_[stmt->name] = stmt;
 
@@ -293,7 +293,7 @@ void LLVMCodeGenerator::visit(TypeDecl *stmt)
     // Create the struct type
     llvm::StructType* structType = llvm::StructType::create(*context_, fieldTypes, "struct." + stmt->name);
     types_[stmt->name] = structType;
-    
+
     // Store attribute metadata
     std::vector<std::string> userAttributeNames;
     for (const auto& attr : stmt->attributes) {
@@ -334,8 +334,8 @@ void LLVMCodeGenerator::visit(NumberExpr *expr)
     std::cout << "[LLVM CodeGen] Processing NumberExpr: " << expr->value << std::endl;
     
     // All numbers are now always double
-    current_value_ = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), expr->value);
-    std::cout << "[LLVM CodeGen] NumberExpr created as double: " << expr->value << std::endl;
+        current_value_ = llvm::ConstantFP::get(llvm::Type::getDoubleTy(*context_), expr->value);
+        std::cout << "[LLVM CodeGen] NumberExpr created as double: " << expr->value << std::endl;
 }
 
 void LLVMCodeGenerator::visit(StringExpr *expr)
@@ -445,12 +445,12 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using native addition - promoting all to double" << std::endl;
             // Always promote to double
             if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
+            left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+        }
             if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            current_value_ = builder_->CreateFAdd(left, right);
+            right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+        }
+                current_value_ = builder_->CreateFAdd(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for addition" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -471,12 +471,12 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using native subtraction - promoting all to double" << std::endl;
             // Always promote to double
             if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
             if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            current_value_ = builder_->CreateFSub(left, right);
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFSub(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for subtraction" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -497,12 +497,12 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
             std::cout << "[LLVM CodeGen] Using native multiplication - promoting all to double" << std::endl;
             // Always promote to double
             if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
             if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            current_value_ = builder_->CreateFMul(left, right);
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFMul(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for multiplication" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -581,21 +581,21 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native modulo - always floating-point" << std::endl;
             // Always use floating point modulo with fmod
-            llvm::Function* fmodFunc = module_->getFunction("fmod");
-            if (!fmodFunc) {
-                std::vector<llvm::Type*> fmodArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
-                llvm::FunctionType* fmodType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), fmodArgs, false);
-                fmodFunc = llvm::Function::Create(fmodType, llvm::Function::ExternalLinkage, "fmod", module_.get());
-            }
-            // Convert to double if needed
-            if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
-            if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            std::vector<llvm::Value*> args = {left, right};
-            current_value_ = builder_->CreateCall(fmodFunc, args);
+                llvm::Function* fmodFunc = module_->getFunction("fmod");
+                if (!fmodFunc) {
+                    std::vector<llvm::Type*> fmodArgs = {llvm::Type::getDoubleTy(*context_), llvm::Type::getDoubleTy(*context_)};
+                    llvm::FunctionType* fmodType = llvm::FunctionType::get(llvm::Type::getDoubleTy(*context_), fmodArgs, false);
+                    fmodFunc = llvm::Function::Create(fmodType, llvm::Function::ExternalLinkage, "fmod", module_.get());
+                }
+                // Convert to double if needed
+                if (!left->getType()->isDoubleTy()) {
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
+                if (!right->getType()->isDoubleTy()) {
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                std::vector<llvm::Value*> args = {left, right};
+                current_value_ = builder_->CreateCall(fmodFunc, args);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for modulo" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
@@ -616,13 +616,13 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native greater than - always double comparison" << std::endl;
             // Always convert to double for comparison
-            if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
-            if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            current_value_ = builder_->CreateFCmpOGT(left, right);
+                if (!left->getType()->isDoubleTy()) {
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
+                if (!right->getType()->isDoubleTy()) {
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFCmpOGT(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for greater than" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -642,13 +642,13 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native less than - always double comparison" << std::endl;
             // Always convert to double for comparison
-            if (!left->getType()->isDoubleTy()) {
+                if (!left->getType()->isDoubleTy()) {
                 left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
-            if (!right->getType()->isDoubleTy()) {
+                if (!right->getType()->isDoubleTy()) {
                 right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
             }
-            current_value_ = builder_->CreateFCmpOLT(left, right);
+                current_value_ = builder_->CreateFCmpOLT(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for less than" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -668,13 +668,13 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native greater than or equal - always double comparison" << std::endl;
             // Always convert to double for comparison
-            if (!left->getType()->isDoubleTy()) {
+                if (!left->getType()->isDoubleTy()) {
                 left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
             }
-            if (!right->getType()->isDoubleTy()) {
+                if (!right->getType()->isDoubleTy()) {
                 right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
             }
-            current_value_ = builder_->CreateFCmpOGE(left, right);
+                current_value_ = builder_->CreateFCmpOGE(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for greater than or equal" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -694,13 +694,13 @@ void LLVMCodeGenerator::visit(BinaryExpr *expr)
         } else if (leftIsNative && rightIsNative) {
             std::cout << "[LLVM CodeGen] Using native less than or equal - always double comparison" << std::endl;
             // Always convert to double for comparison
-            if (!left->getType()->isDoubleTy()) {
-                left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
-            }
-            if (!right->getType()->isDoubleTy()) {
-                right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
-            }
-            current_value_ = builder_->CreateFCmpOLE(left, right);
+                if (!left->getType()->isDoubleTy()) {
+                    left = builder_->CreateSIToFP(left, llvm::Type::getDoubleTy(*context_));
+                }
+                if (!right->getType()->isDoubleTy()) {
+                    right = builder_->CreateSIToFP(right, llvm::Type::getDoubleTy(*context_));
+                }
+                current_value_ = builder_->CreateFCmpOLE(left, right);
         } else {
             std::cerr << "[LLVM CodeGen] Error: Unsupported operand types for less than or equal" << std::endl;
             current_value_ = llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), 0);
@@ -977,6 +977,13 @@ void LLVMCodeGenerator::visit(CallExpr *expr)
         handleRandFunction(expr);
         return;
     }
+    
+    // Special handling for log function - log(base, argument)
+    if (expr->callee == "log" && expr->args.size() == 2)
+    {
+        handleLogFunction(expr);
+        return;
+    }
 
     // Get function
     llvm::Function* func = module_->getFunction(expr->callee);
@@ -1090,6 +1097,24 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing VariableExpr: " << expr->name << std::endl;
 
+    // First, check if it's a global mathematical constant
+    auto constantIt = global_constants_.find(expr->name);
+    if (constantIt != global_constants_.end()) {
+        std::cout << "[LLVM CodeGen] Found global constant: " << expr->name << std::endl;
+        llvm::GlobalVariable* constant = constantIt->second;
+        
+        // Load the constant value
+        current_value_ = builder_->CreateLoad(constant->getValueType(), constant);
+        
+        // Give the loaded value a meaningful name for debugging
+        if (auto inst = llvm::dyn_cast<llvm::Instruction>(current_value_)) {
+            inst->setName("const_" + expr->name);
+        }
+        
+        std::cout << "[LLVM CodeGen] VariableExpr: Constant " << expr->name << " loaded as double" << std::endl;
+        return;
+    }
+
     // Look up variable in current scope
     LLVMScope* scope = current_scope_;
     while (scope)
@@ -1136,12 +1161,12 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
             
             // Alternative check: if it's a pointer to a struct named "BoxedValue"
             if (!isBoxedValue && varType->isPointerTy()) {
-                if (auto ptrType = llvm::dyn_cast<llvm::PointerType>(varType)) {
-                    if (ptrType->getNumContainedTypes() > 0) {
-                        llvm::Type* elementType = ptrType->getContainedType(0);
-                        if (elementType->isStructTy()) {
-                            std::string structName = elementType->getStructName().str();
-                            isBoxedValue = (structName == "BoxedValue");
+            if (auto ptrType = llvm::dyn_cast<llvm::PointerType>(varType)) {
+                if (ptrType->getNumContainedTypes() > 0) {
+                    llvm::Type* elementType = ptrType->getContainedType(0);
+                    if (elementType->isStructTy()) {
+                        std::string structName = elementType->getStructName().str();
+                        isBoxedValue = (structName == "BoxedValue");
                         }
                     }
                 }
@@ -1165,17 +1190,17 @@ void LLVMCodeGenerator::visit(VariableExpr *expr)
 void LLVMCodeGenerator::visit(LetExpr *expr)
 {
     std::cout << "[LLVM CodeGen] Processing LetExpr: " << expr->name << std::endl;
-    
+
     // Generate code for the initializer
     if (expr->initializer) {
-        expr->initializer->accept(this);
+    expr->initializer->accept(this);
     } else {
         // Default initialization with null
         current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
     }
     
     llvm::Value* initValue = current_value_;
-    
+
     // Create an alloca for the variable
     llvm::Type* varType = initValue->getType();
     llvm::AllocaInst* alloca = builder_->CreateAlloca(varType, nullptr, expr->name);
@@ -1274,7 +1299,7 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
             if (isBoxedVariable) {
                 std::cout << "[LLVM CodeGen] AssignExpr: Variable " << expr->name << " is BoxedValue*" << std::endl;
             
-                if (isBoxedValue) {
+            if (isBoxedValue) {
                     // Both variable and value are BoxedValue*, direct assignment
                     std::cout << "[LLVM CodeGen] AssignExpr: Direct BoxedValue* assignment" << std::endl;
                     builder_->CreateStore(value, alloca);
@@ -1292,17 +1317,17 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                     std::cout << "[LLVM CodeGen] AssignExpr: Boxing native value for BoxedValue* variable" << std::endl;
                     
                     llvm::Value* newBoxed = nullptr;
-                    if (valueType->isIntegerTy(32)) {
+                if (valueType->isIntegerTy(32)) {
                         // Convert int to double since all numbers are now double
                         llvm::Value* doubleValue = builder_->CreateSIToFP(value, llvm::Type::getDoubleTy(*context_));
                         newBoxed = createBoxedFromDouble(doubleValue);
-                    } else if (valueType->isDoubleTy()) {
+                } else if (valueType->isDoubleTy()) {
                         newBoxed = createBoxedFromDouble(value);
-                    } else if (valueType->isIntegerTy(1)) {
+                } else if (valueType->isIntegerTy(1)) {
                         newBoxed = createBoxedFromBool(value);
-                    } else if (valueType->isPointerTy()) {
+                } else if (valueType->isPointerTy()) {
                         newBoxed = createBoxedFromString(value);
-                    } else {
+                } else {
                         // Unknown type, try to convert to int and box
                         std::cout << "[LLVM CodeGen] AssignExpr: Unknown type, converting to int" << std::endl;
                         llvm::Value* intValue = builder_->CreateBitCast(value, llvm::Type::getInt32Ty(*context_));
@@ -1311,8 +1336,8 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                         newBoxed = createBoxedFromDouble(doubleValue);
                     }
                     
-                    builder_->CreateStore(newBoxed, alloca);
-                    current_value_ = newBoxed;
+                builder_->CreateStore(newBoxed, alloca);
+                current_value_ = newBoxed;
                     
                     // Clear object type information since we're boxing a native value
                     scope->variable_object_types.erase(expr->name);
@@ -1348,32 +1373,32 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                     current_value_ = value;
                 } else {
                     // Both are native types
-                    if (valueType == varType) {
+                if (valueType == varType) {
                         // Same types, direct assignment
                         std::cout << "[LLVM CodeGen] AssignExpr: Direct native assignment (same types)" << std::endl;
-                        builder_->CreateStore(value, alloca);
-                        current_value_ = value;
+                    builder_->CreateStore(value, alloca);
+            current_value_ = value;
                         
                         // Clear object type information since we're assigning a native value
                         scope->variable_object_types.erase(expr->name);
-                    } else {
+                } else {
                         // Different types, change variable type (destructive assignment)
                         std::cout << "[LLVM CodeGen] AssignExpr: Changing variable " << expr->name << " type from ";
-                        varType->print(llvm::outs());
-                        std::cout << " to ";
-                        valueType->print(llvm::outs());
-                        std::cout << std::endl;
-                        
+                    varType->print(llvm::outs());
+                    std::cout << " to ";
+                    valueType->print(llvm::outs());
+                    std::cout << std::endl;
+                    
                         // Create new alloca with the new type
-                        llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
-                        llvm::AllocaInst* newAlloca = entryBuilder.CreateAlloca(valueType, nullptr, expr->name);
-                        
+                    llvm::IRBuilder<> entryBuilder(&current_function_->getEntryBlock(), current_function_->getEntryBlock().begin());
+                    llvm::AllocaInst* newAlloca = entryBuilder.CreateAlloca(valueType, nullptr, expr->name);
+                    
                         // Store the value
-                        builder_->CreateStore(value, newAlloca);
-                        
+                    builder_->CreateStore(value, newAlloca);
+                    
                         // Update the variable in the scope
-                        scope->variables[expr->name] = newAlloca;
-                        scope->variable_types[expr->name] = valueType;
+                    scope->variables[expr->name] = newAlloca;
+                    scope->variable_types[expr->name] = valueType;
                         
                         // Try to determine if this is an object type
                         if (valueType->isPointerTy()) {
@@ -1388,8 +1413,8 @@ void LLVMCodeGenerator::visit(AssignExpr *expr)
                             scope->variable_object_types.erase(expr->name);
                             variable_type_map_.erase(expr->name);
                         }
-                        
-                        current_value_ = value;
+                    
+                    current_value_ = value;
                     }
                 }
             }
@@ -1659,19 +1684,19 @@ void LLVMCodeGenerator::visit(NewExpr *expr)
         std::cerr << "[LLVM CodeGen] Error: Constructor function " << constructorName << " not found" << std::endl;
         
         // Fallback: simple memory allocation
-        llvm::Value* size = llvm::ConstantExpr::getSizeOf(structType);
-        llvm::Function* mallocFunc = module_->getFunction("malloc");
+    llvm::Value* size = llvm::ConstantExpr::getSizeOf(structType);
+    llvm::Function* mallocFunc = module_->getFunction("malloc");
         if (!mallocFunc) {
             llvm::FunctionType* mallocType = llvm::FunctionType::get(
                 llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0), 
                 {llvm::Type::getInt64Ty(*context_)}, 
                 false
             );
-            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
-        }
-        
-        llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
-        current_value_ = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module_.get());
+    }
+    
+    llvm::Value* rawPtr = builder_->CreateCall(mallocFunc, {size});
+    current_value_ = builder_->CreateBitCast(rawPtr, llvm::PointerType::get(structType, 0));
         
         // Store type information for later use
         if (current_value_) {
@@ -1743,7 +1768,7 @@ void LLVMCodeGenerator::visit(GetAttrExpr *expr)
     
     if (!objectPtr) {
         std::cerr << "[LLVM CodeGen] Error: Object pointer is null in GetAttrExpr" << std::endl;
-        current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
+    current_value_ = llvm::ConstantPointerNull::get(llvm::PointerType::get(llvm::Type::getInt8Ty(*context_), 0));
         return;
     }
     
@@ -1795,7 +1820,7 @@ void LLVMCodeGenerator::visit(SetAttrExpr *expr)
     
     if (!objectPtr) {
         std::cerr << "[LLVM CodeGen] Error: Object pointer is null in SetAttrExpr" << std::endl;
-        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
         return;
     }
     
@@ -1882,7 +1907,7 @@ void LLVMCodeGenerator::visit(MethodCallExpr *expr)
     
     if (!objectPtr) {
         std::cerr << "[LLVM CodeGen] Error: Object pointer is null in MethodCallExpr" << std::endl;
-        current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    current_value_ = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
         return;
     }
     

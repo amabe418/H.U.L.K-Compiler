@@ -69,6 +69,9 @@ private:
     // Track generated string constants
     std::unordered_map<std::string, llvm::GlobalVariable*> string_constants_;
     
+    // Track generated mathematical constants (PI, E, etc.)
+    std::unordered_map<std::string, llvm::GlobalVariable*> global_constants_;
+    
     // Current type being generated
     std::string current_type_;
     
@@ -224,6 +227,7 @@ private:
     
     // Built-in functions
     void registerBuiltinFunctions();
+    void registerMathematicalConstants();
     void createPrintBoxedFunction();
     void createUnboxFunction();
     void createTypeCheckFunctions();
@@ -232,6 +236,7 @@ private:
     // Special function handlers
     void handlePrintFunction(CallExpr *expr);
     void handleRandFunction(CallExpr *expr);
+    void handleLogFunction(CallExpr *expr);
 
     // Runtime type tracking for LLVM 19 opaque pointers
     std::unordered_map<llvm::Value*, std::string> value_type_map_; // Track value -> type name
